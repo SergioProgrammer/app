@@ -14,10 +14,8 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>
 
-export default function RegistroPage() {
-  const [msg, setMsg] = useState<string | null>(null)
+export default function LoginPage() {
   const [err, setErr] = useState<string | null>(null)
-
   const {
     register,
     handleSubmit,
@@ -27,9 +25,7 @@ export default function RegistroPage() {
   const supabase = createClient()
 
   async function onSubmit(values: FormValues) {
-    setMsg(null)
     setErr(null)
-
     const token = window.turnstile?.getResponse?.()
     const verify = await fetch('/api/turnstile', {
       method: 'POST',
@@ -42,17 +38,9 @@ export default function RegistroPage() {
       return
     }
 
-    const { error } = await supabase.auth.signUp({
-      email: values.email,
-      password: values.password,
-      options: {
-        emailRedirectTo: `${location.origin}/`,
-      },
-    })
-
+    const { error } = await supabase.auth.signInWithPassword(values)
     if (error) setErr(error.message)
-    else setMsg('Cuenta creada. Revisa tu correo 📩')
-    
+    window.location.href = 'http://localhost:3000/dashboard'
 
   }
 
@@ -62,7 +50,7 @@ export default function RegistroPage() {
         onSubmit={handleSubmit(onSubmit)}
         className="w-full max-w-sm bg-white border rounded-2xl shadow p-8 space-y-4"
       >
-        <h1 className="text-xl font-bold text-gray-900">Registro</h1>
+        <h1 className="text-xl font-bold text-gray-900">Iniciar sesión</h1>
 
         <input
           {...register('email')}
@@ -87,10 +75,9 @@ export default function RegistroPage() {
           disabled={isSubmitting}
           className="w-full bg-gray-900 text-white p-3 rounded-lg font-semibold hover:bg-black"
         >
-          {isSubmitting ? 'Creando...' : 'Crear cuenta'}
+          {isSubmitting ? 'Entrando...' : 'Entrar'}
         </button>
 
-        {msg && <p className="text-green-600 text-sm">{msg}</p>}
         {err && <p className="text-red-500 text-sm">{err}</p>}
       </form>
     </div>
