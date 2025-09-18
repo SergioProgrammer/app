@@ -3,7 +3,13 @@
 import { ReactNode, useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { User } from '@supabase/supabase-js'
-import { LayoutDashboard, CreditCard, Workflow, Settings, LogOut } from 'lucide-react'
+import {
+  LayoutDashboard,
+  CreditCard,
+  Workflow,
+  Settings,
+  LogOut,
+} from 'lucide-react'
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const supabase = createClient()
@@ -11,7 +17,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function loadUser() {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session) {
         window.location.href = '/login'
       } else {
@@ -36,16 +44,28 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div className="p-6 space-y-6">
           <h2 className="text-xl font-bold">Mi Panel</h2>
           <nav className="space-y-2">
-            <a href="/dashboard" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
+            <a
+              href="/dashboard"
+              className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
+            >
               <LayoutDashboard className="w-5 h-5" /> Inicio
             </a>
-            <a href="/suscripcion" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
+            <a
+              href="/suscripcion"
+              className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
+            >
               <CreditCard className="w-5 h-5" /> Suscripción
             </a>
-            <a href="/automatizaciones" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
+            <a
+              href="/automatizaciones"
+              className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
+            >
               <Workflow className="w-5 h-5" /> Automatizaciones
             </a>
-            <a href="/ajustes" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
+            <a
+              href="/ajustes"
+              className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
+            >
               <Settings className="w-5 h-5" /> Ajustes
             </a>
           </nav>
