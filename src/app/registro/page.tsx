@@ -17,6 +17,7 @@ type FormValues = z.infer<typeof schema>
 export default function RegistroPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
 
   const {
     register,
@@ -30,15 +31,19 @@ export default function RegistroPage() {
     setMsg(null)
     setErr(null)
 
-    const token = window.turnstile?.getResponse?.()
+    if (!captchaToken) {
+      setErr('Por favor completa la verificación anti-bots')
+      return
+    }
+
     const verify = await fetch('/api/turnstile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token: captchaToken }),
     }).then(r => r.json())
 
     if (!verify?.ok) {
-      setErr('Verificación anti-bots falló')
+      setErr(`Verificación anti-bots falló: ${verify.error}`)
       return
     }
 
@@ -52,8 +57,6 @@ export default function RegistroPage() {
 
     if (error) setErr(error.message)
     else setMsg('Cuenta creada. Revisa tu correo 📩')
-    
-
   }
 
   return (
@@ -80,7 +83,7 @@ export default function RegistroPage() {
         />
         {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
 
-        <TurnstileWidget />
+        <TurnstileWidget onVerify={(token) => setCaptchaToken(token)} />
 
         <button
           type="submit"

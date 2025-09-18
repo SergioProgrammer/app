@@ -16,6 +16,8 @@ type FormValues = z.infer<typeof schema>
 
 export default function LoginPage() {
   const [err, setErr] = useState<string | null>(null)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+
   const {
     register,
     handleSubmit,
@@ -26,23 +28,30 @@ export default function LoginPage() {
 
   async function onSubmit(values: FormValues) {
     setErr(null)
-    const token = window.turnstile?.getResponse?.()
+
+    if (!captchaToken) {
+      setErr('Por favor completa la verificación anti-bots')
+      return
+    }
+
     const verify = await fetch('/api/turnstile', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: captchaToken }),
     }).then(r => r.json())
 
     if (!verify?.ok) {
-    setErr(`Verificación anti-bots falló: ${verify.error}`)
-    return
+      setErr(`Verificación anti-bots falló: ${verify.error}`)
+      return
     }
 
-
     const { error } = await supabase.auth.signInWithPassword(values)
-    if (error) setErr(error.message)
-    window.location.href = '/dashboard'
+    if (error) {
+      setErr(error.message)
+      return
+    }
 
+    window.location.href = '/dashboard'
   }
 
   return (
@@ -69,7 +78,7 @@ export default function LoginPage() {
         />
         {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
 
-        <TurnstileWidget />
+        <TurnstileWidget onVerify={(token) => setCaptchaToken(token)} />
 
         <button
           type="submit"
