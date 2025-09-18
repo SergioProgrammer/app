@@ -2,23 +2,32 @@ import { NextResponse } from 'next/server'
 
 export async function POST(req: Request) {
   const { token } = await req.json()
-  console.log('🟢 Token recibido en API:', token)
 
-  if (!token) return NextResponse.json({ ok: false }, { status: 400 })
+  if (!token) {
+    return NextResponse.json({ ok: false }, { status: 400 })
+  }
 
-  const form = new URLSearchParams()
-  form.append('secret', process.env.TURNSTILE_SECRET_KEY!)
-  form.append('response', token)
+  const secret = process.env.TURNSTILE_SECRET_KEY!
+  const ip = req.headers.get('CF-Connecting-IP') ?? ''
 
-  const r = await fetch(
+  const response = await fetch(
     'https://challenges.cloudflare.com/turnstile/v0/siteverify',
     {
       method: 'POST',
-      body: form,
+      body: new URLSearchParams({
+        secret,
+        response: token,
+        remoteip: ip,
+      }),
     }
   )
-  const result = await r.json()
-  console.log('🟢 Respuesta de Cloudflare:', result)
 
-  return NextResponse.json({ ok: !!result.success })
+  const data = await response.json()
+  console.log('🔐 Turnstile response:', data)
+
+  if (data.success) {
+    return NextResponse.json({ ok: true })
+  }
+
+  return NextResponse.json({ ok: false }, { status: 400 })
 }
