@@ -28,15 +28,16 @@ export default function LoginPage() {
     setErr(null)
     const token = window.turnstile?.getResponse?.()
     const verify = await fetch('/api/turnstile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
     }).then(r => r.json())
 
     if (!verify?.ok) {
-      setErr('Verificación anti-bots falló')
-      return
+    setErr(`Verificación anti-bots falló: ${verify.error}`)
+    return
     }
+
 
     const { error } = await supabase.auth.signInWithPassword(values)
     if (error) setErr(error.message)
