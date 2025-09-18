@@ -40,7 +40,7 @@ export default function LoginPage() {
 
     const { error } = await supabase.auth.signInWithPassword(values)
     if (error) setErr(error.message)
-    window.location.href = 'http://localhost:3000/dashboard'
+    window.location.href = '/dashboard'
 
   }
 
