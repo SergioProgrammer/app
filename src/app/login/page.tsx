@@ -87,6 +87,12 @@ export default function LoginPage() {
         >
           {isSubmitting ? 'Entrando...' : 'Entrar'}
         </button>
+        <a
+          href="/forgot-password"
+          className="text-sm text-blue-600 hover:underline block text-center"
+        >
+          ¿Olvidaste tu contraseña?
+        </a>
 
         {err && <p className="text-red-500 text-sm">{err}</p>}
       </form>
