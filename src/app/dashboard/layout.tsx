@@ -9,11 +9,14 @@ import {
   Workflow,
   Settings,
   LogOut,
+  Menu,
+  X,
 } from 'lucide-react'
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const supabase = createClient()
   const [user, setUser] = useState<User | null>(null)
+  const [isOpen, setIsOpen] = useState(false)
 
   useEffect(() => {
     async function loadUser() {
@@ -39,33 +42,21 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-[#f9f8f6] text-gray-900">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r shadow-sm flex flex-col justify-between">
+      {/* Sidebar (desktop) */}
+      <aside className="hidden md:flex w-64 bg-white border-r shadow-sm flex-col justify-between">
         <div className="p-6 space-y-6">
           <h2 className="text-xl font-bold">Mi Panel</h2>
           <nav className="space-y-2">
-            <a
-              href="/dashboard"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
-            >
+            <a href="/dashboard" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
               <LayoutDashboard className="w-5 h-5" /> Inicio
             </a>
-            <a
-              href="/suscripcion"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
-            >
+            <a href="/suscripcion" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
               <CreditCard className="w-5 h-5" /> Suscripción
             </a>
-            <a
-              href="/automatizaciones"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
-            >
+            <a href="/automatizaciones" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
               <Workflow className="w-5 h-5" /> Automatizaciones
             </a>
-            <a
-              href="/ajustes"
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
-            >
+            <a href="/ajustes" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
               <Settings className="w-5 h-5" /> Ajustes
             </a>
           </nav>
@@ -83,8 +74,65 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
+      {/* Sidebar (mobile) */}
+      <div
+        className={`fixed inset-0 bg-black/40 z-40 md:hidden transition-opacity ${
+          isOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
+        }`}
+        onClick={() => setIsOpen(false)}
+      />
+      <aside
+        className={`fixed top-0 left-0 w-64 h-full bg-white shadow-lg z-50 transform transition-transform md:hidden ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex justify-between items-center p-4 border-b">
+          <h2 className="text-lg font-bold">Mi Panel</h2>
+          <button onClick={() => setIsOpen(false)}>
+            <X className="w-6 h-6 text-gray-600" />
+          </button>
+        </div>
+        <div className="p-6 space-y-2">
+          <a href="/dashboard" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
+            <LayoutDashboard className="w-5 h-5" /> Inicio
+          </a>
+          <a href="/suscripcion" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
+            <CreditCard className="w-5 h-5" /> Suscripción
+          </a>
+          <a href="/automatizaciones" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
+            <Workflow className="w-5 h-5" /> Automatizaciones
+          </a>
+          <a href="/ajustes" className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100">
+            <Settings className="w-5 h-5" /> Ajustes
+          </a>
+        </div>
+        <div className="p-6 border-t">
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut()
+              window.location.href = '/login'
+            }}
+            className="flex items-center gap-2 w-full bg-red-500 text-white p-2 rounded-lg hover:bg-red-600"
+          >
+            <LogOut className="w-5 h-5" /> Cerrar sesión
+          </button>
+        </div>
+      </aside>
+
       {/* Contenido principal */}
-      <main className="flex-1 p-10">{children}</main>
+      <main className="flex-1 p-4 sm:p-6 lg:p-10">
+        {/* Topbar (mobile) */}
+        <div className="md:hidden flex items-center justify-between mb-6">
+          <button onClick={() => setIsOpen(true)}>
+            <Menu className="w-6 h-6 text-gray-700" />
+          </button>
+          <span className="text-sm text-gray-600 truncate max-w-[200px]">
+            {user.email}
+          </span>
+        </div>
+
+        {children}
+      </main>
     </div>
   )
 }
