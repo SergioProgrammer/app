@@ -51,8 +51,9 @@ export default function RegistroPage() {
       email: values.email,
       password: values.password,
       options: {
-        emailRedirectTo: `${location.origin}/`,
+        emailRedirectTo: `${location.origin}/auth/callback`,
       },
+
     })
 
     if (error) setErr(error.message)
