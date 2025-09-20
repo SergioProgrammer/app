@@ -113,7 +113,7 @@ export default function DashboardPage() {
       (t) =>
         t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
     )
-  }, [query])
+  }, [query, templates]) // ✅ Añadimos templates como dependencia
 
   if (!user) {
     return (
@@ -283,7 +283,7 @@ export default function DashboardPage() {
           {filtered.length === 0 && (
             <div className="col-span-full bg-white rounded-2xl p-8 border text-center">
               <p className="text-gray-600">
-                No se encontraron plantillas para "{query}".
+                No se encontraron plantillas para &quot;{query}&quot;.
               </p>
             </div>
           )}
