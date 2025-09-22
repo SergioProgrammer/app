@@ -50,14 +50,14 @@ export default function DashboardPage() {
 
   const templates: AutomationTemplate[] = [
     {
-      id: 'email-bienvenida',
-      name: 'Email de bienvenida',
+      id: 'email-config',
+      name: 'IA Responde tus Emails',
       description:
-        'Envía automáticamente un correo de bienvenida cuando un usuario se registra.',
+        'Responde automáticamente a emails usando IA. Personalizable y eficiente.',
       icon: Mail,
       accentBg: 'bg-rose-100',
       accentIcon: 'text-rose-600',
-      href: '/automatizaciones/email-bienvenida',
+      href: '/Oauth/google',
       badges: ['Gratis', 'Básica'],
     },
     {
