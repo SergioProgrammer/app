@@ -48,63 +48,63 @@ export default function DashboardPage() {
     badges?: string[]
   }
 
-  const templates: AutomationTemplate[] = [
-    {
-      id: 'email-config',
-      name: 'IA Responde tus Emails',
-      description:
-        'Responde automáticamente a emails usando IA. Personalizable y eficiente.',
-      icon: Mail,
-      accentBg: 'bg-rose-100',
-      accentIcon: 'text-rose-600',
-      href: '/auth/google',
-      badges: ['Gratis', 'Básica'],
-    },
-    {
-      id: 'carrito-abandonado',
-      name: 'Recordatorio de carrito',
-      description:
-        'Detecta carritos abandonados y envía un recordatorio después de 24 horas.',
-      icon: ShoppingCart,
-      accentBg: 'bg-amber-100',
-      accentIcon: 'text-amber-600',
-      href: '/automatizaciones/carrito-abandonado',
-      badges: ['Gratis', 'Básica'],
-    },
-    {
-      id: 'leads-a-sheets',
-      name: 'Leads → Google Sheets',
-      description:
-        'Añade una fila en Google Sheets cuando llegue un nuevo lead.',
-      icon: FileSpreadsheet,
-      accentBg: 'bg-emerald-100',
-      accentIcon: 'text-emerald-600',
-      href: '/automatizaciones/leads-a-sheets',
-      badges: ['Gratis', 'Básica'],
-    },
-    {
-      id: 'pago-fallido',
-      name: 'Alerta de pago fallido',
-      description:
-        'Notifica por email cuando falle un cobro para actuar de inmediato.',
-      icon: Bell,
-      accentBg: 'bg-sky-100',
-      accentIcon: 'text-sky-600',
-      href: '/automatizaciones/pago-fallido',
-      badges: ['Gratis', 'Básica'],
-    },
-    {
-      id: 'post-a-redes',
-      name: 'Post → Redes sociales',
-      description:
-        'Publica en redes automáticamente cuando haya una nueva entrada de blog.',
-      icon: Megaphone,
-      accentBg: 'bg-purple-100',
-      accentIcon: 'text-purple-600',
-      href: '/automatizaciones/post-a-redes',
-      badges: ['Gratis', 'Básica'],
-    },
-  ]
+  const templates: AutomationTemplate[] = useMemo(() => [
+  {
+    id: 'email-config',
+    name: 'IA Responde tus Emails',
+    description:
+      'Responde automáticamente a emails usando IA. Personalizable y eficiente.',
+    icon: Mail,
+    accentBg: 'bg-rose-100',
+    accentIcon: 'text-rose-600',
+    href: '/auth/google',
+    badges: ['Gratis', 'Básica'],
+  },
+  {
+    id: 'carrito-abandonado',
+    name: 'Recordatorio de carrito',
+    description:
+      'Detecta carritos abandonados y envía un recordatorio después de 24 horas.',
+    icon: ShoppingCart,
+    accentBg: 'bg-amber-100',
+    accentIcon: 'text-amber-600',
+    href: '/automatizaciones/carrito-abandonado',
+    badges: ['Gratis', 'Básica'],
+  },
+  {
+    id: 'leads-a-sheets',
+    name: 'Leads → Google Sheets',
+    description:
+      'Añade una fila en Google Sheets cuando llegue un nuevo lead.',
+    icon: FileSpreadsheet,
+    accentBg: 'bg-emerald-100',
+    accentIcon: 'text-emerald-600',
+    href: '/automatizaciones/leads-a-sheets',
+    badges: ['Gratis', 'Básica'],
+  },
+  {
+    id: 'pago-fallido',
+    name: 'Alerta de pago fallido',
+    description:
+      'Notifica por email cuando falle un cobro para actuar de inmediato.',
+    icon: Bell,
+    accentBg: 'bg-sky-100',
+    accentIcon: 'text-sky-600',
+    href: '/automatizaciones/pago-fallido',
+    badges: ['Gratis', 'Básica'],
+  },
+  {
+    id: 'post-a-redes',
+    name: 'Post → Redes sociales',
+    description:
+      'Publica en redes automáticamente cuando haya una nueva entrada de blog.',
+    icon: Megaphone,
+    accentBg: 'bg-purple-100',
+    accentIcon: 'text-purple-600',
+    href: '/automatizaciones/post-a-redes',
+    badges: ['Gratis', 'Básica'],
+  },
+], []) 
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

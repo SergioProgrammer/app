@@ -1,14 +1,13 @@
-// src/utils/supabase/server.ts
-import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { createClient } from '@supabase/supabase-js'
 import type { CookieOptions } from '@supabase/ssr'
 
-export function createClient() {
-  const cookieStore = cookies()
-  
-  return createServerClient(
+export const createServerClient = () => {
+  const cookieStore = cookies() 
+
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         get(name: string) {
@@ -16,18 +15,13 @@ export function createClient() {
         },
         set(name: string, value: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value, ...options })
-          } catch {
-            // El método set puede fallar en algunos contextos de servidor
-            // Por ejemplo, en middleware o en componentes de servidor
-          }
+            cookieStore.set(name, value, options)
+          } catch {}
         },
         remove(name: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value: '', ...options })
-          } catch {
-            // El método remove puede fallar en algunos contextos de servidor
-          }
+            cookieStore.set(name, "", options)
+          } catch {}
         },
       },
     }
