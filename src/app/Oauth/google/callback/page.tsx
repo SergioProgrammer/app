@@ -21,7 +21,7 @@ export default function GoogleCallbackPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             code,
-            redirectUri: `${window.location.origin}/auth/google/callback`,
+            redirectUri: `${window.location.origin}/Oauth/google/callback`,
           }),
         })
         const data = await res.json()
