@@ -56,14 +56,23 @@ export default function AutomatizacionPage() {
   }, [supabase, automationId])
 
   async function savePrompt() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-    if (!user) return
+  if (!user) return
 
-    // Generar prompt final
-    const finalPrompt = `
+  // Prefijo fijo que siempre se antepone al prompt
+  const promptPrefix = `
+IMPORTANTE:
+- Da una única respuesta lista para enviar al cliente.
+- No generes varias alternativas ni ejemplos.
+- No incluyas notas, explicaciones ni preguntas adicionales.
+- Responde como si fueras directamente la empresa que escribe el correo.
+`.trim()
+
+  // Bloque de configuración del usuario
+  const userBlock = `
 Responde a los correos siguiendo estas instrucciones:
 
 - Tono: ${tone || 'No especificado'}
@@ -73,28 +82,33 @@ Responde a los correos siguiendo estas instrucciones:
 ${(pricingPolicy === 'rango' || pricingPolicy === 'exactos') ? `- Precios: ${prices || 'No definidos'}` : ''}
 - Firma: ${signature || 'No definida'}
 - Ejemplo de respuesta ideal: ${example || 'Ninguno'}
-    `.trim()
+`.trim()
 
-    // Guardar en Supabase
-    await supabase.from('user_automations').upsert({
-      user_id: user.id,
-      automation_id: automationId,
-      prompt: finalPrompt,
-    })
+  // Concatenar prefijo + bloque usuario
+  const finalPrompt = `${promptPrefix}\n\n${userBlock}`
 
-    // Enviar al backend
-    await fetch('https://n8n.sqstudio.es/webhook/user-config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: user.id,
-        automationId,
-        userPrompt: finalPrompt,
-      }),
-    })
+  // Guardar en Supabase
+  await supabase.from('user_automations').upsert({
+    user_id: user.id,
+    automation_id: automationId,
+    prompt: finalPrompt,
+  })
 
-    alert('✅ Configuración guardada correctamente')
-  }
+  // Enviar al backend para notificar a n8n
+  await fetch('https://n8n.sqstudio.es/webhook/user-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId: user.id,
+      automationId,
+      userPrompt: finalPrompt,
+    }),
+  })
+
+  alert('✅ Configuración guardada correctamente')
+}
+
+  
 
   if (loading) return <p className="p-6">Cargando...</p>
 
