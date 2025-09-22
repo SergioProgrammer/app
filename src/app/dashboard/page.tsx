@@ -57,7 +57,7 @@ export default function DashboardPage() {
       icon: Mail,
       accentBg: 'bg-rose-100',
       accentIcon: 'text-rose-600',
-      href: '/Oauth/google',
+      href: '/auth/google',
       badges: ['Gratis', 'Básica'],
     },
     {
