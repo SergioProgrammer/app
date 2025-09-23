@@ -71,8 +71,8 @@ IMPORTANTE:
 - Responde como si fueras directamente la empresa que escribe el correo.
 `.trim()
 
-  // Bloque de configuración del usuario
-  const userBlock = `
+    // Bloque de configuración del usuario
+    const userBlock = `
 Responde a los correos siguiendo estas instrucciones:
 
 - Tono: ${tone || 'No especificado'}
@@ -84,33 +84,63 @@ ${(pricingPolicy === 'rango' || pricingPolicy === 'exactos') ? `- Precios: ${pri
 - Ejemplo de respuesta ideal: ${example || 'Ninguno'}
 `.trim()
 
-  // Concatenar prefijo + bloque usuario
-  const finalPrompt = `${promptPrefix}\n\n${userBlock}`
+    const finalPrompt = `${promptPrefix}\n\n${userBlock}`
 
-  // Guardar en Supabase
-  await supabase.from('user_automations').upsert({
-    user_id: user.id,
-    automation_id: automationId,
-    prompt: finalPrompt,
-  })
+    // 1️⃣ Guardar en Supabase
+    await supabase.from('user_automations').upsert({
+      user_id: user.id,
+      automation_id: automationId,
+      prompt: finalPrompt,
+    })
 
-  // Enviar al backend para notificar a n8n
-  await fetch('https://n8n.sqstudio.es/webhook/user-config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      userId: user.id,
-      automationId,
-      userPrompt: finalPrompt,
-    }),
-  })
+    // 2️⃣ Obtener correo Gmail del usuario
+    const { data: gmailRow } = await supabase
+      .from('gmail_accounts')
+      .select('gmail_address')
+      .eq('user_id', user.id)
+      .single()
 
-  alert('✅ Configuración guardada correctamente')
-}
+    if (!gmailRow?.gmail_address) {
+      alert('⚠️ No se encontró una cuenta Gmail vinculada a este usuario')
+      return
+    }
 
-  
+    const gmailAddress = gmailRow.gmail_address
+
+    // 3️⃣ Notificar al webhook de n8n (si lo sigues usando)
+    await fetch('https://n8n.sqstudio.es/webhook/user-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.id,
+        automationId,
+        userPrompt: finalPrompt,
+      }),
+    })
+
+    // 4️⃣ Crear workflow en tu n8n vía API interna
+    const res = await fetch('/api/n8n/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.id,
+        automationId,
+        gmailAddress,
+        prompt: finalPrompt,
+      }),
+    })
+
+    const result = await res.json()
+    if (!result.success) {
+      alert('⚠️ Error creando workflow en n8n: ' + result.error)
+      return
+    }
+
+    alert('✅ Configuración y workflow creados correctamente')
+  }
 
   if (loading) return <p className="p-6">Cargando...</p>
+
 
   return (
     <div className="min-h-screen flex bg-[#f9f8f6] text-gray-900">
@@ -193,7 +223,7 @@ ${(pricingPolicy === 'rango' || pricingPolicy === 'exactos') ? `- Precios: ${pri
             onChange={(e) => setGoal(e.target.value)}
             placeholder="Ejemplo: Ofrecer cita, resolver dudas..."
             className="w-full border rounded p-3"
-          />
+          />e
 
           <label className="block font-semibold">Restricciones</label>
           <textarea
