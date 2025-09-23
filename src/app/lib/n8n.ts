@@ -64,7 +64,7 @@ export async function createWorkflowFromTemplate({
           ...node,
           parameters: {
             ...(node.parameters ?? {}),
-            prompt, 
+            prompt,
           },
         }
       }
@@ -76,7 +76,7 @@ export async function createWorkflowFromTemplate({
   const res = await fetch(`${process.env.N8N_URL}/api/v1/workflows`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${process.env.N8N_API_KEY}`,
+      'X-N8N-API-KEY': process.env.N8N_API_KEY!, 
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(workflow),

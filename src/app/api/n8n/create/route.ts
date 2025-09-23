@@ -67,13 +67,13 @@ export async function POST(req: Request) {
 
     // Llamada a la API de n8n
     const res = await fetch(`${process.env.N8N_URL}/api/v1/workflows`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.N8N_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(workflow),
-    })
+    method: 'POST',
+    headers: {
+      'X-N8N-API-KEY': process.env.N8N_API_KEY!, 
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(workflow),
+  })
 
     if (!res.ok) {
       throw new Error(await res.text())
