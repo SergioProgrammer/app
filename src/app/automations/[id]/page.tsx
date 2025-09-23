@@ -1,5 +1,6 @@
 'use client'
 
+import ConnectGmailButton from '@/components/ConnectGmailButton'
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
@@ -274,12 +275,15 @@ ${(pricingPolicy === 'rango' || pricingPolicy === 'exactos') ? `- Precios: ${pri
             className="w-full border rounded p-3"
           />
 
+          <ConnectGmailButton automationId={automationId} />
+
           <button
             onClick={savePrompt}
             className="bg-black text-white px-4 py-2 rounded w-full mt-6"
           >
             Guardar configuración
           </button>
+
         </div>
       </main>
     </div>

@@ -20,17 +20,32 @@ export async function POST(req: Request) {
   const tokenData = await res.json()
 
   if (tokenData.error) {
-    return NextResponse.json({ error: tokenData.error }, { status: 400 })
+    console.error('Error en token exchange:', tokenData)
+    return NextResponse.json({ error: tokenData.error_description || tokenData.error }, { status: 400 })
   }
 
-  // opcional: pedir info del usuario
-  const meRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-    headers: { Authorization: `Bearer ${tokenData.access_token}` },
-  })
-  const meData = await meRes.json()
+  // Pedir info del usuario
+  
+        // Pedir info del usuario con OpenID
+// Usamos el endpoint de Gmail directamente
+const meRes = await fetch('https://www.googleapis.com/gmail/v1/users/me/profile', {
+  headers: { Authorization: `Bearer ${tokenData.access_token}` },
+})
+const meData = await meRes.json()
+
+return NextResponse.json({
+  ...tokenData,
+  email: meData.emailAddress, // Gmail devuelve "emailAddress"
+})
+
+
+
+  console.log('✅ Token Data:', tokenData)
+  console.log('✅ User Info:', meData)
 
   return NextResponse.json({
-    ...tokenData,
-    email: meData.email,
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token,
+    expires_in: tokenData.expires_in,
   })
 }
