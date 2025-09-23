@@ -81,25 +81,41 @@ ${(pricingPolicy === 'rango' || pricingPolicy === 'exactos') ? `- Precios: ${pri
     const finalPrompt = `${promptPrefix}\n\n${userBlock}`
 
     // Guardar prompt en Supabase
-    await supabase.from('user_automations').upsert({
-      user_id: user.id,
-      automation_id: automationId,
-      prompt: finalPrompt,
-    })
+await supabase.from('user_automations').upsert({
+  user_id: user.id,
+  automation_id: automationId,
+  prompt: finalPrompt,
+})
 
-    // Opcional: llamar a tu API de creación de workflows en n8n
-    await fetch('/api/n8n/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: user.id,
-        automationId,
-        prompt: finalPrompt,
-      }),
-    })
+// Obtener la cuenta Gmail vinculada
+const { data: gmailRow, error: gmailError } = await supabase
+  .from('gmail_accounts')
+  .select('gmail_address')
+  .eq('user_id', user.id)
+  .single()
 
-    // Mostrar mensaje en pantalla
-    setSaved(true)
+if (gmailError || !gmailRow?.gmail_address) {
+  alert('⚠️ No se encontró una cuenta Gmail vinculada. Conéctala antes de continuar.')
+  return
+}
+
+const gmailAddress = gmailRow.gmail_address
+
+// Llamar a tu API de creación de workflows en n8n
+await fetch('/api/n8n/create', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    userId: user.id,
+    automationId,
+    gmailAddress, // 👈 añadido aquí
+    prompt: finalPrompt,
+  }),
+})
+
+// Mostrar mensaje en pantalla
+setSaved(true)
+
   }
 
   if (loading) return <p className="p-6">Cargando...</p>
