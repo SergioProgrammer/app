@@ -53,7 +53,6 @@ export default function RegistroPage() {
       options: {
         emailRedirectTo: `${location.origin}/auth/callback`,
       },
-
     })
 
     if (error) setErr(error.message)
@@ -84,7 +83,8 @@ export default function RegistroPage() {
         />
         {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
 
-        <TurnstileWidget onVerify={(token) => setCaptchaToken(token)} />
+        {/* Captcha: solo guarda el token */}
+        <TurnstileWidget onVerify={setCaptchaToken} />
 
         <button
           type="submit"
