@@ -59,62 +59,62 @@ export default function AutomatizacionPage() {
     if (!user) return
 
     const promptPrefix = `
-IMPORTANTE:
-- Da una única respuesta lista para enviar al cliente.
-- No generes varias alternativas ni ejemplos.
-- No incluyas notas, explicaciones ni preguntas adicionales.
-- Responde como si fueras directamente la empresa que escribe el correo.
-`.trim()
+  IMPORTANTE:
+  - Da una única respuesta lista para enviar al cliente.
+  - No generes varias alternativas ni ejemplos.
+  - No incluyas notas, explicaciones ni preguntas adicionales.
+  - Responde como si fueras directamente la empresa que escribe el correo.
+  `.trim()
 
-    const userBlock = `
-Responde a los correos siguiendo estas instrucciones:
+      const userBlock = `
+  Responde a los correos siguiendo estas instrucciones:
 
-- Tono: ${tone || 'No especificado'}
-- Objetivo: ${goal || 'No especificado'}
-- Restricciones: ${restrictions || 'Ninguna'}
-- Política de precios: ${pricingPolicy || 'No especificada'}
-${(pricingPolicy === 'rango' || pricingPolicy === 'exactos') ? `- Precios: ${prices || 'No definidos'}` : ''}
-- Firma: ${signature || 'No definida'}
-- Ejemplo de respuesta ideal: ${example || 'Ninguno'}
-`.trim()
+  - Tono: ${tone || 'No especificado'}
+  - Objetivo: ${goal || 'No especificado'}
+  - Restricciones: ${restrictions || 'Ninguna'}
+  - Política de precios: ${pricingPolicy || 'No especificada'}
+  ${(pricingPolicy === 'rango' || pricingPolicy === 'exactos') ? `- Precios: ${prices || 'No definidos'}` : ''}
+  - Firma: ${signature || 'No definida'}
+  - Ejemplo de respuesta ideal: ${example || 'Ninguno'}
+  `.trim()
 
-    const finalPrompt = `${promptPrefix}\n\n${userBlock}`
+      const finalPrompt = `${promptPrefix}\n\n${userBlock}`
 
-    // Guardar prompt en Supabase
-await supabase.from('user_automations').upsert({
-  user_id: user.id,
-  automation_id: automationId,
-  prompt: finalPrompt,
-})
-
-// Obtener la cuenta Gmail vinculada
-const { data: gmailRow, error: gmailError } = await supabase
-  .from('gmail_accounts')
-  .select('gmail_address')
-  .eq('user_id', user.id)
-  .single()
-
-if (gmailError || !gmailRow?.gmail_address) {
-  alert('⚠️ No se encontró una cuenta Gmail vinculada. Conéctala antes de continuar.')
-  return
-}
-
-const gmailAddress = gmailRow.gmail_address
-
-// Llamar a tu API de creación de workflows en n8n
-await fetch('/api/n8n/create', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    userId: user.id,
-    automationId,
-    gmailAddress, // 👈 añadido aquí
+      // Guardar prompt en Supabase
+  await supabase.from('user_automations').upsert({
+    user_id: user.id,
+    automation_id: automationId,
     prompt: finalPrompt,
-  }),
-})
+  })
 
-// Mostrar mensaje en pantalla
-setSaved(true)
+  // Obtener la cuenta Gmail vinculada
+  const { data: gmailRow, error: gmailError } = await supabase
+    .from('gmail_accounts')
+    .select('gmail_address')
+    .eq('user_id', user.id)
+    .single()
+
+  if (gmailError || !gmailRow?.gmail_address) {
+    alert('⚠️ No se encontró una cuenta Gmail vinculada. Conéctala antes de continuar.')
+    return
+  }
+
+  const gmailAddress = gmailRow.gmail_address
+
+  // Llamar a tu API de creación de workflows en n8n
+  await fetch('/api/n8n/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId: user.id,
+      automationId,
+      gmailAddress, // 👈 añadido aquí
+      prompt: finalPrompt,
+    }),
+  })
+
+  // Mostrar mensaje en pantalla
+  setSaved(true)
 
   }
 

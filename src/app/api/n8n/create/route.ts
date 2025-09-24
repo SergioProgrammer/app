@@ -14,12 +14,13 @@ type N8nNode = {
 
 export async function POST(req: Request) {
   try {
-    const { userId, automationId, gmailAddress, prompt } = await req.json()
+    const { userId, automationId, gmailAddress, prompt, subject } = await req.json()
 
     console.log("➡️ Recibida petición para crear workflow", {
       userId,
       automationId,
       gmailAddress,
+      subject,
       promptPreview: prompt?.slice(0, 80) + '...',
     })
 
@@ -35,21 +36,20 @@ export async function POST(req: Request) {
     const nodes = (template.nodes ?? []).map((node: N8nNode) => {
       let updatedNode = { ...node }
 
-
-      // Gmail Trigger y Send a message → credenciales fijas de n8n
+      // Gmail Trigger y Send a message → credenciales fijas de n8n (para demo manual)
       if (node.name === 'Gmail Trigger' || node.name === 'Send a message') {
         updatedNode = {
           ...updatedNode,
           credentials: {
             gmailOAuth2: {
-              id: "ggPKEdpztOgjSPdI",   // mismo id de tu JSON base
-              name: "Gmail account",   // mismo nombre de credencial en n8n
+              id: "ggPKEdpztOgjSPdI", // id de tu credencial base
+              name: "Gmail account", // nombre en n8n
             },
           },
         }
       }
 
-      // Message a model → siempre usar el prompt enviado desde tu app
+      // Message a model → usar prompt + subject
       if (node.name === 'Message a model') {
         updatedNode = {
           ...updatedNode,
@@ -58,8 +58,15 @@ export async function POST(req: Request) {
             messages: {
               values: [
                 {
+                  role: 'system',
+                  content: `Eres un asistente que responde emails. 
+                  Usa este prompt como guía: "${prompt}". 
+                  El asunto del email es: "${subject}". 
+                  Responde de forma clara y profesional.`,
+                },
+                {
                   role: 'user',
-                  content: prompt || 'Responde de forma cordial a los emails',
+                  content: "={{ $('Gmail Trigger').item.json.body }}", // el cuerpo real del email
                 },
               ],
             },
@@ -78,7 +85,7 @@ export async function POST(req: Request) {
       settings: template.settings ?? { executionOrder: 'v1' },
     }
 
-    // 🔍 Log JSON final antes de enviar
+    // Log del workflow
     console.log("🛠 Workflow a enviar a n8n:", JSON.stringify(workflow, null, 2))
 
     // Llamada a la API de n8n
