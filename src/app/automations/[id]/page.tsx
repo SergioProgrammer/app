@@ -26,7 +26,7 @@ export default function AutomatizacionPage() {
   const [prices, setPrices] = useState('')
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [saved, setSaved] = useState(false) // 👈 nuevo estado
+  const [saved, setSaved] = useState(false) 
 
   useEffect(() => {
     async function loadPrompt() {
