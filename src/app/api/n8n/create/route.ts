@@ -31,41 +31,38 @@ export async function POST(req: Request) {
       [key: string]: unknown
     }
 
-    // Clonar y asegurar nodos completos
+    // Clonar nodos y personalizar
     const nodes = (template.nodes ?? []).map((node: N8nNode) => {
-      let updatedNode = { ...node } // clonar todo
+      let updatedNode = { ...node }
 
-      if (node.name === 'Get many rows') {
-        updatedNode = {
-          ...updatedNode,
-          parameters: {
-            ...(node.parameters ?? {}),
-            filters: {
-              user_id: userId,
-              automation_id: automationId,
-            },
-          },
-        }
-      }
 
+      // Gmail Trigger y Send a message → credenciales fijas de n8n
       if (node.name === 'Gmail Trigger' || node.name === 'Send a message') {
         updatedNode = {
           ...updatedNode,
           credentials: {
             gmailOAuth2: {
-              id: gmailAddress,
-              name: gmailAddress,
+              id: "ggPKEdpztOgjSPdI",   // mismo id de tu JSON base
+              name: "Gmail account",   // mismo nombre de credencial en n8n
             },
           },
         }
       }
 
+      // Message a model → siempre usar el prompt enviado desde tu app
       if (node.name === 'Message a model') {
         updatedNode = {
           ...updatedNode,
           parameters: {
             ...(node.parameters ?? {}),
-            prompt,
+            messages: {
+              values: [
+                {
+                  role: 'user',
+                  content: prompt || 'Responde de forma cordial a los emails',
+                },
+              ],
+            },
           },
         }
       }

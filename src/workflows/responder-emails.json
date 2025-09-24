@@ -1,22 +1,19 @@
 {
-  "name": "RespuestasEmails",
+  "name": "Responder Emails",
   "nodes": [
     {
       "parameters": {
         "pollTimes": {
           "item": [
-            {
-              "mode": "everyMinute"
-            }
+            { "mode": "everyMinute" }
           ]
-        },
-        "filters": {}
+        }
       },
+      "id": "1",
+      "name": "Gmail Trigger",
       "type": "n8n-nodes-base.gmailTrigger",
       "typeVersion": 1.3,
-      "position": [16, 80],
-      "id": "d0cd5855-be6f-4f85-bcb2-39475b72e3be",
-      "name": "Gmail Trigger",
+      "position": [100, 200],
       "credentials": {
         "gmailOAuth2": {
           "id": "ggPKEdpztOgjSPdI",
@@ -26,112 +23,59 @@
     },
     {
       "parameters": {
-      "modelId": {
-        "__rl": true,
-        "value": "gpt-4.1-nano",
-        "mode": "list",
-        "cachedResultName": "GPT-4.1-NANO"
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-nano",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-NANO"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        }
       },
-      "messages": {
-        "values": [
-          {
-            "role": "user",
-            "content": "={{ $json.prompt }}"
-          }
-        ]
-      }
-    },
-    "type": "@n8n/n8n-nodes-langchain.openAi",
-    "typeVersion": 1.8,
-    "position": [384, 80],
-    "id": "bbd823fc-54ab-46e5-a866-263d52be4af2",
-    "name": "Message a model",
-    "credentials": {
-      "openAiApi": {
-        "id": "0w6fqDy31VFVaY70",
-        "name": "OpenAi account"
+      "id": "2",
+      "name": "Message a model",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [400, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "0w6fqDy31VFVaY70",
+          "name": "OpenAi account"
         }
       }
     },
     {
       "parameters": {
         "sendTo": "={{ $('Gmail Trigger').item.json.From }}",
-        "subject": "={{ $('Gmail Trigger').item.json.Subject }}",
-        "message": "={{ $json.message.content }}",
-        "options": {}
+        "subject": "Re: ={{ $('Gmail Trigger').item.json.Subject }}",
+        "message": "={{ $json.message.content }}"
       },
+      "id": "3",
+      "name": "Send a message",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [784, 80],
-      "id": "8507c8d5-b5cf-4e88-b024-5ced02a16e1e",
-      "name": "Send a message",
-      "webhookId": "00b2b99e-41ec-4623-a76e-44a6a2833c4a",
+      "position": [700, 200],
       "credentials": {
         "gmailOAuth2": {
           "id": "ggPKEdpztOgjSPdI",
           "name": "Gmail account"
         }
       }
-    },
-    {
-      "parameters": {
-        "operation": "getAll",
-        "tableId": "user_automations"
-      },
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [192, 80],
-      "id": "7b7bdb4a-8f58-47fe-a2ef-f87960bd3b6d",
-      "name": "Get many rows",
-      "credentials": {
-        "supabaseApi": {
-          "id": "fFTyWLoj24lSsxxb",
-          "name": "Supabase account"
-        }
-      }
     }
   ],
   "connections": {
     "Gmail Trigger": {
-      "main": [
-        [
-          {
-            "node": "Get many rows",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Message a model", "type": "main", "index": 0 }]]
     },
     "Message a model": {
-      "main": [
-        [
-          {
-            "node": "Send a message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get many rows": {
-      "main": [
-        [
-          {
-            "node": "Message a model",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Send a message", "type": "main", "index": 0 }]]
     }
   },
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "meta": {},
-  "tags": [],
-  "pinData": {},
-  "staticData": null,
-  "active": false
+  "settings": { "executionOrder": "v1" }
 }
