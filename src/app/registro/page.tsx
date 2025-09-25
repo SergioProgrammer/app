@@ -36,6 +36,7 @@ export default function RegistroPage() {
       return
     }
 
+    // Verificación anti-bots
     const verify = await fetch('/api/turnstile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -47,6 +48,7 @@ export default function RegistroPage() {
       return
     }
 
+    // 1️⃣ Registrar en Supabase
     const { error } = await supabase.auth.signUp({
       email: values.email,
       password: values.password,
@@ -55,8 +57,25 @@ export default function RegistroPage() {
       },
     })
 
-    if (error) setErr(error.message)
-    else setMsg('Cuenta creada. Revisa tu correo 📩')
+    if (error) {
+      setErr(error.message)
+      return
+    }
+
+    // 2️⃣ Enviar notificación a tu correo solo si el registro fue OK
+    await fetch("https://formsubmit.co/ajax/info@saraquintana.es", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        email: values.email,
+        subject: "Nuevo registro en ProcesIA",
+        message: `📩 Se ha registrado un nuevo usuario: ${values.email}. 
+                  Recuerda validarlo en Google Console antes de que pueda usar Gmail.`,
+      }),
+    })
+
+    // 3️⃣ Aviso al usuario
+    setMsg("✅ Cuenta creada. Revisa tu correo para confirmar. Después recibirás nuestro email de activación para acceder a las automatizaciones.")
   }
 
   return (
@@ -83,7 +102,7 @@ export default function RegistroPage() {
         />
         {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
 
-        {/* Captcha: solo guarda el token */}
+        {/* Captcha */}
         <TurnstileWidget onVerify={setCaptchaToken} />
 
         <button
