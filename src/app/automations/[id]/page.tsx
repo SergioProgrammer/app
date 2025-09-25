@@ -26,7 +26,7 @@ export default function AutomatizacionPage() {
   const [prices, setPrices] = useState('')
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [saved, setSaved] = useState(false) 
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     async function loadPrompt() {
@@ -59,63 +59,74 @@ export default function AutomatizacionPage() {
     if (!user) return
 
     const promptPrefix = `
-  IMPORTANTE:
-  - Da una única respuesta lista para enviar al cliente.
-  - No generes varias alternativas ni ejemplos.
-  - No incluyas notas, explicaciones ni preguntas adicionales.
-  - Responde como si fueras directamente la empresa que escribe el correo.
-  `.trim()
+IMPORTANTE:
+- Da una única respuesta lista para enviar al cliente.
+- No generes varias alternativas ni ejemplos.
+- No incluyas notas, explicaciones ni preguntas adicionales.
+- Responde como si fueras directamente la empresa que escribe el correo.
+`.trim()
 
-      const userBlock = `
-  Responde a los correos siguiendo estas instrucciones:
+    const userBlock = `
+Responde a los correos siguiendo estas instrucciones:
 
-  - Tono: ${tone || 'No especificado'}
-  - Objetivo: ${goal || 'No especificado'}
-  - Restricciones: ${restrictions || 'Ninguna'}
-  - Política de precios: ${pricingPolicy || 'No especificada'}
-  ${(pricingPolicy === 'rango' || pricingPolicy === 'exactos') ? `- Precios: ${prices || 'No definidos'}` : ''}
-  - Firma: ${signature || 'No definida'}
-  - Ejemplo de respuesta ideal: ${example || 'Ninguno'}
-  `.trim()
+- Tono: ${tone || 'No especificado'}
+- Objetivo: ${goal || 'No especificado'}
+- Restricciones: ${restrictions || 'Ninguna'}
+- Política de precios: ${pricingPolicy || 'No especificada'}
+${(pricingPolicy === 'rango' || pricingPolicy === 'exactos') ? `- Precios: ${prices || 'No definidos'}` : ''}
+- Firma: ${signature || 'No definida'}
+- Ejemplo de respuesta ideal: ${example || 'Ninguno'}
+`.trim()
 
-      const finalPrompt = `${promptPrefix}\n\n${userBlock}`
+    const finalPrompt = `${promptPrefix}\n\n${userBlock}`
 
-      // Guardar prompt en Supabase
-  await supabase.from('user_automations').upsert({
-    user_id: user.id,
-    automation_id: automationId,
-    prompt: finalPrompt,
-  })
-
-  // Obtener la cuenta Gmail vinculada
-  const { data: gmailRow, error: gmailError } = await supabase
-    .from('gmail_accounts')
-    .select('gmail_address')
-    .eq('user_id', user.id)
-    .single()
-
-  if (gmailError || !gmailRow?.gmail_address) {
-    alert('⚠️ No se encontró una cuenta Gmail vinculada. Conéctala antes de continuar.')
-    return
-  }
-
-  const gmailAddress = gmailRow.gmail_address
-
-  // Llamar a tu API de creación de workflows en n8n
-  await fetch('/api/n8n/create', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      userId: user.id,
-      automationId,
-      gmailAddress, // 👈 añadido aquí
+    // Guardar prompt en Supabase
+    await supabase.from('user_automations').upsert({
+      user_id: user.id,
+      automation_id: automationId,
       prompt: finalPrompt,
-    }),
-  })
+    })
 
-  // Mostrar mensaje en pantalla
-  setSaved(true)
+    // Obtener la cuenta Gmail vinculada
+    const { data: gmailRow, error: gmailError } = await supabase
+      .from('gmail_accounts')
+      .select('gmail_address')
+      .eq('user_id', user.id)
+      .single()
 
+    if (gmailError || !gmailRow?.gmail_address) {
+      alert('⚠️ No se encontró una cuenta Gmail vinculada. Conéctala antes de continuar.')
+      return
+    }
+
+    const gmailAddress = gmailRow.gmail_address
+
+    // Llamar a tu API de creación de workflows en n8n
+    await fetch('/api/n8n/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.id,
+        automationId,
+        gmailAddress,
+        prompt: finalPrompt,
+      }),
+    })
+
+    // Enviar notificación a tu correo usando FormSubmit
+    await fetch("https://formsubmit.co/ajax/info@saraquintana.es", {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: user.email,
+        automationId,
+        gmailAddress,
+        prompt: finalPrompt,
+      }),
+    })
+
+    // Mostrar mensaje en pantalla
+    setSaved(true)
   }
 
   if (loading) return <p className="p-6">Cargando...</p>
@@ -153,6 +164,7 @@ export default function AutomatizacionPage() {
           </button>
         </div>
       </aside>
+
       {/* Botón menú móvil */}
       <button
         className="absolute top-4 left-4 md:hidden p-2 bg-white border rounded shadow"
@@ -161,63 +173,23 @@ export default function AutomatizacionPage() {
         <Menu className="w-6 h-6" />
       </button>
 
-      {/* Sidebar móvil */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-40 md:hidden">
-          <aside className="w-64 bg-white h-full shadow-md p-6 space-y-4">
-            <button
-              className="mb-4 text-red-500"
-              onClick={() => setSidebarOpen(false)}
-            >
-              Cerrar ✖
-            </button>
-            <nav className="space-y-2">
-              <a href="/dashboard" className="block p-2 rounded hover:bg-gray-100">Inicio</a>
-              <a href="/suscripcion" className="block p-2 rounded hover:bg-gray-100">Suscripción</a>
-              <a href="/automatizaciones" className="block p-2 rounded hover:bg-gray-100">Automatizaciones</a>
-              <a href="/ajustes" className="block p-2 rounded hover:bg-gray-100">Ajustes</a>
-            </nav>
-          </aside>
-        </div>
-      )}
-
       {/* Main */}
       <main className="flex-1 p-10">
         <h1 className="text-2xl font-bold mb-6">Configura tu automatización</h1>
-
         <div className="max-w-lg space-y-4">
           {!saved ? (
             <>
               <label className="block font-semibold">Tono de la respuesta</label>
-              <input
-                value={tone}
-                onChange={(e) => setTone(e.target.value)}
-                placeholder="Ejemplo: Formal, cercano, profesional..."
-                className="w-full border rounded p-3"
-              />
+              <input value={tone} onChange={(e) => setTone(e.target.value)} className="w-full border rounded p-3" />
 
               <label className="block font-semibold">Objetivo principal</label>
-              <input
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                placeholder="Ejemplo: Ofrecer cita, resolver dudas..."
-                className="w-full border rounded p-3"
-              />
+              <input value={goal} onChange={(e) => setGoal(e.target.value)} className="w-full border rounded p-3" />
 
               <label className="block font-semibold">Restricciones</label>
-              <textarea
-                value={restrictions}
-                onChange={(e) => setRestrictions(e.target.value)}
-                placeholder="Ejemplo: No hablar de precios, máximo 3 párrafos..."
-                className="w-full border rounded p-3"
-              />
+              <textarea value={restrictions} onChange={(e) => setRestrictions(e.target.value)} className="w-full border rounded p-3" />
 
               <label className="block font-semibold">Política de precios</label>
-              <select
-                value={pricingPolicy}
-                onChange={(e) => setPricingPolicy(e.target.value)}
-                className="w-full border rounded p-3"
-              >
+              <select value={pricingPolicy} onChange={(e) => setPricingPolicy(e.target.value)} className="w-full border rounded p-3">
                 <option value="">Selecciona una opción...</option>
                 <option value="no-precios">No dar precios</option>
                 <option value="rango">Dar un rango orientativo</option>
@@ -228,47 +200,24 @@ export default function AutomatizacionPage() {
               {(pricingPolicy === 'rango' || pricingPolicy === 'exactos') && (
                 <>
                   <label className="block font-semibold">Introduce aquí los precios</label>
-                  <textarea
-                    value={prices}
-                    onChange={(e) => setPrices(e.target.value)}
-                    placeholder="Ejemplo: Limpieza dental 40-60€, Ortodoncia desde 1800€..."
-                    className="w-full border rounded p-3"
-                  />
+                  <textarea value={prices} onChange={(e) => setPrices(e.target.value)} className="w-full border rounded p-3" />
                 </>
               )}
 
               <label className="block font-semibold">Firma o identidad</label>
-              <input
-                value={signature}
-                onChange={(e) => setSignature(e.target.value)}
-                placeholder="Ejemplo: Clínica Dental Smile, Dr. Pérez..."
-                className="w-full border rounded p-3"
-              />
+              <input value={signature} onChange={(e) => setSignature(e.target.value)} className="w-full border rounded p-3" />
 
-              <label className="block font-semibold">Ejemplo de respuesta ideal</label>
-              <textarea
-                value={example}
-                onChange={(e) => setExample(e.target.value)}
-                placeholder="Escribe aquí un ejemplo de cómo te gustaría que respondiera la IA"
-                className="w-full border rounded p-3"
-              />
+              <label className="block font-semibold">Para que la IA te conozca bien y pueda responder como quieres, dinos todo lo que quieras que conoza como Dirección, dudas típicas, historia...</label>
+              <textarea value={example} onChange={(e) => setExample(e.target.value)} className="w-full border rounded p-3" />
 
-              <button
-                onClick={savePrompt}
-                className="bg-black text-white px-4 py-2 rounded w-full mt-6"
-              >
+              <button onClick={savePrompt} className="bg-black text-white px-4 py-2 rounded w-full mt-6">
                 Guardar configuración
               </button>
             </>
           ) : (
             <div className="text-center mt-6">
-              <p className="text-green-600 font-semibold mb-4">
-                ¡Listo! Ya tienes la automatización instalada ✅
-              </p>
-              <a
-                href="/dashboard"
-                className="inline-block bg-black text-white px-4 py-2 rounded-lg"
-              >
+              <p className="text-green-600 font-semibold mb-4">¡Listo! ✅ Ya tienes la automatización instalada. Ahora la revisaremos y te enviaremos un mensaje cuando este activa en no más de 48h</p>
+              <a href="/dashboard" className="inline-block bg-black text-white px-4 py-2 rounded-lg">
                 Ir al Dashboard
               </a>
             </div>

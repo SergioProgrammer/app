@@ -41,9 +41,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#f9f8f6] text-gray-900">
-      {/* Sidebar (desktop) */}
-      <aside className="hidden md:flex w-64 bg-white border-r shadow-sm flex-col justify-between">
+    <div className="min-h-screen bg-[#f9f8f6] text-gray-900">
+      {/* Sidebar fija (desktop) */}
+      <aside className="hidden md:flex fixed top-0 left-0 w-64 h-screen bg-white border-r shadow-sm flex-col justify-between z-40">
         <div className="p-6 space-y-6">
           <h2 className="text-xl font-bold">Mi Panel</h2>
           <nav className="space-y-2">
@@ -74,7 +74,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* Sidebar (mobile) */}
+      {/* Overlay + Sidebar móvil */}
       <div
         className={`fixed inset-0 bg-black/40 z-40 md:hidden transition-opacity ${
           isOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
@@ -119,8 +119,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* Contenido principal */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-10">
+      {/* Contenido principal (con margen para sidebar en desktop) */}
+      <main className="md:ml-64 p-4 sm:p-6 lg:p-10">
         {/* Topbar (mobile) */}
         <div className="md:hidden flex items-center justify-between mb-6">
           <button onClick={() => setIsOpen(true)}>
