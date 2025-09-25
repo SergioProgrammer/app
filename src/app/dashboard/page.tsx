@@ -51,10 +51,21 @@ export default function DashboardPage() {
   const templates: AutomationTemplate[] = useMemo(() => [
   // 🔹 LOGÍSTICA
   {
+    id: 'email-config',
+    name: 'IA Responde tus Emails',
+    description:
+      'Responde automáticamente a emails usando IA. Personalizable y eficiente.',
+    icon: Mail,
+    accentBg: 'bg-rose-100',
+    accentIcon: 'text-rose-600',
+    href: '/auth/google',
+    badges: ['19,99 €/mes'],
+  },
+  {
     id: 'tracking-envios',
     name: 'Seguimiento automático de envíos',
     description: 'IA responde a clientes con el estado de su pedido en tiempo real.',
-    icon: Mail,
+    icon: Workflow,
     accentBg: 'bg-blue-100',
     accentIcon: 'text-blue-600',
     href: '/automatizaciones/tracking-envios',
@@ -455,7 +466,7 @@ export default function DashboardPage() {
                 Marketplace de Automatizaciones
               </h2>
               <p className="text-gray-600 mt-1">
-                Plantillas básicas para empezar en minutos.
+                Solicita una de nuestras plantillas y te la configuramos para que no te preocupes de nada.
               </p>
             </div>
 
@@ -508,7 +519,7 @@ export default function DashboardPage() {
                   href={t.href}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-black text-[#FAF9F6] px-4 py-2.5 text-sm font-medium shadow hover:opacity-90 transition"
                 >
-                  <Zap className="h-4 w-4" /> Instalar
+                  <Zap className="h-4 w-4" /> Solicitar
                 </a>
                 <a
                   href={t.href}
