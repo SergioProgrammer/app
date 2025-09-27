@@ -63,7 +63,8 @@ export default function RegistroPage() {
     }
 
     // 2️⃣ Enviar notificación a tu correo solo si el registro fue OK
-    await fetch("https://formsubmit.co/ajax/info@saraquintana.es", {
+  try {
+    await fetch("https://formsubmit.co/ajax/saraquintanadg@gmail.com", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
@@ -73,6 +74,10 @@ export default function RegistroPage() {
                   Recuerda validarlo en Google Console antes de que pueda usar Gmail.`,
       }),
     })
+  } catch (e) {
+    console.error("Error al enviar notificación:", e)
+}
+
 
     // 3️⃣ Aviso al usuario
     setMsg("✅ Cuenta creada. Revisa tu correo para confirmar. Después recibirás nuestro email de activación para acceder a las automatizaciones.")
