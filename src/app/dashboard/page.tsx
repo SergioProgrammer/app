@@ -48,6 +48,245 @@ export default function DashboardPage() {
     badges?: string[]
   }
 
+  interface DetailCTA {
+    primaryLabel?: string
+    primaryHref?: string
+    secondaryLabel?: string
+    secondaryHref?: string
+    finalTitle?: string
+    finalSubtitle?: string
+  }
+
+  interface DetailMetric {
+    label: string
+    value: string
+    caption?: string
+  }
+
+  interface DetailHero {
+    badge?: string
+    title: string
+    description: string
+    highlights?: string[]
+    panelCopy?: string
+    metrics?: DetailMetric[]
+  }
+
+  interface DetailSectionItem {
+    title: string
+    description: string
+    tags?: string[]
+    step?: string
+  }
+
+  type SectionLayout = 'timeline' | 'grid'
+
+  interface DetailSection {
+    title: string
+    subtitle?: string
+    layout?: SectionLayout
+    items?: DetailSectionItem[]
+    callout?: string
+  }
+
+  interface DetailPricingTier {
+    name: string
+    description: string
+    price: string
+    users?: string
+    includes: string[]
+    highlight?: boolean
+  }
+
+  interface DetailPricingOffline {
+    description: string
+    extraLabel: string
+    price: string
+  }
+
+  interface DetailPricing {
+    tiers?: DetailPricingTier[]
+    offline?: DetailPricingOffline
+    customCopy?: string
+  }
+
+  interface AutomationDetail {
+    hero: DetailHero
+    sections?: DetailSection[]
+    pricing?: DetailPricing
+    cta?: DetailCTA
+  }
+
+  const detail: AutomationDetail = useMemo(
+    () => ({
+      hero: {
+        badge: 'Marketplace inteligente',
+        title: 'Activa automatizaciones listas sin salir del dashboard',
+        description:
+          'Conecta tus herramientas operativas y dispara workflows preconfigurados que responden correos, notifican incidencias y sincronizan datos automáticamente.',
+        highlights: [
+          'Activaciones asistidas en menos de 48 horas',
+          'Integraciones con Google Workspace, WhatsApp y CRM líderes',
+          'Monitorización continua desde este mismo panel',
+        ],
+        panelCopy:
+          'Visualiza el rendimiento de cada automatización, revisa historiales y recibe alertas cuando un flujo requiere tu atención. Todo centralizado en el dashboard.',
+        metrics: [
+          { label: 'Automatizaciones disponibles', value: '35+' },
+          { label: 'Procesos ejecutados al día', value: '1.2K', caption: 'Promedio de clientes activos' },
+          { label: 'Tiempo medio de puesta en marcha', value: '48h' },
+          { label: 'Horas ahorradas al mes', value: '60h', caption: 'Por equipo de operaciones' },
+        ],
+      },
+      sections: [
+        {
+          title: 'Cómo funciona',
+          subtitle: 'Te guiamos paso a paso para activar cada automatización sin fricciones.',
+          layout: 'timeline',
+          items: [
+            {
+              step: '01',
+              title: 'Explora el catálogo',
+              description:
+                'Filtra por sector u objetivo y revisa los requisitos técnicos y casos de uso sugeridos.',
+            },
+            {
+              step: '02',
+              title: 'Configura tus parámetros',
+              description:
+                'Define el tono de las respuestas, credenciales y reglas de negocio directamente desde el dashboard.',
+            },
+            {
+              step: '03',
+              title: 'Activa y monitoriza',
+              description:
+                'Recibe un informe de validación y empieza a ver métricas en tiempo real en cuestión de horas.',
+            },
+          ],
+          callout:
+            '¿Quieres que nuestro equipo lo haga por ti? Agenda una sesión y preparamos la automatización con tus datos reales.',
+        },
+        {
+          title: 'Casos de uso principales',
+          subtitle: 'Los equipos operativos que trabajan con nosotros priorizan estas automatizaciones.',
+          layout: 'grid',
+          items: [
+            {
+              title: 'Atención al cliente logístico',
+              description:
+                'Gestión automática de incidencias, actualizaciones de reparto y reconducción de pedidos en múltiples canales.',
+              tags: ['WhatsApp Business', 'Correo', 'Integración ERP'],
+            },
+            {
+              title: 'Clínicas y centros médicos',
+              description:
+                'Recordatorios personalizados, sincronización de historiales y activación de campañas de seguimiento post-consulta.',
+              tags: ['Citas', 'CRM pacientes', 'Reportes IA'],
+            },
+            {
+              title: 'Productividad personal',
+              description:
+                'Asistentes que organizan correos, agendas compartidas y resúmenes con contexto para tu día a día.',
+              tags: ['Google Workspace', 'Automatizaciones IA'],
+            },
+          ],
+        },
+        {
+          title: 'Integraciones destacadas',
+          subtitle: 'Añadimos conectores nuevos cada mes en función de la demanda de clientes.',
+          layout: 'grid',
+          items: [
+            {
+              title: 'Google Workspace',
+              description: 'Automatiza Gmail, Calendar y Sheets con plantillas aprobadas para seguridad empresarial.',
+              tags: ['Gmail', 'Calendar', 'Sheets'],
+            },
+            {
+              title: 'Herramientas de soporte',
+              description: 'Conecta Zendesk, Intercom o Freshdesk para respuestas automáticas con contexto.',
+              tags: ['Zendesk', 'Intercom', 'Freshdesk'],
+            },
+            {
+              title: 'Plataformas de eCommerce',
+              description: 'Sincroniza inventario, pedidos y logística con Shopify, WooCommerce o Prestashop.',
+              tags: ['Shopify', 'WooCommerce', 'Prestashop'],
+            },
+          ],
+          callout: '¿Tienes una integración propia? Escríbenos y la conectamos a tu flujo en pocos días.',
+        },
+      ],
+      pricing: {
+        tiers: [
+          {
+            name: 'Starter',
+            description: 'Ideal para equipos que se inician con una única automatización crítica.',
+            price: '49€',
+            users: 'Hasta 5 usuarios operativos',
+            includes: ['1 automatización activa', 'Soporte email en 24h', 'Plantillas personalizables'],
+          },
+          {
+            name: 'Growth',
+            description: 'Automatiza varios procesos con seguimiento avanzado y soporte prioritario.',
+            price: '129€',
+            users: 'Hasta 15 usuarios operativos',
+            includes: [
+              'Hasta 5 automatizaciones activas',
+              'Onboarding guiado con nuestro equipo',
+              'Alertas avanzadas y reportes semanales',
+            ],
+            highlight: true,
+          },
+          {
+            name: 'Scale',
+            description: 'Pensado para operaciones con múltiples marcas o países.',
+            price: '249€',
+            users: 'Usuarios ilimitados',
+            includes: [
+              'Todas las automatizaciones necesarias',
+              'Soporte dedicado y guardias 24/7',
+              'Integraciones personalizadas vía API',
+            ],
+          },
+        ],
+        offline: {
+          description:
+            'Contacta con nuestro equipo para conocer módulos con ejecución offline o en entornos restringidos.',
+          extraLabel: 'Operaciones sin conexión',
+          price: 'Solicitar presupuesto',
+        },
+        customCopy:
+          'Podemos adaptar workflows a tu core bancario, ERP o sistemas locales para garantizar continuidad operativa.',
+      },
+      cta: {
+        primaryLabel: 'Probar en dashboard',
+        primaryHref: '/automatizaciones',
+        secondaryLabel: 'Hablar con nosotros',
+        secondaryHref: '/contacto',
+        finalTitle: '¿Listo para desplegar tus automatizaciones clave?',
+        finalSubtitle:
+          'Activa módulos directamente desde el dashboard o agenda una sesión con nuestros especialistas para adaptar los flujos a tu operación.',
+      },
+    }),
+    []
+  )
+
+  const registerUrl = detail.cta?.primaryHref ?? 'https://app-procesia.vercel.app/registro'
+  const contactUrl = detail.cta?.secondaryHref ?? '/contacto'
+  const sections = detail.sections ?? []
+
+  const defaultPricing: DetailPricing = {
+    tiers: [],
+    offline: {
+      description: 'Contacta con nuestro equipo para conocer las opciones sin conexión disponibles.',
+      extraLabel: 'Módulo offline',
+      price: 'Solicitar presupuesto',
+    },
+  }
+
+  const pricing = detail.pricing ?? defaultPricing
+  const pricingTiers: DetailPricingTier[] = pricing.tiers ?? []
+  const pricingOffline = pricing.offline
+
   const templates: AutomationTemplate[] = useMemo(() => [
   // 🔹 LOGÍSTICA
   {
@@ -403,209 +642,438 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-        {/* KPIs */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-base sm:text-lg">Plan actual</h2>
-              <CreditCard className="h-5 w-5 text-gray-400" />
+        <div className="space-y-12 sm:space-y-16">
+          <section className="relative py-10 sm:py-14">
+            <div className="grid gap-10 lg:grid-cols-[1.2fr_1fr] items-center">
+              <div>
+                {detail.hero.badge && (
+                  <span className="inline-flex items-center rounded-full bg-lime-100 text-lime-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.08em]">
+                    {detail.hero.badge}
+                  </span>
+                )}
+                <h1 className="mt-4 text-3xl sm:text-4xl lg:text-[2.9rem] leading-tight font-semibold text-gray-900">
+                  {detail.hero.title}
+                </h1>
+                <p className="mt-4 text-lg text-gray-600">{detail.hero.description}</p>
+                {detail.hero.highlights && (
+                  <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+                    {detail.hero.highlights.map((highlight) => (
+                      <li key={highlight} className="flex items-center gap-3">
+                        <span className="flex h-2.5 w-2.5 rounded-full bg-lime-400" />
+                        <span className="text-sm sm:text-base text-gray-700">{highlight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                  <a
+                    href={registerUrl}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 text-white px-5 py-3 text-sm font-medium shadow-lg shadow-gray-900/10 hover:opacity-90 transition"
+                  >
+                    {detail.cta?.primaryLabel ?? 'Probar en dashboard'}
+                  </a>
+                  <a
+                    href={contactUrl}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white text-gray-900 px-5 py-3 text-sm font-medium hover:bg-gray-100 transition"
+                  >
+                    {detail.cta?.secondaryLabel ?? 'Hablar con nosotros'}
+                  </a>
+                </div>
+              </div>
+              <div className="relative">
+                <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
+                  <h2 className="text-sm font-semibold tracking-wide text-lime-700 uppercase">
+                    Cómo se ve en tu panel
+                  </h2>
+                  <p className="mt-3 text-sm text-gray-600">
+                    {detail.hero.panelCopy ??
+                      'Sigue la actividad de tu explotación en el dashboard, con indicadores actualizados y alertas en tiempo real.'}
+                  </p>
+                  {detail.hero.metrics && (
+                    <dl className="mt-6 grid gap-4 sm:grid-cols-2">
+                      {detail.hero.metrics.map((metric) => (
+                        <div key={metric.label} className="rounded-2xl bg-[#FAF9F6] p-4">
+                          <dt className="text-xs uppercase tracking-wide text-gray-500">{metric.label}</dt>
+                          <dd className="mt-2 text-2xl font-semibold text-gray-900">{metric.value}</dd>
+                          {metric.caption && (
+                            <p className="mt-1 text-xs text-gray-500">{metric.caption}</p>
+                          )}
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </div>
+              </div>
             </div>
-            <p className="text-gray-600 mt-2">Gratis</p>
-            <a
-              href="/suscripcion"
-              className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
-            >
-              Ver planes
-            </a>
-          </div>
+          </section>
 
-          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-base sm:text-lg">Automatizaciones activas</h2>
-              <Workflow className="h-5 w-5 text-gray-400" />
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-base sm:text-lg">Plan actual</h2>
+                <CreditCard className="h-5 w-5 text-gray-400" />
+              </div>
+              <p className="text-gray-600 mt-2">Gratis</p>
+              <a
+                href="/suscripcion"
+                className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
+              >
+                Ver planes
+              </a>
             </div>
-            <p className="text-gray-600 mt-2">0</p>
-            <a
-              href="/automatizaciones"
-              className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
-            >
-              Configurar
-            </a>
-          </div>
 
-          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-base sm:text-lg">Último acceso</h2>
-              <BarChart className="h-5 w-5 text-gray-400" />
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-base sm:text-lg">Automatizaciones activas</h2>
+                <Workflow className="h-5 w-5 text-gray-400" />
+              </div>
+              <p className="text-gray-600 mt-2">0</p>
+              <a
+                href="/automatizaciones"
+                className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
+              >
+                Configurar
+              </a>
             </div>
-            <p className="text-gray-600 mt-2">
-              {new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}
-            </p>
-          </div>
 
-          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-base sm:text-lg">Créditos</h2>
-              <CreditCard className="h-5 w-5 text-gray-400" />
-            </div>
-            <p className="text-gray-600 mt-2">100</p>
-            <a
-              href="/suscripcion"
-              className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
-            >
-              Añadir
-            </a>
-          </div>
-        </section>
-
-        {/* Marketplace header */}
-        <section className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
-                Marketplace de Automatizaciones
-              </h2>
-              <p className="text-gray-600 mt-1">
-                Solicita una de nuestras plantillas y te la configuramos para que no te preocupes de nada.
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-base sm:text-lg">Último acceso</h2>
+                <BarChart className="h-5 w-5 text-gray-400" />
+              </div>
+              <p className="text-gray-600 mt-2">
+                {new Date().toLocaleString('es-ES', {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })}
               </p>
             </div>
 
-            <div className="relative max-w-md w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar plantillas..."
-                className="w-full rounded-xl border bg-white py-2.5 pl-10 pr-3 text-sm outline-none ring-0 focus:border-gray-300 focus:ring-2 focus:ring-black/10"
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* Marketplace grid */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {filtered.map((t) => (
-            <article
-              key={t.id}
-              className="group bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition flex flex-col"
-            >
-              <div className="flex items-start gap-4">
-                <div className={`shrink-0 w-11 h-11 rounded-xl ${t.accentBg} flex items-center justify-center`}>
-                  <t.icon className={`h-5 w-5 ${t.accentIcon}`} />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 text-base sm:text-lg">
-                    {t.name}
-                  </h3>
-                  <p className="text-gray-600 text-sm mt-1">{t.description}</p>
-                </div>
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-base sm:text-lg">Créditos</h2>
+                <CreditCard className="h-5 w-5 text-gray-400" />
               </div>
+              <p className="text-gray-600 mt-2">100</p>
+              <a
+                href="/suscripcion"
+                className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
+              >
+                Añadir
+              </a>
+            </div>
+          </section>
 
-              {t.badges && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {t.badges.map((b) => (
-                    <span
-                      key={b}
-                      className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs text-gray-700"
+          {sections.map((section) => (
+            <section key={section.title} className="py-4 sm:py-6">
+              <div className="max-w-3xl">
+                <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900">{section.title}</h2>
+                {section.subtitle && <p className="mt-3 text-gray-600">{section.subtitle}</p>}
+              </div>
+              {section.items && (
+                <div
+                  className={`mt-8 ${
+                    section.layout === 'timeline'
+                      ? 'space-y-6'
+                      : 'grid gap-6 sm:grid-cols-2 lg:grid-cols-3'
+                  }`}
+                >
+                  {section.items.map((item) => (
+                    <div
+                      key={`${section.title}-${item.title}`}
+                      className={`rounded-3xl border border-gray-200 bg-white p-6 shadow-sm ${
+                        section.layout === 'timeline' ? 'sm:flex sm:items-start sm:gap-5' : ''
+                      }`}
                     >
-                      {b}
-                    </span>
+                      {section.layout === 'timeline' && (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white text-sm font-semibold">
+                          {item.step ?? '•'}
+                        </div>
+                      )}
+                      <div className={section.layout === 'timeline' ? 'mt-4 sm:mt-0' : ''}>
+                        <h3 className="text-lg font-semibold text-gray-900">{item.title}</h3>
+                        <p className="mt-2 text-sm text-gray-600">{item.description}</p>
+                        {item.tags && (
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {item.tags.map((tag) => (
+                              <span
+                                key={`${item.title}-${tag}`}
+                                className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-xs font-medium"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
-
-              <div className="mt-5 flex items-center justify-between">
-                <a
-                  href={t.href}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-black text-[#FAF9F6] px-4 py-2.5 text-sm font-medium shadow hover:opacity-90 transition"
-                >
-                  <Zap className="h-4 w-4" /> Solicitar
-                </a>
-                <a
-                  href={t.href}
-                  className="text-sm text-gray-700 underline-offset-4 hover:underline"
-                >
-                  Ver detalles
-                </a>
-              </div>
-            </article>
+              {section.callout && (
+                <div className="mt-8 rounded-3xl border border-dashed border-gray-300 bg-white px-6 py-5 text-sm text-gray-600">
+                  {section.callout}
+                </div>
+              )}
+            </section>
           ))}
 
-          {/* Empty state when no results */}
-          {filtered.length === 0 && (
-            <div className="col-span-full bg-white rounded-2xl p-8 border text-center">
-              <p className="text-gray-600">
-                No se encontraron plantillas para &quot;{query}&quot;.
-              </p>
-            </div>
-          )}
-        </section>
-
-        {/* Quick nav */}
-        <section className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {/* Suscripción */}
-          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-                </div>
-                <h2 className="font-semibold text-base sm:text-lg text-gray-900">Suscripción</h2>
+          <section>
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Marketplace de Automatizaciones</h2>
+                <p className="text-gray-600 mt-1">
+                  Solicita una de nuestras plantillas y te la configuramos para que no te preocupes de nada.
+                </p>
               </div>
-              <p className="text-gray-600 text-sm sm:text-base mb-4">
-                Gestiona tu plan actual y cambia de suscripción cuando quieras.
-              </p>
-            </div>
-            <a
-              href="/suscripcion"
-              className="mt-auto inline-block bg-black text-[#FAF9F6] px-4 py-2 rounded-lg text-sm sm:text-base hover:opacity-90 transition"
-            >
-              Ver planes
-            </a>
-          </div>
 
-          {/* Automatizaciones */}
-          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                  <Workflow className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-                </div>
-                <h2 className="font-semibold text-base sm:text-lg text-gray-900">Automatizaciones</h2>
+              <div className="relative max-w-md w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Buscar plantillas..."
+                  className="w-full rounded-xl border bg-white py-2.5 pl-10 pr-3 text-sm outline-none ring-0 focus:border-gray-300 focus:ring-2 focus:ring-black/10"
+                />
               </div>
-              <p className="text-gray-600 text-sm sm:text-base mb-4">
-                Activa y configura las automatizaciones que necesites en tu negocio.
-              </p>
             </div>
-            <a
-              href="/automatizaciones"
-              className="mt-auto inline-block bg-black text-[#FAF9F6] px-4 py-2 rounded-lg text-sm sm:text-base hover:opacity-90 transition"
-            >
-              Configurar
-            </a>
-          </div>
 
-          {/* Reportes */}
-          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-yellow-100 flex items-center justify-center">
-                  <BarChart className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600" />
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              {filtered.map((t) => (
+                <article
+                  key={t.id}
+                  className="group bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition flex flex-col"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className={`shrink-0 w-11 h-11 rounded-xl ${t.accentBg} flex items-center justify-center`}>
+                      <t.icon className={`h-5 w-5 ${t.accentIcon}`} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 text-base sm:text-lg">{t.name}</h3>
+                      <p className="text-gray-600 text-sm mt-1">{t.description}</p>
+                    </div>
+                  </div>
+
+                  {t.badges && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {t.badges.map((b) => (
+                        <span
+                          key={`${t.id}-${b}`}
+                          className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs text-gray-700"
+                        >
+                          {b}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-5 flex items-center justify-between">
+                    <a
+                      href={t.href}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-black text-[#FAF9F6] px-4 py-2.5 text-sm font-medium shadow hover:opacity-90 transition"
+                    >
+                      <Zap className="h-4 w-4" /> Solicitar
+                    </a>
+                    <a
+                      href={t.href}
+                      className="text-sm text-gray-700 underline-offset-4 hover:underline"
+                    >
+                      Ver detalles
+                    </a>
+                  </div>
+                </article>
+              ))}
+
+              {filtered.length === 0 && (
+                <div className="col-span-full bg-white rounded-2xl p-8 border text-center">
+                  <p className="text-gray-600">
+                    No se encontraron plantillas para &quot;{query}&quot;.
+                  </p>
                 </div>
-                <h2 className="font-semibold text-base sm:text-lg text-gray-900">Reportes</h2>
-              </div>
-              <p className="text-gray-600 text-sm sm:text-base mb-4">
-                Accede a reportes automáticos de tu actividad y métricas clave.
+              )}
+            </div>
+          </section>
+
+          <section>
+            <div className="max-w-2xl">
+              <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900">Planes según tu operación</h2>
+              <p className="mt-3 text-gray-600">
+                Escoge el tramo que mejor se adapte al tamaño de tu equipo o al volumen de procesos que quieres automatizar. Puedes escalar sin perder datos.
               </p>
             </div>
-            <a
-              href="#"
-              className="mt-auto inline-block bg-black text-[#FAF9F6] px-4 py-2 rounded-lg text-sm sm:text-base hover:opacity-90 transition"
-            >
-              Ver reportes
-            </a>
-          </div>
-        </section>
+            <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {pricingTiers.map((tier) => (
+                <div
+                  key={tier.name}
+                  className={`rounded-3xl border ${
+                    tier.highlight
+                      ? 'border-gray-900 bg-gray-900 text-white shadow-lg shadow-gray-900/10'
+                      : 'border-gray-200 bg-white'
+                  } p-6 flex flex-col`}
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">{tier.name}</h3>
+                    {tier.highlight && (
+                      <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+                        Popular
+                      </span>
+                    )}
+                  </div>
+                  <p className={`mt-2 text-sm ${tier.highlight ? 'text-gray-100' : 'text-gray-600'}`}>
+                    {tier.description}
+                  </p>
+                  <p className="mt-4 text-3xl font-semibold">
+                    {tier.price}
+                    <span className="ml-1 text-sm font-medium opacity-70">/mes</span>
+                  </p>
+                  {tier.users && (
+                    <p className={`mt-2 text-xs uppercase tracking-wide ${tier.highlight ? 'text-gray-200' : 'text-gray-500'}`}>
+                      {tier.users}
+                    </p>
+                  )}
+                  <ul className={`mt-5 space-y-3 text-sm ${tier.highlight ? 'text-gray-100' : 'text-gray-700'}`}>
+                    {tier.includes.map((feature) => (
+                      <li key={`${tier.name}-${feature}`} className="flex items-start gap-2">
+                        <span className={`mt-1 h-1.5 w-1.5 rounded-full ${tier.highlight ? 'bg-white' : 'bg-gray-900'}`} />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <a
+                    href={registerUrl}
+                    className={`mt-6 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                      tier.highlight
+                        ? 'bg-white text-gray-900 hover:bg-gray-100'
+                        : 'bg-gray-900 text-white hover:opacity-90'
+                    }`}
+                  >
+                    Seleccionar plan
+                  </a>
+                </div>
+              ))}
+            </div>
+            <div className="mt-8 grid gap-6 lg:grid-cols-[2fr_1fr]">
+              <div className="rounded-3xl border border-gray-200 bg-white p-6">
+                <h3 className="text-lg font-semibold text-gray-900">Uso sin conexión</h3>
+                <p className="mt-2 text-sm text-gray-600">
+                  {pricingOffline?.description ??
+                    'Contacta con nuestro equipo para conocer las opciones sin conexión disponibles.'}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3 text-sm text-gray-700">
+                  <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 font-medium">
+                    {pricingOffline?.extraLabel ?? 'Módulo offline'}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 font-medium">
+                    {pricingOffline?.price ?? 'Presupuesto a medida'}
+                  </span>
+                </div>
+              </div>
+              <div className="rounded-3xl border border-gray-200 bg-white p-6">
+                <h3 className="text-lg font-semibold text-gray-900">¿Necesitas algo a medida?</h3>
+                <p className="mt-2 text-sm text-gray-600">
+                  {pricing.customCopy ??
+                    'Integramos tus sistemas propios y adaptamos los flujos a tu operativa real.'}
+                </p>
+                <a
+                  href={contactUrl}
+                  className="mt-5 inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-100 transition"
+                >
+                  Agendar sesión de diseño
+                </a>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <CreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+                  </div>
+                  <h2 className="font-semibold text-base sm:text-lg text-gray-900">Suscripción</h2>
+                </div>
+                <p className="text-gray-600 text-sm sm:text-base mb-4">
+                  Gestiona tu plan actual y cambia de suscripción cuando quieras.
+                </p>
+              </div>
+              <a
+                href="/suscripcion"
+                className="mt-auto inline-block bg-black text-[#FAF9F6] px-4 py-2 rounded-lg text-sm sm:text-base hover:opacity-90 transition"
+              >
+                Ver planes
+              </a>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                    <Workflow className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
+                  </div>
+                  <h2 className="font-semibold text-base sm:text-lg text-gray-900">Automatizaciones</h2>
+                </div>
+                <p className="text-gray-600 text-sm sm:text-base mb-4">
+                  Activa y configura las automatizaciones que necesites en tu negocio.
+                </p>
+              </div>
+              <a
+                href="/automatizaciones"
+                className="mt-auto inline-block bg-black text-[#FAF9F6] px-4 py-2 rounded-lg text-sm sm:text-base hover:opacity-90 transition"
+              >
+                Configurar
+              </a>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-yellow-100 flex items-center justify-center">
+                    <BarChart className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600" />
+                  </div>
+                  <h2 className="font-semibold text-base sm:text-lg text-gray-900">Reportes</h2>
+                </div>
+                <p className="text-gray-600 text-sm sm:text-base mb-4">
+                  Accede a reportes automáticos de tu actividad y métricas clave.
+                </p>
+              </div>
+              <a
+                href="#"
+                className="mt-auto inline-block bg-black text-[#FAF9F6] px-4 py-2 rounded-lg text-sm sm:text-base hover:opacity-90 transition"
+              >
+                Ver reportes
+              </a>
+            </div>
+          </section>
+
+          <section className="pb-4">
+            <div className="rounded-3xl bg-gray-900 text-white px-8 py-10 sm:px-10 sm:py-12 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold">
+                  {detail.cta?.finalTitle ?? 'Listo para conectar tus automatizaciones agrónomas?'}
+                </h2>
+                <p className="mt-2 text-sm text-white/80 max-w-xl">
+                  {detail.cta?.finalSubtitle ??
+                    'Activa los módulos directamente en el dashboard o agenda una sesión con nuestro equipo para ayudarte en la puesta en marcha.'}
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <a
+                  href={registerUrl}
+                  className="inline-flex items-center justify-center rounded-xl bg-white text-gray-900 px-4 py-2.5 text-sm font-semibold hover:bg-gray-100 transition"
+                >
+                  {detail.cta?.primaryLabel ?? 'Probar en dashboard'}
+                </a>
+                <a
+                  href={contactUrl}
+                  className="inline-flex items-center justify-center rounded-xl border border-white/30 text-white px-4 py-2.5 text-sm font-semibold hover:bg-white/10 transition"
+                >
+                  {detail.cta?.secondaryLabel ?? 'Hablar con nosotros'}
+                </a>
+              </div>
+            </div>
+          </section>
+        </div>
       </main>
 
       {/* Footer */}
