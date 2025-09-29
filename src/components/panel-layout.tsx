@@ -94,11 +94,11 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
         <div className="px-6 pt-8 pb-6 bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 text-white rounded-br-3xl">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center font-semibold text-white">
-              N
+              IA
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-white/60">Panel</p>
-              <p className="text-base font-semibold">ProcesIA Integraciones</p>
+              <p className="text-base font-semibold">ProcesIA</p>
             </div>
           </div>
           <div className="mt-6 rounded-2xl bg-white/10 p-4 backdrop-blur">
@@ -187,7 +187,7 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
               N
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">Nora Automations</p>
+              <p className="text-sm font-semibold text-gray-900">ProcesIA Integraciones</p>
               <p className="text-xs text-gray-500">{user.email}</p>
             </div>
           </div>

@@ -604,7 +604,7 @@ export default function DashboardPage() {
       (t) =>
         t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
     )
-  }, [query, templates]) // ✅ Añadimos templates como dependencia
+  }, [query, templates]) 
 
   if (!user) {
     return (
@@ -633,7 +633,7 @@ export default function DashboardPage() {
 
           <a
             href="/ajustes"
-            className="inline-flex items-center gap-2 rounded-xl bg-black text-[#FAF9F6] px-3 sm:px-4 py-2 text-sm font-medium shadow hover:opacity-90 transition"
+            className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-black text-[#FAF9F6] px-3 sm:px-4 py-2 text-sm font-medium shadow hover:opacity-90 transition"
           >
             <Settings className="h-4 w-4" />
             Ajustes
