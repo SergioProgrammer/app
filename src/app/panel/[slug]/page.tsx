@@ -11,7 +11,6 @@ import {
   type AutomationDetail,
   type AutomationTemplate,
   type DetailPricing,
-  type DetailPricingTier,
   type PanelPlanDatasetConfig,
   type PanelPlanResource,
 } from '@/lib/panel-config'
@@ -111,8 +110,6 @@ export default function PanelPage() {
   }
 
   const pricing = detail.pricing ?? defaultPricing
-  const pricingTiers: DetailPricingTier[] = pricing.tiers ?? []
-  const pricingOffline = pricing.offline
 
   const activePlans: ActivePlan[] = useMemo(() => {
     const configPlans = panelConfig.plans ?? []
@@ -839,38 +836,41 @@ function CTASection({ detail }: { detail: AutomationDetail }) {
   )
 }
 
-function mapRowToTurnoRecord(row: Record<string, any>): TurnoRecord {
-  const worker =
-    row.trabajador ??
-    row.trabajador_nombre ??
-    row.worker ??
-    row.operario ??
-    row.empleado ??
-    'Sin asignar'
+function mapRowToTurnoRecord(row: Record<string, unknown>): TurnoRecord {
+  const getString = (...keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const value = row[key]
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value
+      }
+    }
+    return undefined
+  }
 
-  const date = row.fecha ?? row.dia ?? row.date ?? row.fecha_jornada ?? null
-  const entryTime = row.hora_entrada ?? row.horaEntrada ?? row.entrada ?? row.hora ?? null
-  const status = row.estado ?? row.status ?? (typeof row.fichado === 'boolean' ? (row.fichado ? 'Fichado' : 'Pendiente') : undefined)
-  const fichado =
-    typeof row.fichado === 'boolean'
-      ? row.fichado
-      : typeof status === 'string'
-        ? status.toLowerCase().includes('fich')
-        : false
+  const worker = getString('trabajador', 'trabajador_nombre', 'worker', 'operario', 'empleado') ?? 'Sin asignar'
+  const date = getString('fecha', 'dia', 'date', 'fecha_jornada')
+  const entryTime = getString('hora_entrada', 'horaEntrada', 'entrada', 'hora')
+  const status = getString('estado', 'status')
+  const fichadoField = row.fichado
+  const fichado = typeof fichadoField === 'boolean' ? fichadoField : (status ?? '').toLowerCase().includes('fich')
 
+  const primaryId = row.id
+  const secondaryId = row.uuid
   const id =
-    row.id ??
-    row.uuid ??
-    (typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2))
+    (typeof primaryId === 'string' && primaryId.length > 0)
+      ? primaryId
+      : (typeof secondaryId === 'string' && secondaryId.length > 0)
+      ? secondaryId
+      : (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2))
 
   return {
     id,
     worker,
-    date: date ?? undefined,
-    entryTime: entryTime ?? undefined,
-    status: status ?? undefined,
+    date,
+    entryTime,
+    status,
     fichado,
     raw: row,
   }
