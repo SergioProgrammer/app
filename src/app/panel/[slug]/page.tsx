@@ -151,14 +151,16 @@ export default function PanelPage() {
 
     let ignore = false
 
-    async function loadTurnos(currentDataset: PanelPlanDatasetConfig) {
+    const currentUserEmail = user.email ?? null
+
+    async function loadTurnos(currentDataset: PanelPlanDatasetConfig, email: string | null) {
       setTurnosLoading(true)
       setTurnosError(null)
 
       let queryBuilder = supabase.from(currentDataset.table).select('*')
 
-      if (currentDataset.emailColumn && user.email) {
-        queryBuilder = queryBuilder.eq(currentDataset.emailColumn, user.email)
+      if (currentDataset.emailColumn && email) {
+        queryBuilder = queryBuilder.eq(currentDataset.emailColumn, email)
       }
 
       if (currentDataset.orderBy) {
@@ -182,8 +184,8 @@ export default function PanelPage() {
       setTurnosLoading(false)
     }
 
-    loadTurnos(dataset)
-    const interval = setInterval(() => loadTurnos(dataset), 60_000)
+    loadTurnos(dataset, currentUserEmail)
+    const interval = setInterval(() => loadTurnos(dataset, currentUserEmail), 60_000)
 
     return () => {
       ignore = true
