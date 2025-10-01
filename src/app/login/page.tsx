@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Lock, Mail, ShieldCheck, Sparkles } from 'lucide-react'
+import { Database, Languages, Lock, Mail, MessageCircle, Sparkles, WifiOff } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import TurnstileWidget from '@/components/TurnstileWidget'
 
@@ -65,18 +65,40 @@ export default function LoginPage() {
               <header className="space-y-4">
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-white/70">
                   <Sparkles className="h-3 w-3" />
-                  ProcesIA
+                  ProcesIA Agro
                 </span>
                 <div className="space-y-2">
-                  <h1 className="text-3xl font-semibold leading-tight">Bienvenido de nuevo</h1>
+                  <h1 className="text-3xl font-semibold leading-tight">Automatización agrícola sin fricción</h1>
                   <p className="text-sm text-white/70">
-                    Accede al panel para monitorizar tus automatizaciones, revisar métricas y activar nuevos flujos sin salir de este entorno.
+                    Accede al panel para seguir tus órdenes de campo, coordinar cuadrillas y activar flujos que mantienen cada cultivo trazable, incluso lejos de la oficina.
                   </p>
                 </div>
               </header>
 
               <ul className="space-y-4 text-sm">
-                {[{ icon: ShieldCheck, title: 'Sesiones seguras', copy: 'Protección con verificación anti-bots y gestión granular de equipo.' }, { icon: Lock, title: 'Control centralizado', copy: 'Configura permisos y flujos directamente desde el dashboard.' }, { icon: Mail, title: 'Alertas inteligentes', copy: 'Recibe incidencias y reportes clave sin saturar tu correo.' }].map(feature => (
+                {[
+                  {
+                    icon: MessageCircle,
+                    title: 'Agente de WhatsApp que entiende tu campo',
+                    copy:
+                      'Envía un audio o texto desde el invernadero, el camión o la oficina. El agente IA interpreta la orden y ejecuta los flujos correctos en segundos en WhatsApp, Telegram o llamada.',
+                  },
+                  {
+                    icon: Languages,
+                    title: 'Multilingüe real',
+                    copy: 'Detecta idioma automáticamente y normaliza cada instrucción para el panel, sin importar si llega en español, inglés o lenguas locales.',
+                  },
+                  {
+                    icon: WifiOff,
+                    title: 'Sin cobertura',
+                    copy: 'Trabaja offline en campo y sincroniza con inventario, horarios o cuaderno agronómico al recuperar señal.',
+                  },
+                  {
+                    icon: Database,
+                    title: 'Integrado con tu trazabilidad',
+                    copy: 'Graba datos directamente en trazabilidad, inventario y plan de campañas; cero copiar y pegar.',
+                  },
+                ].map(feature => (
                   <li key={feature.title} className="flex gap-3 rounded-2xl border border-white/15 bg-white/5 p-4 backdrop-blur">
                     <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10">
                       <feature.icon className="h-5 w-5" />
@@ -90,16 +112,12 @@ export default function LoginPage() {
               </ul>
 
               <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-white/50">Promedio del mes</p>
-                <div className="mt-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-2xl font-semibold">1.2K</p>
-                    <p className="text-xs text-white/70">Procesos automatizados al día</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-emerald-200">+18%</p>
-                    <p className="text-xs text-white/60">vs mes anterior</p>
-                  </div>
+                <p className="text-xs uppercase tracking-[0.2em] text-white/50">Automatización estrella</p>
+                <div className="mt-3 space-y-2">
+                  <p className="text-base font-semibold text-white">Agente de WhatsApp que entiende tu campo</p>
+                  <p className="text-xs text-white/70">
+                    Envía instrucciones por audio incluso sin señal estable; el agente las transcribe, clasifica y crea registros listos para inventario, trazabilidad o campañas.
+                  </p>
                 </div>
               </div>
             </div>
@@ -108,9 +126,9 @@ export default function LoginPage() {
           <div className="px-8 pb-10 pt-12 sm:px-12">
             <form onSubmit={handleSubmit(onSubmit)} className="mx-auto w-full max-w-md space-y-6">
               <div className="space-y-2 text-center lg:text-left">
-                <h2 className="text-2xl font-semibold text-gray-900">Iniciar sesión</h2>
+                <h2 className="text-2xl font-semibold text-gray-900">Ingresa a tu cuaderno digital</h2>
                 <p className="text-sm text-gray-600">
-                  Introduce tus credenciales para continuar. ¿Necesitas una cuenta?{' '}
+                  Introduce tus credenciales agronómicas para continuar. ¿Necesitas una cuenta?{' '}
                   <a href="/registro" className="font-medium text-gray-900 underline underline-offset-4">
                     Regístrate aquí
                   </a>
@@ -127,7 +145,7 @@ export default function LoginPage() {
                       {...register('email')}
                       type="email"
                       autoComplete="email"
-                      placeholder="tucorreo@empresa.com"
+                      placeholder="tucorreo@agroempresa.com"
                       className="flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
                     />
                   </div>
@@ -152,7 +170,7 @@ export default function LoginPage() {
 
               <div className="space-y-4">
                 <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-3 text-xs text-gray-500">
-                  Activamos capas adicionales de seguridad para mantener las automatizaciones protegidas. Completa la verificación antes de continuar.
+                  Activamos capas adicionales de seguridad para resguardar datos de campo y automatizaciones. Completa la verificación antes de continuar.
                 </div>
                 <TurnstileWidget onVerify={setCaptchaToken} />
               </div>

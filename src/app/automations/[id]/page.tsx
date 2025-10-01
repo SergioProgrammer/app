@@ -247,7 +247,7 @@ export default function AutomatizacionPage() {
             onChange={(e) => setPrices(e.target.value)}
             className="w-full border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-gray-900"
             rows={2}
-            placeholder="Ej: Entre 100€ y 200€, 150€ exactos..."
+            placeholder="Ej: Referir a cotización personalizada, mencionar contacto comercial..."
           />
         </div>
       )}

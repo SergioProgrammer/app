@@ -3,14 +3,14 @@ import PanelLayout from '@/components/panel-layout'
 const availablePlans = [
   {
     name: 'Starter',
-    price: '49€',
+    price: 'Cotización personalizada',
     description: 'Ideal para equipos pequeños que activan su primera automatización.',
     features: ['1 automatización activa', 'Soporte email en 24h', 'Informes básicos'],
     href: '/dashboard#planes',
   },
   {
     name: 'Growth',
-    price: '129€',
+    price: 'Adaptado a usuarios y módulos',
     description: 'Incluye onboarding guiado y métricas avanzadas para varias áreas.',
     features: ['Hasta 5 automatizaciones', 'Onboarding acompañado', 'Alertas avanzadas'],
     href: '/dashboard#planes',
@@ -18,7 +18,7 @@ const availablePlans = [
   },
   {
     name: 'Scale',
-    price: '249€',
+    price: 'Evaluación según despliegue',
     description: 'Pensado para operaciones con múltiples equipos y conectores a medida.',
     features: ['Automatizaciones ilimitadas', 'Integraciones personalizadas', 'Soporte 24/7'],
     href: '/dashboard#planes',
@@ -26,9 +26,9 @@ const availablePlans = [
 ]
 
 const billingHistory = [
-  { id: 'FAC-2304', period: 'Abr 2024', amount: '129€', status: 'Pagada' },
-  { id: 'FAC-2303', period: 'Mar 2024', amount: '129€', status: 'Pagada' },
-  { id: 'FAC-2302', period: 'Feb 2024', amount: '129€', status: 'Pagada' },
+  { id: 'FAC-2304', period: 'Abr 2024', amount: 'Según contrato', status: 'Pagada' },
+  { id: 'FAC-2303', period: 'Mar 2024', amount: 'Según contrato', status: 'Pagada' },
+  { id: 'FAC-2302', period: 'Feb 2024', amount: 'Según contrato', status: 'Pagada' },
 ]
 
 export default function SuscripcionPage() {
@@ -54,7 +54,7 @@ export default function SuscripcionPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Plan actual</h2>
-              <p className="mt-1 text-sm text-gray-600">Growth — renovará el 12 de mayo de 2024</p>
+              <p className="mt-1 text-sm text-gray-600">Growth — condiciones ajustadas a usuarios y módulos · renovación 12 mayo 2024</p>
             </div>
             <span className="rounded-full bg-gray-900 text-white px-3 py-1 text-xs font-semibold uppercase tracking-wide">
               Activo
@@ -63,7 +63,7 @@ export default function SuscripcionPage() {
           <div className="mt-6 space-y-3 text-sm text-gray-700">
             <div className="flex items-center justify-between">
               <span>Cuota mensual</span>
-              <strong className="text-gray-900">129€</strong>
+              <strong className="text-gray-900">Definida por usuarios y módulos activos</strong>
             </div>
             <div className="flex items-center justify-between">
               <span>Automatizaciones activas incluidas</span>
@@ -118,7 +118,7 @@ export default function SuscripcionPage() {
         <div className="max-w-3xl">
           <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900">Planes disponibles</h2>
           <p className="mt-2 text-sm text-gray-600">
-            Cambia de plan cuando quieras; mantenemos tus automatizaciones sin interrupciones.
+            Cada plan se cotiza tras analizar tu equipo, número de usuarios y automatizaciones necesarias.
           </p>
         </div>
 
@@ -141,7 +141,7 @@ export default function SuscripcionPage() {
               <p className={`mt-2 text-sm ${plan.highlight ? 'text-gray-100' : 'text-gray-600'}`}>{plan.description}</p>
               <p className="mt-5 text-3xl font-semibold">
                 {plan.price}
-                <span className="ml-1 text-sm font-medium opacity-70">/mes</span>
+                <span className="ml-1 text-sm font-medium opacity-70">· revisamos tu caso</span>
               </p>
               <ul className={`mt-5 space-y-3 text-sm ${plan.highlight ? 'text-gray-100' : 'text-gray-700'}`}>
                 {plan.features.map((feature) => (

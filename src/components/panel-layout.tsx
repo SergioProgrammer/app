@@ -22,22 +22,22 @@ interface PanelLayoutProps {
 
 const navItems = [
   {
-    label: 'Inicio',
+    label: 'Cuaderno en vivo',
     href: '/dashboard',
     icon: LayoutDashboard,
   },
   {
-    label: 'Suscripción',
+    label: 'Plan agronómico',
     href: '/suscripcion',
     icon: CreditCard,
   },
   {
-    label: 'Automatizaciones',
+    label: 'Flujos de campo',
     href: '/automatizaciones',
     icon: Workflow,
   },
   {
-    label: 'Ajustes',
+    label: 'Configuración de finca',
     href: '/ajustes',
     icon: Settings,
   },
@@ -91,19 +91,19 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
     <div className="min-h-screen bg-[#f9f8f6] text-gray-900">
       {/* Sidebar desktop */}
       <aside className="hidden md:flex fixed top-0 left-0 w-72 h-screen bg-white border-r shadow-[0_10px_30px_-12px_rgba(15,23,42,0.2)] flex-col z-40">
-        <div className="px-6 pt-8 pb-6 bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 text-white rounded-br-3xl">
+        <div className="px-6 pt-8 pb-6 bg-gradient-to-br from-gray-900 via-emerald-900 to-gray-800 text-white rounded-br-3xl">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center font-semibold text-white">
-              IA
+              AG
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-white/60">Panel</p>
-              <p className="text-base font-semibold">ProcesIA</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-white/60">Panel agro</p>
+              <p className="text-base font-semibold">ProcesIA Agro</p>
             </div>
           </div>
           <div className="mt-6 rounded-2xl bg-white/10 p-4 backdrop-blur">
             <p className="text-sm font-medium">{user.email}</p>
-            <p className="mt-1 text-xs text-white/70">Plan Growth activo</p>
+            <p className="mt-1 text-xs text-white/70">Programa estrella: Agente WhatsApp de campo</p>
           </div>
         </div>
 
@@ -143,15 +143,15 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
 
         <div className="px-6 pb-6">
           <div className="rounded-2xl border border-gray-200 bg-white p-4">
-            <p className="text-sm font-semibold text-gray-900">¿Necesitas ayuda?</p>
+            <p className="text-sm font-semibold text-gray-900">¿Necesitas ayuda en campo?</p>
             <p className="mt-1 text-xs text-gray-600">
-              Nuestro equipo puede acompañarte en la configuración de nuevas automatizaciones.
+              Te acompañamos a desplegar el agente que entiende tus audios y sincroniza inventario, riego y cuadrillas.
             </p>
             <a
               href="mailto:info@saraquintana.es"
               className="mt-3 inline-flex items-center justify-center rounded-lg bg-gray-900 text-white px-3 py-2 text-xs font-semibold hover:opacity-90 transition"
             >
-              Escribir al soporte
+              Hablar con soporte agronómico
             </a>
           </div>
           <button
@@ -184,10 +184,10 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
         <div className="flex items-center justify-between px-5 py-5 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-gray-900 text-white flex items-center justify-center text-sm font-semibold">
-              N
+              AG
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">ProcesIA Integraciones</p>
+              <p className="text-sm font-semibold text-gray-900">ProcesIA Agro</p>
               <p className="text-xs text-gray-500">{user.email}</p>
             </div>
           </div>
