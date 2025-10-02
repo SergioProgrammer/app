@@ -12,7 +12,7 @@ import {
   Tractor,
   MapPin,
   Droplet,
-  Megaphone,
+  MailCheck,
 } from 'lucide-react'
 
 export interface AutomationTemplate {
@@ -415,15 +415,15 @@ const generalTemplates: AutomationTemplate[] = [
     badges: ['Sensores'],
   },
   {
-    id: 'campanas-productores',
-    name: 'Campañas a productores y socios',
+    id: 'respuestas-email-campo',
+    name: 'Respuestas a emails desde el campo',
     description:
-      'Segmenta avisos y convoca asambleas vía WhatsApp o SMS con mensajes generados por la IA.',
-    icon: Megaphone,
-    accentBg: 'bg-yellow-50',
-    accentIcon: 'text-yellow-600',
-    href: '/automatizaciones/campanas-productores',
-    badges: ['Comunicaciones'],
+      'Conecta Gmail y genera respuestas listas para enviar con contexto agronómico y tus políticas comerciales.',
+    icon: MailCheck,
+    accentBg: 'bg-indigo-100',
+    accentIcon: 'text-indigo-700',
+    href: '/auth/google',
+    badges: ['Google Workspace', 'Prompts guiados'],
   },
 ]
 
