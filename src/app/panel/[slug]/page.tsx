@@ -358,7 +358,6 @@ export default function PanelPage() {
       setTurnosDownloadLoading(true)
 
       const dataset = turnosPlan.dataset
-      const dateColumn = 'fecha'
       const now = new Date()
       const fromDate = new Date(now)
 
@@ -385,6 +384,7 @@ export default function PanelPage() {
           .filter((value): value is string => typeof value === 'string' && value.length > 0)
         const tablesToTry = Array.from(new Set(candidateTables))
         const orderPreferences = buildOrderPreferences(dataset.orderBy)
+        const rangeColumns = buildRangeColumns(dataset.orderBy)
 
         let success = false
         let lastErrorMessage: string | null = null
@@ -394,52 +394,61 @@ export default function PanelPage() {
           const orderSets = orderPreferences.length > 0 ? orderPreferences : [[]]
 
           for (const orders of orderSets) {
-            let queryBuilder = supabase.from(tableName).select('*')
+            const rangeOptions = rangeColumns.length > 0 ? rangeColumns : [null]
 
-            const email = user.email ?? null
-            if (dataset.emailColumn && email) {
-              queryBuilder = queryBuilder.eq(dataset.emailColumn, email)
-            }
+            for (const rangeColumn of rangeOptions) {
+              let queryBuilder = supabase.from(tableName).select('*')
 
-            queryBuilder = queryBuilder
-              .gte(dateColumn, fromDate.toISOString())
-              .lte(dateColumn, toDate.toISOString())
+              const email = user.email ?? null
+              if (dataset.emailColumn && email) {
+                queryBuilder = queryBuilder.eq(dataset.emailColumn, email)
+              }
 
-            for (const order of orders) {
-              queryBuilder = queryBuilder.order(order.column, {
-                ascending: order.ascending ?? false,
-                nullsFirst: order.nullsFirst,
-              })
-            }
+              const applyServerRange = rangeColumn && rangeColumn !== 'fecha'
+              if (applyServerRange) {
+                queryBuilder = queryBuilder
+                  .gte(rangeColumn, fromDate.toISOString())
+                  .lte(rangeColumn, toDate.toISOString())
+              }
 
-            const { data, error } = await queryBuilder
+              for (const order of orders) {
+                queryBuilder = queryBuilder.order(order.column, {
+                  ascending: order.ascending ?? false,
+                  nullsFirst: order.nullsFirst,
+                })
+              }
 
-            if (error) {
-              lastErrorMessage = error.message
+              const { data, error } = await queryBuilder
 
-              if (isMissingTableError(error.message)) {
+              if (error) {
+                lastErrorMessage = error.message
+
+                if (isMissingTableError(error.message)) {
+                  continue tableLoop
+                }
+
+                if (isMissingColumnError(error.message)) {
+                  continue
+                }
+
                 continue tableLoop
               }
 
-              if (isMissingColumnError(error.message)) {
-                continue
-              }
+              const mapped = (data ?? []).map(mapRowToTurnoRecord)
+              const sorted = sortTurnoRecords(mapped)
+              const filtered = filterRecordsByRange(sorted, fromDate, toDate)
 
-              continue tableLoop
+              rows = filtered.map((record) => [
+                record.worker ?? '',
+                record.date ?? '',
+                record.entryTime ?? '',
+                record.status ?? '',
+              ])
+
+              setTurnosActiveTable(tableName)
+              success = true
+              break tableLoop
             }
-
-            const mapped = (data ?? []).map(mapRowToTurnoRecord)
-            const sorted = sortTurnoRecords(mapped)
-            rows = sorted.map((record) => [
-              record.worker ?? '',
-              record.date ?? '',
-              record.entryTime ?? '',
-              record.status ?? '',
-            ])
-
-            setTurnosActiveTable(tableName)
-            success = true
-            break tableLoop
           }
         }
 
@@ -1098,6 +1107,8 @@ const ORDER_FALLBACK_COLUMNS = [
   'created',
 ]
 
+const RANGE_FALLBACK_COLUMNS = ORDER_FALLBACK_COLUMNS.filter((column) => column !== 'fecha')
+
 function buildOrderPreferences(
   orderBy?: PanelPlanOrderConfig | PanelPlanOrderConfig[],
 ): PanelPlanOrderConfig[][] {
@@ -1135,6 +1146,20 @@ function buildOrderPreferences(
   return preferences
 }
 
+function buildRangeColumns(orderBy?: PanelPlanOrderConfig | PanelPlanOrderConfig[]): Array<string | null> {
+  const normalized: PanelPlanOrderConfig[] = []
+  if (Array.isArray(orderBy)) {
+    normalized.push(...orderBy.filter(Boolean))
+  } else if (orderBy) {
+    normalized.push(orderBy)
+  }
+
+  const preferred = normalized.map((order) => order.column)
+  const candidates = [...preferred, ...RANGE_FALLBACK_COLUMNS, 'fecha']
+  const unique = Array.from(new Set(candidates))
+  return unique.length > 0 ? unique : [null]
+}
+
 function isMissingColumnError(message?: string | null): boolean {
   if (!message) return false
   const normalized = message.toLowerCase()
@@ -1153,6 +1178,22 @@ function isMissingTableError(message?: string | null): boolean {
 
 function sortTurnoRecords(records: TurnoRecord[]): TurnoRecord[] {
   return [...records].sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a))
+}
+
+function filterRecordsByRange(
+  records: TurnoRecord[],
+  fromDate: Date,
+  toDate: Date,
+): TurnoRecord[] {
+  const from = fromDate.getTime()
+  const to = toDate.getTime()
+  return records.filter((record) => {
+    const timestamp = getRecordTimestamp(record)
+    if (timestamp === 0) {
+      return true
+    }
+    return timestamp >= from && timestamp <= to
+  })
 }
 
 function getRecordTimestamp(record: TurnoRecord): number {
