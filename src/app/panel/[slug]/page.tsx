@@ -10,8 +10,8 @@ import {
   getPanelSlugForUser,
   type AutomationDetail,
   type AutomationTemplate,
-  type DetailPricing,
   type PanelPlanDatasetConfig,
+  type PanelPlanOrderConfig,
   type PanelPlanResource,
 } from '@/lib/panel-config'
 
@@ -39,6 +39,7 @@ interface TurnoRecord {
   entryTime?: string
   status?: string
   fichado?: boolean
+  createdAt?: string
   raw?: Record<string, unknown>
 }
 
@@ -46,6 +47,11 @@ interface TurnosChartPoint {
   hour: string
   count: number
 }
+
+type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
+
+const TURNOS_RECENT_LIMIT = 8
+const TURNOS_FETCH_LIMIT = 32
 
 export default function PanelPage() {
   const params = useParams<{ slug: string }>()
@@ -65,6 +71,9 @@ export default function PanelPage() {
   const [turnosData, setTurnosData] = useState<TurnoRecord[]>([])
   const [turnosLoading, setTurnosLoading] = useState(false)
   const [turnosError, setTurnosError] = useState<string | null>(null)
+  const [turnosDownloadRange, setTurnosDownloadRange] = useState<TurnosDownloadRange>('day')
+  const [turnosDownloadLoading, setTurnosDownloadLoading] = useState(false)
+  const [turnosActiveTable, setTurnosActiveTable] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadUser() {
@@ -100,17 +109,6 @@ export default function PanelPage() {
   const contactUrl = detail.cta?.secondaryHref ?? '/contacto'
   const sections = detail.sections ?? []
 
-  const defaultPricing: DetailPricing = {
-    tiers: [],
-    offline: {
-      description: 'Contacta con nuestro equipo para conocer las opciones sin conexión disponibles.',
-      extraLabel: 'Módulo offline',
-      price: 'Solicitar presupuesto',
-    },
-  }
-
-  const pricing = detail.pricing ?? defaultPricing
-
   const activePlans: ActivePlan[] = useMemo(() => {
     const configPlans = panelConfig.plans ?? []
     const stored = (user?.user_metadata?.activePlans ?? []) as Partial<ActivePlan>[]
@@ -144,54 +142,167 @@ export default function PanelPage() {
   )
 
   useEffect(() => {
+    const dataset = turnosPlan?.dataset
+    if (!dataset) {
+      setTurnosActiveTable(null)
+      return
+    }
+
+    setTurnosActiveTable((current) => current ?? dataset.table)
+  }, [turnosPlan])
+
+  const loadTurnos = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!turnosPlan?.dataset || !user) return
+
+      const silent = options?.silent ?? false
+
+      if (!silent) {
+        setTurnosLoading(true)
+      }
+
+      const dataset = turnosPlan.dataset
+      const email = user.email ?? null
+
+      const baseTable = dataset.table
+      const fallbacks = dataset.fallbackTables ?? []
+      const candidateTables = [baseTable, turnosActiveTable, ...fallbacks]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      const tablesToTry = Array.from(new Set(candidateTables))
+      const orderPreferences = buildOrderPreferences(dataset.orderBy)
+
+      let success = false
+      let encounteredEmpty = false
+      let lastErrorMessage: string | null = null
+      let missingTableMessage: string | null = null
+
+      try {
+        tableLoop: for (const tableName of tablesToTry) {
+          const orderSets = orderPreferences.length > 0 ? orderPreferences : [[]]
+
+          for (const orders of orderSets) {
+            let queryBuilder = supabase.from(tableName).select('*')
+
+            if (dataset.emailColumn && email) {
+              queryBuilder = queryBuilder.eq(dataset.emailColumn, email)
+            }
+
+            for (const order of orders) {
+              queryBuilder = queryBuilder.order(order.column, {
+                ascending: order.ascending ?? false,
+                nullsFirst: order.nullsFirst,
+              })
+            }
+
+            const { data, error } = await queryBuilder.limit(TURNOS_FETCH_LIMIT)
+
+            if (error) {
+              lastErrorMessage = error.message
+
+              if (isMissingTableError(error.message)) {
+                missingTableMessage = error.message
+                continue tableLoop
+              }
+
+              if (isMissingColumnError(error.message)) {
+                continue
+              }
+
+              continue tableLoop
+            }
+
+            const mapped = (data ?? []).map(mapRowToTurnoRecord)
+            const sorted = sortTurnoRecords(mapped)
+            const truncated = sorted.slice(0, TURNOS_RECENT_LIMIT)
+
+            setTurnosActiveTable(tableName)
+
+            if (truncated.length === 0) {
+              encounteredEmpty = true
+              setTurnosError(null)
+              setTurnosData([])
+              continue tableLoop
+            }
+
+            setTurnosError(null)
+            setTurnosData(truncated)
+            success = true
+            break tableLoop
+          }
+        }
+
+        if (!success) {
+          if (encounteredEmpty) {
+            setTurnosError(null)
+            setTurnosData([])
+            return
+          }
+          const message =
+            lastErrorMessage ??
+            missingTableMessage ??
+            'No se pudieron cargar los turnos. Intenta de nuevo en unos segundos.'
+          setTurnosError(message)
+          setTurnosData([])
+        }
+      } finally {
+        if (!silent) {
+          setTurnosLoading(false)
+        }
+      }
+    },
+    [supabase, turnosActiveTable, turnosPlan, user],
+  )
+
+  useEffect(() => {
     if (!turnosPlan || !user) return
 
-    const dataset = turnosPlan.dataset
-    if (!dataset) return
+    let cancelled = false
 
-    let ignore = false
-
-    const currentUserEmail = user.email ?? null
-
-    async function loadTurnos(currentDataset: PanelPlanDatasetConfig, email: string | null) {
-      setTurnosLoading(true)
-      setTurnosError(null)
-
-      let queryBuilder = supabase.from(currentDataset.table).select('*')
-
-      if (currentDataset.emailColumn && email) {
-        queryBuilder = queryBuilder.eq(currentDataset.emailColumn, email)
-      }
-
-      if (currentDataset.orderBy) {
-        queryBuilder = queryBuilder.order(currentDataset.orderBy.column, {
-          ascending: currentDataset.orderBy.ascending ?? false,
-        })
-      }
-
-      const { data, error } = await queryBuilder
-
-      if (ignore) return
-
-      if (error) {
-        setTurnosError(error.message)
-        setTurnosData([])
-      } else {
-        const mapped = (data ?? []).map(mapRowToTurnoRecord)
-        setTurnosData(mapped)
-      }
-
-      setTurnosLoading(false)
+    const load = async () => {
+      if (cancelled) return
+      await loadTurnos()
     }
 
-    loadTurnos(dataset, currentUserEmail)
-    const interval = setInterval(() => loadTurnos(dataset, currentUserEmail), 60_000)
+    load()
+    const interval = setInterval(() => {
+      if (cancelled || document.hidden) return
+      loadTurnos({ silent: true })
+    }, 15_000)
 
     return () => {
-      ignore = true
+      cancelled = true
       clearInterval(interval)
     }
-  }, [supabase, turnosPlan, user])
+  }, [loadTurnos, turnosPlan, user])
+
+  useEffect(() => {
+    if (!turnosPlan?.dataset || !user || !turnosActiveTable) return
+
+    const emailFilter =
+      turnosPlan.dataset.emailColumn && user.email
+        ? `${turnosPlan.dataset.emailColumn}=eq.${user.email}`
+        : undefined
+
+    const channel = supabase
+      .channel(`turnos-${turnosActiveTable}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: turnosActiveTable,
+          ...(emailFilter ? { filter: emailFilter } : {}),
+        },
+        () => {
+          loadTurnos({ silent: true })
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [loadTurnos, supabase, turnosActiveTable, turnosPlan?.dataset, user])
 
   const filteredTemplates = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -237,30 +348,146 @@ export default function PanelPage() {
       .sort((a, b) => a.hour.localeCompare(b.hour))
   }, [turnosData])
 
-  const handleDownloadTurnos = useCallback(() => {
-    if (turnosData.length === 0) return
+  const handleDownloadTurnos = useCallback(
+    async (range: TurnosDownloadRange) => {
+      if (!turnosPlan?.dataset || !user) {
+        window.alert('No encontramos un plan configurado para descargar turnos.');
+        return
+      }
 
-    const header = ['Trabajador', 'Fecha', 'Hora de entrada', 'Estado']
-    const rows = turnosData.map((record) => [
-      record.worker ?? '',
-      record.date ?? '',
-      record.entryTime ?? '',
-      record.status ?? '',
-    ])
+      setTurnosDownloadLoading(true)
 
-    const csv = [
-      header.join(','),
-      ...rows.map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')),
-    ].join('\n')
+      const dataset = turnosPlan.dataset
+      const dateColumn = 'fecha'
+      const now = new Date()
+      const fromDate = new Date(now)
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `turnos-${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
-  }, [turnosData])
+      if (range === 'day') {
+        fromDate.setHours(0, 0, 0, 0)
+      } else if (range === 'week') {
+        fromDate.setDate(fromDate.getDate() - 7)
+        fromDate.setHours(0, 0, 0, 0)
+      } else if (range === 'month') {
+        fromDate.setMonth(fromDate.getMonth() - 1)
+        fromDate.setHours(0, 0, 0, 0)
+      } else if (range === 'year') {
+        fromDate.setFullYear(fromDate.getFullYear() - 1)
+        fromDate.setHours(0, 0, 0, 0)
+      }
+
+      const toDate = new Date(now)
+      toDate.setHours(23, 59, 59, 999)
+
+      try {
+        const fallbacks = dataset.fallbackTables ?? []
+        const primaryTable = turnosActiveTable ?? dataset.table
+        const candidateTables = [dataset.table, primaryTable, ...fallbacks]
+          .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        const tablesToTry = Array.from(new Set(candidateTables))
+        const orderPreferences = buildOrderPreferences(dataset.orderBy)
+
+        let success = false
+        let lastErrorMessage: string | null = null
+        let rows: string[][] = []
+
+        tableLoop: for (const tableName of tablesToTry) {
+          const orderSets = orderPreferences.length > 0 ? orderPreferences : [[]]
+
+          for (const orders of orderSets) {
+            let queryBuilder = supabase.from(tableName).select('*')
+
+            const email = user.email ?? null
+            if (dataset.emailColumn && email) {
+              queryBuilder = queryBuilder.eq(dataset.emailColumn, email)
+            }
+
+            queryBuilder = queryBuilder
+              .gte(dateColumn, fromDate.toISOString())
+              .lte(dateColumn, toDate.toISOString())
+
+            for (const order of orders) {
+              queryBuilder = queryBuilder.order(order.column, {
+                ascending: order.ascending ?? false,
+                nullsFirst: order.nullsFirst,
+              })
+            }
+
+            const { data, error } = await queryBuilder
+
+            if (error) {
+              lastErrorMessage = error.message
+
+              if (isMissingTableError(error.message)) {
+                continue tableLoop
+              }
+
+              if (isMissingColumnError(error.message)) {
+                continue
+              }
+
+              continue tableLoop
+            }
+
+            const mapped = (data ?? []).map(mapRowToTurnoRecord)
+            const sorted = sortTurnoRecords(mapped)
+            rows = sorted.map((record) => [
+              record.worker ?? '',
+              record.date ?? '',
+              record.entryTime ?? '',
+              record.status ?? '',
+            ])
+
+            setTurnosActiveTable(tableName)
+            success = true
+            break tableLoop
+          }
+        }
+
+        if (!success) {
+          throw new Error(
+            lastErrorMessage ?? 'No se pudo descargar el reporte para el periodo seleccionado.',
+          )
+        }
+
+        const header = ['Nombre', 'Fecha', 'Hora de entrada', 'Estado']
+        const csv = [
+          header.join(','),
+          ...rows.map((row) =>
+            row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','),
+          ),
+        ].join('\n')
+
+        const fileSuffix: Record<TurnosDownloadRange, string> = {
+          day: 'dia',
+          week: 'semana',
+          month: 'mes',
+          year: 'anio',
+        }
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `turnos-${fileSuffix[range]}-${new Date()
+          .toISOString()
+          .slice(0, 10)}.csv`
+        link.click()
+        URL.revokeObjectURL(url)
+
+        if (rows.length === 0) {
+          console.info('No hay registros en el periodo seleccionado. Se generó un archivo vacío.')
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'No se pudo descargar el reporte.'
+        console.error('Error al descargar turnos:', error)
+        window.alert(`No se pudo descargar el reporte: ${message}`)
+      } finally {
+        setTurnosDownloadLoading(false)
+      }
+    },
+    [supabase, turnosActiveTable, turnosPlan, user],
+  )
 
   if (!user) {
     return (
@@ -451,19 +678,39 @@ export default function PanelPage() {
                           {plan.resources.map((resource) => {
                             if (resource.variant === 'download' && plan.dataset?.type === 'turnos') {
                               return (
-                                <button
+                                <div
                                   key={`${plan.id}-${resource.label}`}
-                                  type="button"
-                                  onClick={handleDownloadTurnos}
-                                  disabled={turnosData.length === 0}
-                                  className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                                    turnosData.length === 0
-                                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                      : 'bg-gray-900 text-white hover:opacity-90'
-                                  }`}
+                                  className="flex items-center gap-2"
                                 >
-                                  Descargar {resource.label}
-                                </button>
+                                  <select
+                                    value={turnosDownloadRange}
+                                    onChange={(event) =>
+                                      setTurnosDownloadRange(
+                                        event.target.value as TurnosDownloadRange,
+                                      )
+                                    }
+                                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                                  >
+                                    <option value="day">Hoy</option>
+                                    <option value="week">Última semana</option>
+                                    <option value="month">Último mes</option>
+                                    <option value="year">Último año</option>
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadTurnos(turnosDownloadRange)}
+                                    disabled={turnosDownloadLoading}
+                                    className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                                      turnosDownloadLoading
+                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                        : 'bg-gray-900 text-white hover:opacity-90'
+                                    }`}
+                                  >
+                                    {turnosDownloadLoading
+                                      ? 'Generando…'
+                                      : `Descargar ${resource.label}`}
+                                  </button>
+                                </div>
                               )
                             }
 
@@ -616,7 +863,7 @@ function TurnosDashboard({
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Registros de hoy" value={stats.total.toString()} />
+        <StatCard label="Registros recientes" value={stats.total.toString()} />
         <StatCard label="Fichados" value={stats.fichados.toString()} tone="success" />
         <StatCard label="Pendientes" value={stats.pendientes.toString()} tone="warning" />
         <StatCard label="Cuadrillas registradas" value={stats.workers.toString()} />
@@ -625,25 +872,26 @@ function TurnosDashboard({
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-2xl border border-gray-200 overflow-hidden">
           <div className="border-b border-gray-200 bg-[#FAF9F6] px-4 py-3">
-            <h4 className="text-sm font-semibold text-gray-700">Detalle de turnos</h4>
+            <h4 className="text-sm font-semibold text-gray-700">Últimos turnos registrados</h4>
+            <p className="mt-1 text-xs text-gray-500">
+              Mostramos los últimos {TURNOS_RECENT_LIMIT} fichajes sincronizados en tiempo real.
+            </p>
           </div>
           <div className="max-h-[320px] overflow-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-white text-gray-500 uppercase tracking-wide text-xs">
                 <tr>
-                  <th className="px-4 py-3 text-left">Trabajador</th>
+                  <th className="px-4 py-3 text-left">Nombre</th>
                   <th className="px-4 py-3 text-left">Fecha</th>
                   <th className="px-4 py-3 text-left">Hora de entrada</th>
-                  <th className="px-4 py-3 text-left">Estado</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-gray-700">
-                {data.slice(0, 40).map((record) => (
+                {data.slice(0, TURNOS_RECENT_LIMIT).map((record) => (
                   <tr key={record.id} className="hover:bg-[#FAF9F6] transition">
                     <td className="px-4 py-3 font-medium text-gray-900">{record.worker}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatDate(record.date)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatTime(record.entryTime)}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{record.status ?? (isRecordFichado(record) ? 'Fichado' : 'Pendiente')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -838,6 +1086,189 @@ function CTASection({ detail }: { detail: AutomationDetail }) {
   )
 }
 
+const ORDER_FALLBACK_COLUMNS = [
+  'insertado_en',
+  'created_at',
+  'inserted_at',
+  'createdAt',
+  'insertedAt',
+  'timestamp',
+  'fecha_creacion',
+  'fecha_creado',
+  'created',
+]
+
+function buildOrderPreferences(
+  orderBy?: PanelPlanOrderConfig | PanelPlanOrderConfig[],
+): PanelPlanOrderConfig[][] {
+  const normalized: PanelPlanOrderConfig[] = []
+  if (Array.isArray(orderBy)) {
+    normalized.push(...orderBy.filter(Boolean))
+  } else if (orderBy) {
+    normalized.push(orderBy)
+  }
+
+  const preferences: PanelPlanOrderConfig[][] = []
+
+  if (normalized.length > 0) {
+    preferences.push(normalized)
+  }
+
+  const fallbackPreferences = ORDER_FALLBACK_COLUMNS.filter(
+    (column) => !normalized.some((order) => order.column === column),
+  ).map((column) => [{ column, ascending: false, nullsFirst: false }])
+
+  preferences.push(...fallbackPreferences)
+
+  const hasFechaOnly = preferences.some(
+    (set) => set.length === 1 && set[0]?.column === 'fecha',
+  )
+
+  if (!hasFechaOnly) {
+    preferences.push([{ column: 'fecha', ascending: false, nullsFirst: false }])
+  }
+
+  if (preferences.length === 0) {
+    return [[{ column: 'fecha', ascending: false, nullsFirst: false }]]
+  }
+
+  return preferences
+}
+
+function isMissingColumnError(message?: string | null): boolean {
+  if (!message) return false
+  const normalized = message.toLowerCase()
+  return normalized.includes('column') && normalized.includes('does not exist')
+}
+
+function isMissingTableError(message?: string | null): boolean {
+  if (!message) return false
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('schema cache') ||
+    ((normalized.includes('table') || normalized.includes('relation')) &&
+      normalized.includes('does not exist'))
+  )
+}
+
+function sortTurnoRecords(records: TurnoRecord[]): TurnoRecord[] {
+  return [...records].sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a))
+}
+
+function getRecordTimestamp(record: TurnoRecord): number {
+  const createdCandidates: Array<unknown> = []
+  if (record.createdAt) {
+    createdCandidates.push(record.createdAt)
+  }
+
+  if (record.raw) {
+    for (const key of ORDER_FALLBACK_COLUMNS) {
+      if (key in record.raw) {
+        createdCandidates.push(record.raw[key])
+      }
+    }
+  }
+
+  for (const candidate of createdCandidates) {
+    if (candidate instanceof Date) {
+      const value = candidate.getTime()
+      if (!Number.isNaN(value)) return value
+      continue
+    }
+
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return candidate
+    }
+
+    if (typeof candidate === 'string') {
+      const parsed = parseDateValue(candidate)
+      if (parsed !== null) {
+        return parsed
+      }
+    }
+  }
+
+  const dateValue = parseDateValue(record.date)
+  if (dateValue !== null) {
+    const timeValue = parseTimeValue(record.entryTime)
+    if (timeValue) {
+      const date = new Date(dateValue)
+      date.setHours(timeValue.hours, timeValue.minutes, 0, 0)
+      return date.getTime()
+    }
+    return dateValue
+  }
+
+  return 0
+}
+
+function parseDateValue(value?: string | null): number | null {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return null
+
+  const parsed = Date.parse(trimmed)
+  if (!Number.isNaN(parsed)) {
+    return parsed
+  }
+
+  const normalized = trimmed.replace(/\//g, '-').replace(/\./g, '-')
+  const match = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/)
+  if (match) {
+    const day = Number.parseInt(match[1], 10)
+    const month = Number.parseInt(match[2], 10) - 1
+    const rawYear = Number.parseInt(match[3], 10)
+    const year = match[3].length === 2 ? 2000 + rawYear : rawYear
+    const date = new Date(year, month, day)
+    if (!Number.isNaN(date.getTime())) {
+      return date.getTime()
+    }
+  }
+
+  return null
+}
+
+function parseTimeValue(value?: string | null): { hours: number; minutes: number } | null {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return null
+
+  const colonMatch = trimmed.match(/^(\d{1,2}):(\d{2})/) // 08:30, 8:30
+  if (colonMatch) {
+    const hours = Number.parseInt(colonMatch[1], 10)
+    const minutes = Number.parseInt(colonMatch[2], 10)
+    if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+      return { hours, minutes }
+    }
+  }
+
+  const ampmMatch = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i)
+  if (ampmMatch) {
+    let hours = Number.parseInt(ampmMatch[1], 10)
+    const minutes = Number.parseInt(ampmMatch[2] ?? '0', 10)
+    const modifier = ampmMatch[3]?.toLowerCase()
+    if (modifier === 'pm' && hours < 12) {
+      hours += 12
+    }
+    if (modifier === 'am' && hours === 12) {
+      hours = 0
+    }
+    if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+      return { hours, minutes }
+    }
+  }
+
+  const digitsMatch = trimmed.match(/^(\d{1,2})$/)
+  if (digitsMatch) {
+    const hours = Number.parseInt(digitsMatch[1], 10)
+    if (!Number.isNaN(hours)) {
+      return { hours, minutes: 0 }
+    }
+  }
+
+  return null
+}
+
 function mapRowToTurnoRecord(row: Record<string, unknown>): TurnoRecord {
   const getString = (...keys: string[]): string | undefined => {
     for (const key of keys) {
@@ -849,10 +1280,29 @@ function mapRowToTurnoRecord(row: Record<string, unknown>): TurnoRecord {
     return undefined
   }
 
-  const worker = getString('trabajador', 'trabajador_nombre', 'worker', 'operario', 'empleado') ?? 'Sin asignar'
-  const date = getString('fecha', 'dia', 'date', 'fecha_jornada')
-  const entryTime = getString('hora_entrada', 'horaEntrada', 'entrada', 'hora')
+  const worker =
+    getString(
+      'nombre',
+      'Nombre',
+      'trabajador',
+      'trabajador_nombre',
+      'nombre_trabajador',
+      'worker',
+      'operario',
+      'empleado',
+    ) ?? 'Sin asignar'
+  const date = getString('fecha', 'Fecha', 'dia', 'date', 'fecha_jornada', 'fecha_registro')
+  const entryTime = getString('hora_entrada', 'horaEntrada', 'HoraEntrada', 'entrada', 'hora')
   const status = getString('estado', 'status')
+  const createdAt = getString(
+    'insertado_en',
+    'created_at',
+    'inserted_at',
+    'createdAt',
+    'created',
+    'timestamp',
+    'fecha_creacion',
+  )
   const fichadoField = row.fichado
   const fichado = typeof fichadoField === 'boolean' ? fichadoField : (status ?? '').toLowerCase().includes('fich')
 
@@ -874,6 +1324,7 @@ function mapRowToTurnoRecord(row: Record<string, unknown>): TurnoRecord {
     entryTime,
     status,
     fichado,
+    createdAt,
     raw: row,
   }
 }

@@ -115,10 +115,14 @@ export interface PanelPlanDatasetConfig {
   type: PanelDatasetType
   table: string
   emailColumn?: string
-  orderBy?: {
-    column: string
-    ascending?: boolean
-  }
+  orderBy?: PanelPlanOrderConfig | PanelPlanOrderConfig[]
+  fallbackTables?: string[]
+}
+
+export interface PanelPlanOrderConfig {
+  column: string
+  ascending?: boolean
+  nullsFirst?: boolean
 }
 
 export interface PanelPlanConfig {
@@ -473,7 +477,12 @@ const turnosPlan: PanelPlanConfig = {
     type: 'turnos',
     table: 'turnos_registros',
     emailColumn: 'empresa_email',
-    orderBy: { column: 'fecha', ascending: false },
+    orderBy: [
+      { column: 'insertado_en', ascending: false, nullsFirst: false },
+      { column: 'created_at', ascending: false, nullsFirst: false },
+      { column: 'fecha', ascending: false },
+    ],
+    fallbackTables: ['turnos_registrados'],
   },
 }
 
