@@ -1248,22 +1248,33 @@ function parseDateValue(value?: string | null): number | null {
   const trimmed = value.trim()
   if (trimmed.length === 0) return null
 
-  const parsed = Date.parse(trimmed)
-  if (!Number.isNaN(parsed)) {
-    return parsed
-  }
-
   const normalized = trimmed.replace(/\//g, '-').replace(/\./g, '-')
-  const match = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/)
-  if (match) {
-    const day = Number.parseInt(match[1], 10)
-    const month = Number.parseInt(match[2], 10) - 1
-    const rawYear = Number.parseInt(match[3], 10)
-    const year = match[3].length === 2 ? 2000 + rawYear : rawYear
+  const dayMonthYearMatch = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/)
+  if (dayMonthYearMatch) {
+    const day = Number.parseInt(dayMonthYearMatch[1], 10)
+    const month = Number.parseInt(dayMonthYearMatch[2], 10) - 1
+    const rawYear = Number.parseInt(dayMonthYearMatch[3], 10)
+    const year = dayMonthYearMatch[3].length === 2 ? 2000 + rawYear : rawYear
     const date = new Date(year, month, day)
     if (!Number.isNaN(date.getTime())) {
       return date.getTime()
     }
+  }
+
+  const yearMonthDayMatch = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (yearMonthDayMatch) {
+    const year = Number.parseInt(yearMonthDayMatch[1], 10)
+    const month = Number.parseInt(yearMonthDayMatch[2], 10) - 1
+    const day = Number.parseInt(yearMonthDayMatch[3], 10)
+    const date = new Date(year, month, day)
+    if (!Number.isNaN(date.getTime())) {
+      return date.getTime()
+    }
+  }
+
+  const parsed = Date.parse(trimmed)
+  if (!Number.isNaN(parsed)) {
+    return parsed
   }
 
   return null
@@ -1385,11 +1396,16 @@ function extractHour(value?: string): string {
 
 function formatDate(value?: string): string {
   if (!value) return 'Sin fecha'
-  const date = new Date(value)
-  if (!Number.isNaN(date.getTime())) {
-    return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(date)
+  const parsed = parseDateValue(value)
+  if (parsed === null) {
+    return value
   }
-  return value
+
+  const date = new Date(parsed)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = String(date.getFullYear()).slice(-2)
+  return `${day}-${month}-${year}`
 }
 
 function formatTime(value?: string): string {
