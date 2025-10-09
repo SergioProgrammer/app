@@ -48,6 +48,11 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
   const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [isOpen, setIsOpen] = useState(false)
+  const userEmail = user?.email ?? ''
+  const userDisplayName = useMemo(() => {
+    const atIndex = userEmail.indexOf('@')
+    return atIndex === -1 ? userEmail : userEmail.slice(0, atIndex)
+  }, [userEmail])
 
   useEffect(() => {
     async function loadUser() {
@@ -102,7 +107,7 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
             </div>
           </div>
           <div className="mt-6 rounded-2xl bg-white/10 p-4 backdrop-blur">
-            <p className="text-sm font-medium">{user.email}</p>
+            <p className="text-sm font-medium">{userDisplayName || user.email}</p>
             <p className="mt-1 text-xs text-white/70">Programa estrella: Agente WhatsApp de campo</p>
           </div>
         </div>
@@ -188,7 +193,9 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-900">ProcesIA Agro</p>
-              <p className="text-xs text-gray-500">{user.email}</p>
+              <p className="text-xs text-gray-500">
+                {userDisplayName || user.email}
+              </p>
             </div>
           </div>
           <button onClick={() => setIsOpen(false)}>
@@ -241,7 +248,7 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
               <Menu className="h-5 w-5" />
             </button>
             <span className="text-sm text-gray-600 truncate max-w-[60%] text-right">
-              {user.email}
+              {userDisplayName || user.email}
             </span>
           </div>
 

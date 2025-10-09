@@ -1,10 +1,32 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import type { User } from '@supabase/supabase-js'
-import { BarChart, CreditCard, Search, Settings, Sprout, Workflow } from 'lucide-react'
+import {
+  AlertTriangle,
+  BarChart,
+  CheckCircle2,
+  CreditCard,
+  FileText,
+  Loader2,
+  RefreshCw,
+  Search,
+  Settings,
+  Sprout,
+  Tag,
+  UploadCloud,
+  Workflow,
+} from 'lucide-react'
 import {
   getPanelConfig,
   getPanelSlugForUser,
@@ -48,10 +70,37 @@ interface TurnosChartPoint {
   count: number
 }
 
+interface LabelRecord {
+  id: string
+  fileName: string
+  status?: string
+  destination?: string
+  labelCode?: string
+  createdAt?: string
+  updatedAt?: string
+  pdfUrl?: string
+  labelUrl?: string
+  notes?: string
+  storagePath?: string
+  raw?: Record<string, unknown>
+}
+
+interface LabelUploadMeta {
+  destination?: string
+  notes?: string
+}
+
+type LabelStatusTone = 'pending' | 'success' | 'error' | 'info'
+
 type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
 
 const TURNOS_RECENT_LIMIT = 8
 const TURNOS_FETCH_LIMIT = 32
+const LABELS_FETCH_LIMIT = 100
+const LABELS_STORAGE_BUCKET =
+  process.env.NEXT_PUBLIC_SUPABASE_LABELS_BUCKET ??
+  process.env.NEXT_PUBLIC_LABELS_BUCKET ??
+  'label-uploads'
 
 export default function PanelPage() {
   const params = useParams<{ slug: string }>()
@@ -74,12 +123,31 @@ export default function PanelPage() {
   const [turnosDownloadRange, setTurnosDownloadRange] = useState<TurnosDownloadRange>('day')
   const [turnosDownloadLoading, setTurnosDownloadLoading] = useState(false)
   const [turnosActiveTable, setTurnosActiveTable] = useState<string | null>(null)
+  const [labelsData, setLabelsData] = useState<LabelRecord[]>([])
+  const [labelsLoading, setLabelsLoading] = useState(false)
+  const [labelsError, setLabelsError] = useState<string | null>(null)
+  const [labelUploadLoading, setLabelUploadLoading] = useState(false)
+  const [labelUploadError, setLabelUploadError] = useState<string | null>(null)
+  const [labelUploadMessage, setLabelUploadMessage] = useState<string | null>(null)
+  const userEmail = user?.email ?? ''
+  const userDisplayName = useMemo(() => {
+    const atIndex = userEmail.indexOf('@')
+    return atIndex === -1 ? userEmail : userEmail.slice(0, atIndex)
+  }, [userEmail])
 
   useEffect(() => {
     async function loadUser() {
       const {
         data: { session },
+        error,
       } = await supabase.auth.getSession()
+
+      if (error) {
+        console.error('Error al recuperar la sesión, cerrando sesión por seguridad.', error)
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
 
       if (!session) {
         router.replace('/login')
@@ -104,6 +172,7 @@ export default function PanelPage() {
   const panelConfig = useMemo(() => getPanelConfig(slug), [slug])
   const detail: AutomationDetail = panelConfig.detail
   const templatesFromConfig: AutomationTemplate[] = panelConfig.templates
+  const isLabelsPanel = panelConfig.slug === 'etiquetas'
 
   const registerUrl = detail.cta?.primaryHref ?? 'https://app-procesia.vercel.app/registro'
   const contactUrl = detail.cta?.secondaryHref ?? '/contacto'
@@ -138,6 +207,10 @@ export default function PanelPage() {
 
   const turnosPlan = useMemo(
     () => activePlans.find((plan) => plan.dataset?.type === 'turnos'),
+    [activePlans],
+  )
+  const labelsPlan = useMemo(
+    () => activePlans.find((plan) => plan.dataset?.type === 'labels'),
     [activePlans],
   )
 
@@ -303,6 +376,110 @@ export default function PanelPage() {
       supabase.removeChannel(channel)
     }
   }, [loadTurnos, supabase, turnosActiveTable, turnosPlan?.dataset, user])
+
+  const loadLabels = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!labelsPlan?.dataset || !user) return
+
+      const silent = options?.silent ?? false
+
+      if (!silent) {
+        setLabelsLoading(true)
+      }
+
+      try {
+        const dataset = labelsPlan.dataset
+        let query = supabase.from(dataset.table).select('*')
+
+        if (dataset.emailColumn && userEmail) {
+          query = query.eq(dataset.emailColumn, userEmail)
+        }
+
+        const orderConfigs = Array.isArray(dataset.orderBy)
+          ? dataset.orderBy
+          : dataset.orderBy
+          ? [dataset.orderBy]
+          : []
+
+        for (const order of orderConfigs) {
+          query = query.order(order.column, {
+            ascending: order.ascending ?? false,
+            nullsFirst: order.nullsFirst,
+          })
+        }
+
+        const { data, error } = await query.limit(LABELS_FETCH_LIMIT)
+
+        if (error) {
+          if (isMissingTableError(error.message)) {
+            setLabelsError(
+              'No encontramos la tabla de historial en Supabase. Revisa la configuración de etiquetas.',
+            )
+            setLabelsData([])
+            return
+          }
+
+          if (isMissingColumnError(error.message)) {
+            setLabelsError(
+              'Faltan columnas esperadas en la tabla de historial. Ajusta el dataset o la estructura.',
+            )
+            setLabelsData([])
+            return
+          }
+
+          throw error
+        }
+
+        setLabelsError(null)
+        setLabelsData((data ?? []).map(mapRowToLabelRecord))
+      } catch (error) {
+        setLabelsError((error as Error).message)
+        setLabelsData([])
+      } finally {
+        if (!silent) {
+          setLabelsLoading(false)
+        }
+      }
+    },
+    [labelsPlan, supabase, user, userEmail],
+  )
+
+  useEffect(() => {
+    if (!labelsPlan || !user) return
+    loadLabels()
+  }, [labelsPlan, loadLabels, user])
+
+  useEffect(() => {
+    if (!labelsPlan?.dataset || !user) return
+
+    const table = labelsPlan.dataset.table
+    if (!table) return
+
+    const emailFilter =
+      labelsPlan.dataset.emailColumn && userEmail
+        ? `${labelsPlan.dataset.emailColumn}=eq.${userEmail}`
+        : undefined
+
+    const channel = supabase
+      .channel(`labels-${table}-${user.id ?? 'anon'}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table,
+          ...(emailFilter ? { filter: emailFilter } : {}),
+        },
+        () => {
+          loadLabels({ silent: true })
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [labelsPlan?.dataset, loadLabels, supabase, user, userEmail])
 
   const filteredTemplates = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -498,6 +675,122 @@ export default function PanelPage() {
     [supabase, turnosActiveTable, turnosPlan, user],
   )
 
+  const handleUploadLabel = useCallback(
+    async (file: File, meta?: LabelUploadMeta) => {
+      if (!labelsPlan?.dataset || !user) {
+        setLabelUploadError('No encontramos la configuración de etiquetas. Vuelve a iniciar sesión.')
+        return
+      }
+
+      if (!file) {
+        setLabelUploadError('Selecciona un archivo PDF para subirlo.')
+        return
+      }
+
+      const fileName = file.name ?? 'documento.pdf'
+      if (!fileName.toLowerCase().endsWith('.pdf')) {
+        setLabelUploadError('Solo se admiten archivos en formato PDF.')
+        return
+      }
+
+      setLabelUploadError(null)
+      setLabelUploadMessage(null)
+      setLabelUploadLoading(true)
+
+      try {
+        const dataset = labelsPlan.dataset
+        const sanitizedName = fileName.replace(/\s+/g, '-')
+        const storagePath = `${user.id ?? 'anon'}/${Date.now()}-${sanitizedName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from(LABELS_STORAGE_BUCKET)
+          .upload(storagePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type || 'application/pdf',
+          })
+
+        if (uploadError) {
+          throw new Error(uploadError.message ?? 'No se pudo subir el PDF a Supabase Storage.')
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from(LABELS_STORAGE_BUCKET)
+          .getPublicUrl(storagePath)
+
+        const publicUrl = publicUrlData?.publicUrl
+
+        const insertPayload: Record<string, unknown> = {
+          file_name: fileName,
+          storage_path: storagePath,
+          status: 'pendiente',
+          pdf_url: publicUrl ?? null,
+          user_id: user.id ?? null,
+        }
+
+        if (labelsPlan.dataset.emailColumn && userEmail) {
+          insertPayload[labelsPlan.dataset.emailColumn] = userEmail
+        } else if (userEmail) {
+          insertPayload.user_email = userEmail
+        }
+
+        if (meta?.destination) {
+          insertPayload.destination = meta.destination
+        }
+
+        if (meta?.notes) {
+          insertPayload.notes = meta.notes
+        }
+
+        const { error: insertError } = await supabase.from(dataset.table).insert(insertPayload)
+
+        if (insertError) {
+          throw new Error(insertError.message ?? 'No se pudo guardar el registro en Supabase.')
+        }
+
+        let webhookMessage: string | null = null
+        try {
+          const response = await fetch('/api/n8n/labels', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              storagePath,
+              fileName,
+              publicUrl,
+              userEmail: userEmail || null,
+              destination: meta?.destination ?? null,
+            }),
+          })
+
+          if (!response.ok) {
+            const text = await response.text()
+            webhookMessage =
+              text ||
+              'PDF subido. No se pudo notificar a n8n. Revisa la configuración del webhook.'
+          }
+        } catch (error) {
+          console.error('Error notificando a n8n para etiquetas', error)
+          webhookMessage =
+            error instanceof Error
+              ? `PDF subido. No se pudo notificar a n8n: ${error.message}`
+              : 'PDF subido. No se pudo notificar a n8n.'
+        }
+
+        setLabelUploadMessage(
+          webhookMessage ??
+            'PDF subido y flujo en n8n notificado. El estado aparecerá en el historial en segundos.',
+        )
+
+        await loadLabels({ silent: true })
+      } catch (error) {
+        setLabelUploadError((error as Error).message)
+      } finally {
+        setLabelUploadLoading(false)
+      }
+    },
+    [labelsPlan, loadLabels, supabase, user, userEmail],
+  )
+
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAF9F6]">
@@ -518,7 +811,7 @@ export default function PanelPage() {
             <div>
               <p className="text-xs text-gray-500 leading-none">Panel agro en vivo</p>
               <h1 className="text-lg sm:text-xl font-semibold text-gray-900 leading-tight">
-                {user.email}
+                {userDisplayName || user.email}
               </h1>
             </div>
           </div>
@@ -535,133 +828,139 @@ export default function PanelPage() {
 
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
         <div className="space-y-12 sm:space-y-16">
-          <section className="relative py-10 sm:py-14">
-            <div className="grid gap-10 lg:grid-cols-[1.2fr_1fr] items-center">
-              <div>
-                {detail.hero.badge && (
-                  <span className="inline-flex items-center rounded-full bg-lime-100 text-lime-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.08em]">
-                    {detail.hero.badge}
-                  </span>
-                )}
-                <h1 className="mt-4 text-3xl sm:text-4xl lg:text-[2.9rem] leading-tight font-semibold text-gray-900">
-                  {detail.hero.title}
-                </h1>
-                <p className="mt-4 text-lg text-gray-600">{detail.hero.description}</p>
-                {detail.hero.highlights && (
-                  <ul className="mt-6 grid gap-3 sm:grid-cols-2">
-                    {detail.hero.highlights.map((highlight) => (
-                      <li key={highlight} className="flex items-center gap-3">
-                        <span className="flex h-2.5 w-2.5 rounded-full bg-lime-400" />
-                        <span className="text-sm sm:text-base text-gray-700">{highlight}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                  <a
-                    href={registerUrl}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 text-white px-5 py-3 text-sm font-medium shadow-lg shadow-gray-900/10 hover:opacity-90 transition"
-                  >
-                    {detail.cta?.primaryLabel ?? 'Probar en dashboard'}
-                  </a>
-                  <a
-                    href={contactUrl}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white text-gray-900 px-5 py-3 text-sm font-medium hover:bg-gray-100 transition"
-                  >
-                    {detail.cta?.secondaryLabel ?? 'Hablar con nosotros'}
-                  </a>
-                </div>
-              </div>
-              <div className="relative">
-                <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
-                  <h2 className="text-sm font-semibold tracking-wide text-lime-700 uppercase">
-                    Cómo se ve en tu panel
-                  </h2>
-                  <p className="mt-3 text-sm text-gray-600">
-                    {detail.hero.panelCopy ??
-                      'Sigue la actividad de tu explotación en el dashboard, con indicadores actualizados y alertas en tiempo real.'}
-                  </p>
-                  {detail.hero.metrics && (
-                    <dl className="mt-6 grid gap-4 sm:grid-cols-2">
-                      {detail.hero.metrics.map((metric) => (
-                        <div key={metric.label} className="rounded-2xl bg-[#FAF9F6] p-4">
-                          <dt className="text-xs uppercase tracking-wide text-gray-500">{metric.label}</dt>
-                          <dd className="mt-2 text-2xl font-semibold text-gray-900">{metric.value}</dd>
-                          {metric.caption && (
-                            <p className="mt-1 text-xs text-gray-500">{metric.caption}</p>
-                          )}
-                        </div>
-                      ))}
-                    </dl>
+          {!isLabelsPanel && (
+            <section className="relative py-10 sm:py-14">
+              <div className="grid gap-10 lg:grid-cols-[1.2fr_1fr] items-center">
+                <div>
+                  {detail.hero.badge && (
+                    <span className="inline-flex items-center rounded-full bg-lime-100 text-lime-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.08em]">
+                      {detail.hero.badge}
+                    </span>
                   )}
+                  <h1 className="mt-4 text-3xl sm:text-4xl lg:text-[2.9rem] leading-tight font-semibold text-gray-900">
+                    {detail.hero.title}
+                  </h1>
+                  <p className="mt-4 text-lg text-gray-600">{detail.hero.description}</p>
+                  {detail.hero.highlights && (
+                    <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+                      {detail.hero.highlights.map((highlight) => (
+                        <li key={highlight} className="flex items-center gap-3">
+                          <span className="flex h-2.5 w-2.5 rounded-full bg-lime-400" />
+                          <span className="text-sm sm:text-base text-gray-700">{highlight}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                    <a
+                      href={registerUrl}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 text-white px-5 py-3 text-sm font-medium shadow-lg shadow-gray-900/10 hover:opacity-90 transition"
+                    >
+                      {detail.cta?.primaryLabel ?? 'Probar en dashboard'}
+                    </a>
+                    <a
+                      href={contactUrl}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white text-gray-900 px-5 py-3 text-sm font-medium hover:bg-gray-100 transition"
+                    >
+                      {detail.cta?.secondaryLabel ?? 'Hablar con nosotros'}
+                    </a>
+                  </div>
+                </div>
+                <div className="relative">
+                  <div className="rounded-3xl border border-lime-200 bg-white p-6 shadow-sm">
+                    <h2 className="text-sm font-semibold tracking-wide text-lime-700 uppercase">
+                      Cómo se ve en tu panel
+                    </h2>
+                    <p className="mt-3 text-sm text-gray-600">
+                      {detail.hero.panelCopy ??
+                        'Sigue la actividad de tu explotación en el dashboard, con indicadores actualizados y alertas en tiempo real.'}
+                    </p>
+                    {detail.hero.metrics && (
+                      <dl className="mt-6 grid gap-4 sm:grid-cols-2">
+                        {detail.hero.metrics.map((metric) => (
+                          <div key={metric.label} className="rounded-2xl bg-[#FAF9F6] p-4">
+                            <dt className="text-xs uppercase tracking-wide text-gray-500">{metric.label}</dt>
+                            <dd className="mt-2 text-2xl font-semibold text-gray-900">{metric.value}</dd>
+                            {metric.caption && (
+                              <p className="mt-1 text-xs text-gray-500">{metric.caption}</p>
+                            )}
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-base sm:text-lg">Programa agro</h2>
-                <CreditCard className="h-5 w-5 text-gray-400" />
+          {!isLabelsPanel && (
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-base sm:text-lg">Programa agro</h2>
+                  <CreditCard className="h-5 w-5 text-gray-400" />
+                </div>
+                <p className="text-gray-600 mt-2">Parcela · modo demo</p>
+                <a
+                  href="/suscripcion"
+                  className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
+                >
+                  Gestionar plan
+                </a>
               </div>
-              <p className="text-gray-600 mt-2">Parcela · modo demo</p>
-              <a
-                href="/suscripcion"
-                className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
-              >
-                Gestionar plan
-              </a>
-            </div>
 
-            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-base sm:text-lg">Agentes de campo activos</h2>
-                <Workflow className="h-5 w-5 text-gray-400" />
+              <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-base sm:text-lg">Agentes de campo activos</h2>
+                  <Workflow className="h-5 w-5 text-gray-400" />
+                </div>
+                <p className="text-gray-600 mt-2">0</p>
+                <a
+                  href="/automatizaciones"
+                  className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
+                >
+                  Desplegar agente
+                </a>
               </div>
-              <p className="text-gray-600 mt-2">0</p>
-              <a
-                href="/automatizaciones"
-                className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
-              >
-                Desplegar agente
-              </a>
-            </div>
 
-            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-base sm:text-lg">Última sincronización</h2>
-                <BarChart className="h-5 w-5 text-gray-400" />
+              <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-base sm:text-lg">Última sincronización</h2>
+                  <BarChart className="h-5 w-5 text-gray-400" />
+                </div>
+                <p className="text-gray-600 mt-2">
+                  {new Date().toLocaleString('es-ES', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })}
+                </p>
               </div>
-              <p className="text-gray-600 mt-2">
-                {new Date().toLocaleString('es-ES', {
-                  dateStyle: 'short',
-                  timeStyle: 'short',
-                })}
-              </p>
-            </div>
 
-            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-base sm:text-lg">Tokens de voz</h2>
-                <CreditCard className="h-5 w-5 text-gray-400" />
+              <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border hover:shadow-md transition">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-base sm:text-lg">Tokens de voz</h2>
+                  <CreditCard className="h-5 w-5 text-gray-400" />
+                </div>
+                <p className="text-gray-600 mt-2">100</p>
+                <a
+                  href="/suscripcion"
+                  className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
+                >
+                  Recargar
+                </a>
               </div>
-              <p className="text-gray-600 mt-2">100</p>
-              <a
-                href="/suscripcion"
-                className="mt-4 inline-flex items-center justify-center rounded-lg bg-black text-[#FAF9F6] px-3 py-2 text-sm hover:opacity-90"
-              >
-                Recargar
-              </a>
-            </div>
-          </section>
+            </section>
+          )}
 
           <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900">Mi panel</h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  Visualiza las automatizaciones activas y descarga reportes de turnos, inventario o tratamientos al instante.
+                  {isLabelsPanel
+                    ? 'Sube los albaranes en PDF, genera la etiqueta automática y revisa el historial enviado al almacén.'
+                    : 'Visualiza las automatizaciones activas y descarga reportes de turnos, inventario o tratamientos al instante.'}
                 </p>
               </div>
             </div>
@@ -754,6 +1053,17 @@ export default function PanelPage() {
                         chartData={turnosChartData}
                         summaryByDate={turnosByDate}
                       />
+                    ) : plan.dataset?.type === 'labels' ? (
+                      <LabelsDashboard
+                        data={labelsData}
+                        loading={labelsLoading}
+                        historyError={labelsError}
+                        formError={labelUploadError}
+                        successMessage={labelUploadMessage}
+                        uploading={labelUploadLoading}
+                        onUpload={handleUploadLabel}
+                        onRefresh={() => loadLabels()}
+                      />
                     ) : plan.records && plan.records.length > 0 ? (
                       <RecordsTable plan={plan} />
                     ) : (
@@ -767,71 +1077,409 @@ export default function PanelPage() {
             )}
           </section>
 
-          {sections.map((section) => (
-            <section key={section.title} className="py-4 sm:py-6">
-              <div className="max-w-3xl">
-                <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900">{section.title}</h2>
-                {section.subtitle && <p className="mt-3 text-gray-600">{section.subtitle}</p>}
-              </div>
-              {section.items && (
-                <div
-                  className={`mt-8 ${
-                    section.layout === 'timeline'
-                      ? 'space-y-6'
-                      : 'grid gap-6 sm:grid-cols-2 lg:grid-cols-3'
-                  }`}
-                >
-                  {section.items.map((item) => (
-                    <div
-                      key={`${section.title}-${item.title}`}
-                      className={`rounded-3xl border border-gray-200 bg-white p-6 shadow-sm ${
-                        section.layout === 'timeline' ? 'sm:flex sm:items-start sm:gap-5' : ''
-                      }`}
-                    >
-                      {section.layout === 'timeline' && (
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white text-sm font-semibold">
-                          {item.step ?? '•'}
-                        </div>
-                      )}
-                      <div className={section.layout === 'timeline' ? 'mt-4 sm:mt-0' : ''}>
-                        <h3 className="text-lg font-semibold text-gray-900">{item.title}</h3>
-                        <p className="mt-2 text-sm text-gray-600">{item.description}</p>
-                        {item.tags && (
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {item.tags.map((tag) => (
-                              <span
-                                key={`${item.title}-${tag}`}
-                                className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-xs font-medium"
-                              >
-                                {tag}
-                              </span>
-                            ))}
+          {!isLabelsPanel &&
+            sections.map((section) => (
+              <section key={section.title} className="py-4 sm:py-6">
+                <div className="max-w-3xl">
+                  <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900">{section.title}</h2>
+                  {section.subtitle && <p className="mt-3 text-gray-600">{section.subtitle}</p>}
+                </div>
+                {section.items && (
+                  <div
+                    className={`mt-8 ${
+                      section.layout === 'timeline'
+                        ? 'space-y-6'
+                        : 'grid gap-6 sm:grid-cols-2 lg:grid-cols-3'
+                    }`}
+                  >
+                    {section.items.map((item) => (
+                      <div
+                        key={`${section.title}-${item.title}`}
+                        className={`rounded-3xl border border-gray-200 bg-white p-6 shadow-sm ${
+                          section.layout === 'timeline' ? 'sm:flex sm:items-start sm:gap-5' : ''
+                        }`}
+                      >
+                        {section.layout === 'timeline' && (
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white text-sm font-semibold">
+                            {item.step ?? '•'}
                           </div>
                         )}
+                        <div className={section.layout === 'timeline' ? 'mt-4 sm:mt-0' : ''}>
+                          <h3 className="text-lg font-semibold text-gray-900">{item.title}</h3>
+                          <p className="mt-2 text-sm text-gray-600">{item.description}</p>
+                          {item.tags && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {item.tags.map((tag) => (
+                                <span
+                                  key={`${item.title}-${tag}`}
+                                  className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-xs font-medium"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {section.callout && (
-                <div className="mt-8 rounded-3xl border border-dashed border-gray-300 bg-white px-6 py-5 text-sm text-gray-600">
-                  {section.callout}
-                </div>
-              )}
-            </section>
-          ))}
+                    ))}
+                  </div>
+                )}
+                {section.callout && (
+                  <div className="mt-8 rounded-3xl border border-dashed border-gray-300 bg-white px-6 py-5 text-sm text-gray-600">
+                    {section.callout}
+                  </div>
+                )}
+              </section>
+            ))}
 
-          <MarketplaceSection
-            templates={filteredTemplates}
-            query={query}
-            onQueryChange={setQuery}
-          />
+          {!isLabelsPanel && (
+            <MarketplaceSection
+              templates={filteredTemplates}
+              query={query}
+              onQueryChange={setQuery}
+            />
+          )}
 
-          <CTASection detail={detail} />
+          {!isLabelsPanel && <CTASection detail={detail} />}
         </div>
       </main>
     </div>
   )
+}
+
+function LabelsDashboard({
+  data,
+  loading,
+  historyError,
+  formError,
+  successMessage,
+  uploading,
+  onUpload,
+  onRefresh,
+}: {
+  data: LabelRecord[]
+  loading: boolean
+  historyError: string | null
+  formError: string | null
+  successMessage: string | null
+  uploading: boolean
+  onUpload: (file: File, meta?: LabelUploadMeta) => void | Promise<void>
+  onRefresh: () => void | Promise<void>
+}) {
+  const [file, setFile] = useState<File | null>(null)
+  const [destination, setDestination] = useState('')
+  const [notes, setNotes] = useState('')
+  const [localError, setLocalError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const resetForm = useCallback(() => {
+    setFile(null)
+    setDestination('')
+    setNotes('')
+    setLocalError(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [])
+
+  useEffect(() => {
+    if (successMessage && !uploading) {
+      resetForm()
+    }
+  }, [resetForm, successMessage, uploading])
+
+  const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null
+    setFile(nextFile)
+    if (nextFile) {
+      setLocalError(null)
+    }
+  }, [])
+
+  const handleSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      if (!file) {
+        setLocalError('Selecciona un PDF antes de subirlo.')
+        return
+      }
+      setLocalError(null)
+
+      const meta: LabelUploadMeta = {}
+      if (destination.trim().length > 0) {
+        meta.destination = destination.trim()
+      }
+      if (notes.trim().length > 0) {
+        meta.notes = notes.trim()
+      }
+
+      await onUpload(file, meta)
+    },
+    [destination, file, notes, onUpload],
+  )
+
+  const combinedError = localError ?? formError
+
+  const handleRefreshClick = useCallback(() => {
+    onRefresh()
+  }, [onRefresh])
+
+  return (
+    <div className="space-y-8">
+      <section className="rounded-3xl border border-dashed border-gray-300 bg-[#FAF9F6] p-6 sm:p-7">
+        <div className="flex items-start gap-4">
+          <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-2xl bg-black text-[#FAF9F6]">
+            <UploadCloud className="h-6 w-6" />
+          </div>
+          <div className="flex-1">
+            <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900">Subir albarán en PDF</h4>
+                <p className="text-sm text-gray-600">
+                  Guardamos el PDF en Supabase Storage, lanzamos n8n y verás el estado en el
+                  historial en segundos.
+                </p>
+              </div>
+            </header>
+
+            <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handleFileChange}
+                  disabled={uploading}
+                  className="block w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                />
+                <button
+                  type="submit"
+                  disabled={uploading}
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                    uploading
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-gray-900 text-white hover:opacity-90'
+                  }`}
+                >
+                  {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {uploading ? 'Subiendo…' : 'Subir PDF'}
+                </button>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Destino (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={destination}
+                    onChange={(event) => setDestination(event.target.value)}
+                    placeholder="Ej. Almacén central, campaña cítricos"
+                    disabled={uploading}
+                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Notas para el flujo
+                  </label>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder="Añade contexto para n8n o el almacén"
+                    disabled={uploading}
+                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                  />
+                </div>
+              </div>
+
+              {combinedError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
+                  {combinedError}
+                </p>
+              )}
+
+              {successMessage && !combinedError && (
+                <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2">
+                  {successMessage}
+                </p>
+              )}
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="historial-etiquetas"
+        className="rounded-3xl border border-gray-200 bg-white p-6 sm:p-7 shadow-sm"
+      >
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h4 className="text-lg font-semibold text-gray-900">Historial de etiquetas</h4>
+            <p className="text-sm text-gray-600">
+              Revisamos el estado devuelto por n8n y las etiquetas generadas para cada albarán.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefreshClick}
+            disabled={loading}
+            className={`inline-flex items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium transition ${
+              loading ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </button>
+        </header>
+
+        <div className="mt-5">
+          {historyError ? (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
+              {historyError}
+            </p>
+          ) : loading && data.length === 0 ? (
+            <p className="text-sm text-gray-600 flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Cargando historial desde Supabase…
+            </p>
+          ) : data.length === 0 ? (
+            <p className="text-sm text-gray-600">
+              Aún no hay etiquetas registradas. Sube tu primer albarán en PDF para iniciar el flujo.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-[#FAF9F6] text-gray-500 uppercase tracking-wide text-xs">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Archivo</th>
+                    <th className="px-4 py-3 text-left">Destino</th>
+                    <th className="px-4 py-3 text-left">Estado</th>
+                    <th className="px-4 py-3 text-left">Etiqueta</th>
+                    <th className="px-4 py-3 text-left">Creado</th>
+                    <th className="px-4 py-3 text-left">Actualizado</th>
+                    <th className="px-4 py-3 text-left">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700">
+                  {data.map((record) => {
+                    const statusMeta = getLabelStatusMeta(record.status)
+                    return (
+                      <tr key={record.id} className="hover:bg-[#FAF9F6] transition">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-gray-400" />
+                            <div>
+                              <p className="font-medium text-gray-900 truncate max-w-[220px]">
+                                {record.fileName || 'PDF sin nombre'}
+                              </p>
+                              {record.notes && (
+                                <p className="text-xs text-gray-500 mt-0.5">{record.notes}</p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {record.destination ?? '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                              statusMeta.tone === 'success'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : statusMeta.tone === 'error'
+                                ? 'bg-red-50 text-red-700'
+                                : statusMeta.tone === 'pending'
+                                ? 'bg-amber-50 text-amber-800'
+                                : 'bg-sky-50 text-sky-700'
+                            }`}
+                          >
+                            {statusMeta.tone === 'success' && <CheckCircle2 className="h-3.5 w-3.5" />}
+                            {statusMeta.tone === 'error' && <AlertTriangle className="h-3.5 w-3.5" />}
+                            {statusMeta.tone === 'pending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                            {statusMeta.tone === 'info' && <Tag className="h-3.5 w-3.5" />}
+                            {statusMeta.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {record.labelCode ?? (record.labelUrl ? 'Generada' : '—')}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {formatDateTime(record.createdAt)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {formatDateTime(record.updatedAt)}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {record.pdfUrl && (
+                              <a
+                                href={record.pdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                                Ver PDF
+                              </a>
+                            )}
+                            {record.labelUrl && (
+                              <a
+                                href={record.labelUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100"
+                              >
+                                <Tag className="h-3.5 w-3.5" />
+                                Descargar etiqueta
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function getLabelStatusMeta(status?: string | null): { label: string; tone: LabelStatusTone } {
+  if (!status) {
+    return { label: 'Pendiente', tone: 'pending' }
+  }
+
+  const normalized = status.toLowerCase().trim()
+
+  if (normalized.includes('error') || normalized.includes('fall')) {
+    return { label: status, tone: 'error' }
+  }
+
+  if (
+    normalized.includes('envi') ||
+    normalized.includes('notific') ||
+    normalized.includes('final') ||
+    normalized.includes('listo')
+  ) {
+    return { label: status, tone: 'success' }
+  }
+
+  if (normalized.includes('proces')) {
+    return { label: status, tone: 'info' }
+  }
+
+  if (normalized.includes('pend')) {
+    return { label: status, tone: 'pending' }
+  }
+
+  return { label: status, tone: 'info' }
 }
 
 function TurnosDashboard({
@@ -1319,6 +1967,89 @@ function parseTimeValue(value?: string | null): { hours: number; minutes: number
   }
 
   return null
+}
+
+function mapRowToLabelRecord(row: Record<string, unknown>): LabelRecord {
+  const getValue = (...keys: string[]): string | undefined => {
+    for (const key of keys) {
+      if (!key) continue
+      const value = row[key]
+      if (typeof value === 'string') {
+        const trimmed = value.trim()
+        if (trimmed.length > 0) {
+          return trimmed
+        }
+      }
+      if (typeof value === 'number' || typeof value === 'bigint') {
+        return String(value)
+      }
+    }
+    return undefined
+  }
+
+  const idCandidates = [
+    getValue('id'),
+    getValue('uuid'),
+    getValue('record_id'),
+    getValue('label_id'),
+  ]
+  let id = idCandidates.find((value) => typeof value === 'string' && value.length > 0)
+  if (!id) {
+    id =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2)
+  }
+
+  const fileName =
+    getValue('file_name', 'filename', 'nombre_archivo', 'fileName', 'archivo') ??
+    'Documento sin nombre.pdf'
+  const status = getValue('status', 'estado')
+  const destination = getValue('destination', 'destino', 'warehouse', 'almacen')
+  const labelCode = getValue('label_code', 'codigo_etiqueta', 'label', 'code')
+  const createdAt = getValue('created_at', 'createdAt', 'created', 'inserted_at')
+  const updatedAt = getValue('updated_at', 'updatedAt', 'updated', 'modificado_en')
+  const pdfUrl = getValue('pdf_url', 'pdfUrl', 'archivo_url', 'file_url')
+  const labelUrl = getValue('label_url', 'labelUrl', 'etiqueta_url', 'output_url')
+  const notes = getValue('notes', 'nota', 'comentarios', 'observaciones')
+  const storagePath = getValue('storage_path', 'storagePath', 'path')
+
+  return {
+    id,
+    fileName,
+    status,
+    destination,
+    labelCode,
+    createdAt,
+    updatedAt,
+    pdfUrl,
+    labelUrl,
+    notes,
+    storagePath,
+    raw: row,
+  }
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return '—'
+  const parsed = parseDateValue(value)
+  if (parsed !== null) {
+    const date = new Date(parsed)
+    return new Intl.DateTimeFormat('es-ES', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(date)
+  }
+
+  const date = new Date(value)
+  if (!Number.isNaN(date.getTime())) {
+    return new Intl.DateTimeFormat('es-ES', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(date)
+  }
+
+  return value
 }
 
 function mapRowToTurnoRecord(row: Record<string, unknown>): TurnoRecord {

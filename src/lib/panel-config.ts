@@ -103,7 +103,7 @@ export interface PanelConfig {
   plans?: PanelPlanConfig[]
 }
 
-export type PanelDatasetType = 'turnos'
+export type PanelDatasetType = 'turnos' | 'labels'
 
 export interface PanelPlanResource {
   label: string
@@ -499,6 +499,111 @@ const demoDetail: AutomationDetail = {
 
 const demoTemplates: AutomationTemplate[] = generalTemplates
 
+const etiquetasDetail: AutomationDetail = {
+  ...generalDetail,
+  hero: {
+    ...generalDetail.hero,
+    badge: 'Logística conectada',
+    title: 'Etiquetas de albarán en segundos',
+    description:
+      'Sube el PDF del albarán y el agente genera la etiqueta, lanza el flujo en n8n y avisa automáticamente al almacén.',
+    highlights: [
+      'Carga los PDF y clasifícalos por finca o campaña',
+      'n8n lee cada documento y crea la etiqueta con tus formatos',
+      'Correo automático al almacén con la etiqueta lista para imprimir',
+    ],
+    panelCopy:
+      'Controla cada subida, revisa el estado de generación y descarga las etiquetas aprobadas sin salir de este panel.',
+    metrics: [
+      { label: 'Etiquetas generadas', value: '128', caption: 'Última campaña cítricos' },
+      { label: 'Tiempo medio de proceso', value: '38s', caption: 'Desde la subida del PDF' },
+      { label: 'Alertas de error', value: '1.2%', caption: 'Con revisión manual asistida' },
+      { label: 'Correos enviados al almacén', value: '128', caption: 'Lista de reparto actualizada' },
+    ],
+  },
+  sections: [
+    {
+      title: 'Cómo funciona la automatización',
+      subtitle: 'Subes el albarán y el agente coordina todo el flujo en n8n y Gmail.',
+      layout: 'timeline',
+      items: [
+        {
+          step: '01',
+          title: 'Sube el PDF del albarán',
+          description: 'Carga el documento desde el panel. Guardamos la referencia en Supabase y lo enviamos a n8n.',
+        },
+        {
+          step: '02',
+          title: 'Generación automática de etiqueta',
+          description:
+            'n8n extrae los datos del albarán, genera la etiqueta con tu plantilla y deja registro del resultado.',
+        },
+        {
+          step: '03',
+          title: 'Envío al almacén con seguimiento',
+          description:
+            'El agente envía un correo al almacén con la etiqueta adjunta y actualiza el estado para que lo veas en el historial.',
+        },
+      ],
+      callout:
+        '¿Necesitas más destinos o validar los datos antes de enviar? Añadimos pasos extra en n8n en cuestión de minutos.',
+    },
+    ...(generalDetail.sections?.slice(1) ?? []),
+  ],
+}
+
+const etiquetasTemplates: AutomationTemplate[] = [
+  {
+    id: 'pdf-a-etiqueta',
+    name: 'PDF ➝ Etiqueta automática',
+    description:
+      'Transforma cada albarán en una etiqueta lista para imprimir y envíala al almacén sin intervención manual.',
+    icon: FileSpreadsheet,
+    accentBg: 'bg-indigo-100',
+    accentIcon: 'text-indigo-700',
+    href: '/automatizaciones/pdf-a-etiqueta',
+    badges: ['n8n', 'Correo automático'],
+  },
+  {
+    id: 'inventario-enriquecido',
+    name: 'Inventario enriquecido por etiquetas',
+    description:
+      'Añade datos de lote, cultivo y cliente a partir de cada etiqueta creada para mantener el inventario al día.',
+    icon: Database,
+    accentBg: 'bg-amber-100',
+    accentIcon: 'text-amber-700',
+    href: '/automatizaciones/inventario-a-etiquetas',
+    badges: ['Inventario', 'Integración ERP'],
+  },
+  {
+    id: 'seguimiento-logistico',
+    name: 'Seguimiento logístico automatizado',
+    description:
+      'Envía un resumen de etiquetas generadas por turno al responsable de logística y sincroniza con tu ERP.',
+    icon: MailCheck,
+    accentBg: 'bg-emerald-100',
+    accentIcon: 'text-emerald-700',
+    href: '/automatizaciones/seguimiento-logistico',
+    badges: ['Reportes diarios'],
+  },
+]
+
+const etiquetasPlan: PanelPlanConfig = {
+  id: 'etiquetas-albaranes',
+  name: 'Etiquetas automáticas de albarán',
+  summary: 'Sube el PDF, generamos la etiqueta y notificamos al almacén con trazabilidad completa.',
+  resources: [
+    { label: 'Checklist de integración n8n', href: '/automatizaciones' },
+    { label: 'Historial completo', variant: 'view', href: '#historial-etiquetas' },
+  ],
+  dataset: {
+    type: 'labels',
+    table: 'label_requests',
+    emailColumn: 'user_email',
+    orderBy: [{ column: 'created_at', ascending: false }],
+  },
+}
+
 export const panelConfigs: Record<string, PanelConfig> = {
   general: {
     slug: 'general',
@@ -519,11 +624,19 @@ export const panelConfigs: Record<string, PanelConfig> = {
     detail: demoDetail,
     templates: demoTemplates,
   },
+  etiquetas: {
+    slug: 'etiquetas',
+    label: 'Panel etiquetas logística',
+    detail: etiquetasDetail,
+    templates: etiquetasTemplates,
+    plans: [etiquetasPlan],
+  },
 }
 
 const panelSlugByEmail: Record<string, string> = {
   'saraquintanadg@gmail.com': 'turnos',
   'demo@procesia.agro': 'demo',
+  'pruebasdeautomatizacionagro@gmail.com': 'etiquetas',
 }
 
 export function getPanelConfig(slug?: string): PanelConfig {
