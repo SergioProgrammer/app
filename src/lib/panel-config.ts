@@ -114,7 +114,11 @@ export interface PanelPlanResource {
 export interface PanelPlanDatasetConfig {
   type: PanelDatasetType
   table: string
+  insertTable?: string
   emailColumn?: string
+  userIdColumn?: string
+  storageBucket?: string
+  historyDisabled?: boolean
   orderBy?: PanelPlanOrderConfig | PanelPlanOrderConfig[]
   fallbackTables?: string[]
 }
@@ -598,9 +602,13 @@ const etiquetasPlan: PanelPlanConfig = {
   ],
   dataset: {
     type: 'labels',
-    table: 'label_requests',
-    emailColumn: 'user_email',
+    table: 'albaranes_pedidos',
+    insertTable: 'albaranes_pedidos',
+    userIdColumn: 'user_id',
+    storageBucket: 'albaranes_1',
+    historyDisabled: true,
     orderBy: [{ column: 'created_at', ascending: false }],
+    fallbackTables: ['etiquetas_generadas'],
   },
 }
 

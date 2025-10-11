@@ -1,0 +1,278 @@
+{
+  "name": "Procesar albarán y generar etiqueta",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "supabase/albaran-nuevo",
+        "methods": [
+          "POST"
+        ],
+        "responseMode": "lastNode"
+      },
+      "id": "Webhook_Trigger",
+      "name": "Webhook (Supabase)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [80, 300]
+    },
+    {
+      "parameters": {
+        "options": {},
+        "functionCode": "const b = $json.record || $json || {};\n// Supabase Storage webhook suele mandar:\n// { eventType, record: { bucket_id, name, ... } }\nreturn [{\n  bucket: b.bucket_id || $json.bucket_id || 'albaranes_1',\n  objectPath: b.name || $json.name || $json.path || '',\n  raw: $json\n}];"
+      },
+      "id": "Prep_Inputs",
+      "name": "Preparar params",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [280, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getFile",
+        "projectId": "",
+        "bucketId": "={{$json[\"bucket\"]}}",
+        "path": "={{$json[\"objectPath\"]}}",
+        "options": {}
+      },
+      "id": "SB_Get_File",
+      "name": "Supabase - Descargar PDF",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [520, 300],
+      "credentials": {
+        "supabaseApi": "Supabase account"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "extractText",
+        "options": {}
+      },
+      "id": "Read_PDF",
+      "name": "Leer PDF",
+      "type": "n8n-nodes-base.pdf",
+      "typeVersion": 1,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "resource": "text",
+        "operation": "messageModel",
+        "modelFromList": "gpt-4.1-mini",
+        "messages": {
+          "messageUi": {
+            "message": [
+              {
+                "text": "Eres experto extrayendo datos de albaranes y generando etiquetas de producto de IV Gama.\\n\\nA partir del TEXTO DEL PDF que te paso más abajo, devuelve **EXCLUSIVAMENTE** JSON válido (sin lenguaje natural) con esta forma exacta (strings ISO8601/UTC y números):\\n\\n{\\n  \"albaran\": {\\n    \"numero\": \"string|null\",\\n    \"fecha\": \"YYYY-MM-DD|null\",\\n    \"cliente\": \"string|null\",\\n    \"producto\": \"string|null\",\\n    \"cantidad\": \"number|null\",\\n    \"unidad\": \"string|null\",\\n    \"lote\": \"string|null\"\\n  },\\n  \"etiqueta\": {\\n    \"proveedor\": \"Montaña Roja Herbs S.A.T.\",\\n    \"producto\": \"string|null\",\\n    \"lote\": \"string|null\",\\n    \"envasado\": \"YYYY-MM-DD|null\",\\n    \"peso_g\": null,\\n    \"ean13\": \"string|null\",\\n    \"origen\": \"Canarias España\",\\n    \"opfh\": \"OPFH 1168\",\\n    \"nrs\": \"21.033215.TF\",\\n    \"direccion\": \"Calle Constitución nº 53 Arico Viejo C.P 38589 Tenerife.\",\\n    \"tray_code\": \"string|null\"\\n  }\\n}\\n\\nREGLAS:\\n- Si no existe un dato, coloca null (no \"desconocido\").\\n- No inventes. No pongas campos extra.\\n- Si el PDF contiene varias líneas de producto, escoge la que coincida con ALBAHACA/BASIL o más probable para etiqueta.\\n\\n---\\nTEXTO_PDF:\\n{{ $json[\"text\"] }}",
+                "role": "system"
+              }
+            ]
+          }
+        },
+        "additionalFields": {
+          "responseFormat": "jsonObject"
+        }
+      },
+      "id": "OpenAI_Extract",
+      "name": "OpenAI - Extraer datos",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 4,
+      "position": [960, 300],
+      "credentials": {
+        "openAiApi": "OpenAI account 3"
+      }
+    },
+    {
+      "parameters": {
+        "options": {},
+        "functionCode": "const r = $json || {};\nconst a = r.albaran || {};\nconst e = r.etiqueta || {};\n\nfunction d(v){\n  if(!v) return null;\n  const t = String(v).trim();\n  if(!t) return null;\n  // normaliza fechas tipo 01/10/2025 -> 2025-10-01\n  const m = t.match(/(\\d{1,2})[\\/\\-.](\\d{1,2})[\\/\\-.](\\d{2,4})/);\n  if(m){\n    let [_,dd,mm,yy] = m;\n    if(yy.length===2) yy = '20'+yy;\n    return `${yy.padStart(4,'0')}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;\n  }\n  // si ya parece ISO\n  if(/\\d{4}-\\d{2}-\\d{2}/.test(t)) return t.slice(0,10);\n  return null;\n}\n\n// ALBARÁN (para tabla albaranes_pedidos)\nconst albaran = {\n  numero: a.numero ?? null,\n  fecha: d(a.fecha),\n  cliente: a.cliente ?? null,\n  producto: a.producto ?? e.producto ?? null,\n  cantidad: (a.cantidad!=null? Number(a.cantidad): null),\n  unidad: a.unidad ?? null,\n  lote: a.lote ?? e.lote ?? null,\n  pdf_path: $items(\"Preparar params\",0).json.objectPath,\n  created_at: new Date().toISOString()\n};\n\n// ETIQUETA (para tabla etiquetas_generadas)\nconst etiqueta = {\n  proveedor: e.proveedor ?? 'Montaña Roja Herbs S.A.T.',\n  producto: e.producto ?? a.producto ?? null,\n  lote: e.lote ?? a.lote ?? null,\n  envasado: d(e.envasado) ?? d(a.fecha),\n  peso_g: (e.peso_g!=null? Number(e.peso_g): null),\n  ean13: e.ean13 ?? null,\n  origen: e.origen ?? 'Canarias España',\n  opfh: e.opfh ?? 'OPFH 1168',\n  nrs: e.nrs ?? '21.033215.TF',\n  direccion: e.direccion ?? 'Calle Constitución nº 53 Arico Viejo C.P 38589 Tenerife.',\n  tray_code: e.tray_code ?? null,\n  pdf_path: $items(\"Preparar params\",0).json.objectPath,\n  created_at: new Date().toISOString()\n};\n\nreturn [{ albaran, etiqueta }];"
+      },
+      "id": "Normalize",
+      "name": "Normalizar datos",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [1160, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insertRow",
+        "table": "albaranes_pedidos",
+        "schema": "public",
+        "columns": "numero,fecha,cliente,producto,cantidad,unidad,lote,pdf_path,created_at",
+        "values": "={{$json[\"albaran\"][\"numero\"]}},{{ $json[\"albaran\"][\"fecha\"] }},{{ $json[\"albaran\"][\"cliente\"] }},{{ $json[\"albaran\"][\"producto\"] }},{{ $json[\"albaran\"][\"cantidad\"] }},{{ $json[\"albaran\"][\"unidad\"] }},{{ $json[\"albaran\"][\"lote\"] }},{{ $json[\"albaran\"][\"pdf_path\"] }},{{ $json[\"albaran\"][\"created_at\"] }}"
+      },
+      "id": "SB_Insert_Albaran",
+      "name": "Supabase - Insert albarán",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1380, 230],
+      "credentials": {
+        "supabaseApi": "Supabase account"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insertRow",
+        "table": "etiquetas_generadas",
+        "schema": "public",
+        "columns": "proveedor,producto,lote,envasado,peso_g,ean13,origen,opfh,nrs,direccion,tray_code,pdf_path,created_at",
+        "values": "={{$json[\"etiqueta\"][\"proveedor\"]}},{{ $json[\"etiqueta\"][\"producto\"] }},{{ $json[\"etiqueta\"][\"lote\"] }},{{ $json[\"etiqueta\"][\"envasado\"] }},{{ $json[\"etiqueta\"][\"peso_g\"] }},{{ $json[\"etiqueta\"][\"ean13\"] }},{{ $json[\"etiqueta\"][\"origen\"] }},{{ $json[\"etiqueta\"][\"opfh\"] }},{{ $json[\"etiqueta\"][\"nrs\"] }},{{ $json[\"etiqueta\"][\"direccion\"] }},{{ $json[\"etiqueta\"][\"tray_code\"] }},{{ $json[\"etiqueta\"][\"pdf_path\"] }},{{ $json[\"etiqueta\"][\"created_at\"] }}"
+      },
+      "id": "SB_Insert_Etiqueta",
+      "name": "Supabase - Insert etiqueta",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1380, 370],
+      "credentials": {
+        "supabaseApi": "Supabase account"
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "",
+        "toEmail": "pruebasdeautomatizacionagro@gmail.com",
+        "subject": "Nuevo albarán procesado - {{$json[\"etiqueta\"][\"producto\"] || \"Producto\"}}",
+        "text": "Se ha procesado un nuevo albarán.\\n\\nResumen etiqueta:\\n- Producto: {{$json[\"etiqueta\"][\"producto\"]}}\\n- Lote: {{$json[\"etiqueta\"][\"lote\"]}}\\n- Envasado: {{$json[\"etiqueta\"][\"envasado\"]}}\\n- Peso (g): {{$json[\"etiqueta\"][\"peso_g\"]}}\\n\\nRuta PDF: {{$json[\"etiqueta\"][\"pdf_path\"]}}",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data"
+              }
+            ]
+          }
+        }
+      },
+      "id": "Email",
+      "name": "Enviar email almacén",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1600, 300],
+      "credentials": {
+        "smtp": "SMTP account"
+      }
+    },
+    {
+      "parameters": {
+        "responseBody": "={{ { ok: true, pdf: $items(\"Preparar params\",0).json.objectPath, albaran: $json.albaran, etiqueta: $json.etiqueta } }}",
+        "responseCode": 200
+      },
+      "id": "Return",
+      "name": "Responder a Supabase",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1820, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (Supabase)": {
+      "main": [
+        [
+          {
+            "node": "Preparar params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar params": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Descargar PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Descargar PDF": {
+      "main": [
+        [
+          {
+            "node": "Leer PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer PDF": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Extraer datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Extraer datos": {
+      "main": [
+        [
+          {
+            "node": "Normalizar datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar datos": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Insert albarán",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase - Insert etiqueta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Enviar email almacén",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar email almacén": {
+      "main": [
+        [
+          {
+            "node": "Responder a Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Insert albarán": {
+      "main": [
+        [
+          {
+            "node": "Responder a Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Insert etiqueta": {
+      "main": [
+        [
+          {
+            "node": "Responder a Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

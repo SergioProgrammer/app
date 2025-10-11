@@ -17,6 +17,7 @@ import {
   BarChart,
   CheckCircle2,
   CreditCard,
+  ChevronRight,
   FileText,
   Loader2,
   RefreshCw,
@@ -90,6 +91,15 @@ interface LabelUploadMeta {
   notes?: string
 }
 
+interface UploadedFileRecord {
+  name: string
+  path: string
+  size?: number | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  publicUrl?: string | null
+}
+
 type LabelStatusTone = 'pending' | 'success' | 'error' | 'info'
 
 type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
@@ -97,10 +107,10 @@ type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
 const TURNOS_RECENT_LIMIT = 8
 const TURNOS_FETCH_LIMIT = 32
 const LABELS_FETCH_LIMIT = 100
-const LABELS_STORAGE_BUCKET =
+const DEFAULT_LABELS_STORAGE_BUCKET =
   process.env.NEXT_PUBLIC_SUPABASE_LABELS_BUCKET ??
   process.env.NEXT_PUBLIC_LABELS_BUCKET ??
-  'label-uploads'
+  'albaranes_1'
 
 export default function PanelPage() {
   const params = useParams<{ slug: string }>()
@@ -126,9 +136,13 @@ export default function PanelPage() {
   const [labelsData, setLabelsData] = useState<LabelRecord[]>([])
   const [labelsLoading, setLabelsLoading] = useState(false)
   const [labelsError, setLabelsError] = useState<string | null>(null)
+  const [labelsActiveTable, setLabelsActiveTable] = useState<string | null>(null)
   const [labelUploadLoading, setLabelUploadLoading] = useState(false)
   const [labelUploadError, setLabelUploadError] = useState<string | null>(null)
   const [labelUploadMessage, setLabelUploadMessage] = useState<string | null>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFileRecord[]>([])
+  const [uploadedFilesLoading, setUploadedFilesLoading] = useState(false)
+  const [uploadedFilesError, setUploadedFilesError] = useState<string | null>(null)
   const userEmail = user?.email ?? ''
   const userDisplayName = useMemo(() => {
     const atIndex = userEmail.indexOf('@')
@@ -213,6 +227,8 @@ export default function PanelPage() {
     () => activePlans.find((plan) => plan.dataset?.type === 'labels'),
     [activePlans],
   )
+  const labelsHistoryDisabled = labelsPlan?.dataset?.historyDisabled ?? false
+  const labelsStorageBucket = labelsPlan?.dataset?.storageBucket ?? DEFAULT_LABELS_STORAGE_BUCKET
 
   useEffect(() => {
     const dataset = turnosPlan?.dataset
@@ -223,6 +239,21 @@ export default function PanelPage() {
 
     setTurnosActiveTable((current) => current ?? dataset.table)
   }, [turnosPlan])
+
+  useEffect(() => {
+    const dataset = labelsPlan?.dataset
+    if (!dataset) {
+      setLabelsActiveTable(null)
+      return
+    }
+
+    if (dataset.historyDisabled) {
+      setLabelsActiveTable(null)
+      return
+    }
+
+    setLabelsActiveTable((current) => current ?? dataset.table)
+  }, [labelsPlan])
 
   const loadTurnos = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -235,7 +266,7 @@ export default function PanelPage() {
       }
 
       const dataset = turnosPlan.dataset
-      const email = user.email ?? null
+      const filters = getDatasetFilters(dataset, user, userEmail)
 
       const baseTable = dataset.table
       const fallbacks = dataset.fallbackTables ?? []
@@ -256,8 +287,8 @@ export default function PanelPage() {
           for (const orders of orderSets) {
             let queryBuilder = supabase.from(tableName).select('*')
 
-            if (dataset.emailColumn && email) {
-              queryBuilder = queryBuilder.eq(dataset.emailColumn, email)
+            for (const filter of filters) {
+              queryBuilder = queryBuilder.eq(filter.column, filter.value)
             }
 
             for (const order of orders) {
@@ -323,7 +354,7 @@ export default function PanelPage() {
         }
       }
     },
-    [supabase, turnosActiveTable, turnosPlan, user],
+    [supabase, turnosActiveTable, turnosPlan, user, userEmail],
   )
 
   useEffect(() => {
@@ -351,10 +382,8 @@ export default function PanelPage() {
   useEffect(() => {
     if (!turnosPlan?.dataset || !user || !turnosActiveTable) return
 
-    const emailFilter =
-      turnosPlan.dataset.emailColumn && user.email
-        ? `${turnosPlan.dataset.emailColumn}=eq.${user.email}`
-        : undefined
+    const filters = getDatasetFilters(turnosPlan.dataset, user, userEmail)
+    const realtimeFilter = buildRealtimeFilter(filters)
 
     const channel = supabase
       .channel(`turnos-${turnosActiveTable}`)
@@ -364,7 +393,7 @@ export default function PanelPage() {
           event: '*',
           schema: 'public',
           table: turnosActiveTable,
-          ...(emailFilter ? { filter: emailFilter } : {}),
+          ...(realtimeFilter ? { filter: realtimeFilter } : {}),
         },
         () => {
           loadTurnos({ silent: true })
@@ -375,7 +404,7 @@ export default function PanelPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [loadTurnos, supabase, turnosActiveTable, turnosPlan?.dataset, user])
+  }, [loadTurnos, supabase, turnosActiveTable, turnosPlan?.dataset, user, userEmail])
 
   const loadLabels = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -389,49 +418,110 @@ export default function PanelPage() {
 
       try {
         const dataset = labelsPlan.dataset
-        let query = supabase.from(dataset.table).select('*')
-
-        if (dataset.emailColumn && userEmail) {
-          query = query.eq(dataset.emailColumn, userEmail)
+        if (dataset.historyDisabled) {
+          setLabelsActiveTable(null)
+          setLabelsError(null)
+          setLabelsData([])
+          return
         }
+        const baseTable = dataset.table
+        const insertTable = dataset.insertTable
+        const fallbacks = dataset.fallbackTables ?? []
+        const filters = getDatasetFilters(dataset, user, userEmail)
 
-        const orderConfigs = Array.isArray(dataset.orderBy)
-          ? dataset.orderBy
-          : dataset.orderBy
-          ? [dataset.orderBy]
-          : []
+        const candidateTables = [
+          baseTable,
+          labelsActiveTable,
+          insertTable,
+          ...fallbacks,
+        ].filter((value): value is string => typeof value === 'string' && value.length > 0)
 
-        for (const order of orderConfigs) {
-          query = query.order(order.column, {
-            ascending: order.ascending ?? false,
-            nullsFirst: order.nullsFirst,
-          })
-        }
+        const tablesToTry = Array.from(new Set(candidateTables))
+        const orderPreferences = buildOrderPreferences(dataset.orderBy)
 
-        const { data, error } = await query.limit(LABELS_FETCH_LIMIT)
+        let chosenTable: string | null = null
+        let chosenData: LabelRecord[] | null = null
+        let encounteredEmpty = false
+        let lastErrorMessage: string | null = null
+        let missingTableMessage: string | null = null
 
-        if (error) {
-          if (isMissingTableError(error.message)) {
-            setLabelsError(
-              'No encontramos la tabla de historial en Supabase. Revisa la configuración de etiquetas.',
-            )
-            setLabelsData([])
-            return
+        tableLoop: for (const tableName of tablesToTry) {
+          const orderSets = orderPreferences.length > 0 ? orderPreferences : [[]]
+
+          for (const orders of orderSets) {
+            let queryBuilder = supabase.from(tableName).select('*')
+
+            for (const filter of filters) {
+              queryBuilder = queryBuilder.eq(filter.column, filter.value)
+            }
+
+            for (const order of orders) {
+              queryBuilder = queryBuilder.order(order.column, {
+                ascending: order.ascending ?? false,
+                nullsFirst: order.nullsFirst,
+              })
+            }
+
+            const { data, error } = await queryBuilder.limit(LABELS_FETCH_LIMIT)
+
+            if (error) {
+              lastErrorMessage = error.message
+
+              if (isMissingTableError(error.message)) {
+                missingTableMessage = error.message
+                continue tableLoop
+              }
+
+              if (isMissingColumnError(error.message)) {
+                continue
+              }
+
+              continue tableLoop
+            }
+
+            const mapped = (data ?? []).map(mapRowToLabelRecord)
+
+            if (mapped.length === 0) {
+              encounteredEmpty = true
+              if (!chosenTable) {
+                chosenTable = tableName
+                chosenData = []
+              }
+              continue tableLoop
+            }
+
+            chosenTable = tableName
+            chosenData = mapped
+            encounteredEmpty = false
+            break tableLoop
           }
-
-          if (isMissingColumnError(error.message)) {
-            setLabelsError(
-              'Faltan columnas esperadas en la tabla de historial. Ajusta el dataset o la estructura.',
-            )
-            setLabelsData([])
-            return
-          }
-
-          throw error
         }
 
-        setLabelsError(null)
-        setLabelsData((data ?? []).map(mapRowToLabelRecord))
+        if (chosenTable && chosenData && chosenData.length > 0) {
+          setLabelsActiveTable(chosenTable)
+          setLabelsError(null)
+          setLabelsData(chosenData)
+          return
+        }
+
+        if (encounteredEmpty) {
+          const fallbackTable = chosenTable ?? tablesToTry[0] ?? dataset.table ?? null
+          if (fallbackTable) {
+            setLabelsActiveTable(fallbackTable)
+          }
+          setLabelsError(null)
+          setLabelsData(chosenData ?? [])
+          return
+        }
+
+        const message = missingTableMessage && tablesToTry.length > 0
+          ? `No encontramos las tablas configuradas (${tablesToTry.join(
+              ', '
+            )}). Revisa que existan en Supabase o ajusta la configuración.`
+          : lastErrorMessage ??
+            'No se pudo cargar el historial de etiquetas. Intenta de nuevo en unos segundos.'
+        setLabelsError(message)
+        setLabelsData([])
       } catch (error) {
         setLabelsError((error as Error).message)
         setLabelsData([])
@@ -441,24 +531,104 @@ export default function PanelPage() {
         }
       }
     },
-    [labelsPlan, supabase, user, userEmail],
+    [labelsActiveTable, labelsPlan, supabase, user, userEmail],
+  )
+
+  const loadUploadedFiles = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!labelsPlan?.dataset || !user) return
+
+      const silent = options?.silent ?? false
+      const dataset = labelsPlan.dataset
+      const storageBucket = dataset.storageBucket ?? DEFAULT_LABELS_STORAGE_BUCKET
+      const folder = user.id ?? 'anon'
+
+      if (!silent) {
+        setUploadedFilesLoading(true)
+      }
+      setUploadedFilesError(null)
+
+      try {
+        const { data, error } = await supabase.storage
+          .from(storageBucket)
+          .list(folder, {
+            limit: LABELS_FETCH_LIMIT,
+            sortBy: { column: 'created_at', order: 'desc' },
+          })
+
+        if (error) {
+          const message = error.message ?? 'No se pudieron obtener los archivos subidos.'
+          if (message.toLowerCase().includes('not found')) {
+            setUploadedFiles([])
+            setUploadedFilesError(null)
+            return
+          }
+          throw new Error(message)
+        }
+
+        const items = (data ?? []).filter((item): item is typeof data[number] => Boolean(item?.name))
+
+        const mapped = await Promise.all(
+          items.map(async (item) => {
+            const parseSize = (value: unknown): number | null =>
+              typeof value === 'number' && Number.isFinite(value) ? value : null
+
+            const metadata = item.metadata as Record<string, unknown> | null
+            const metadataSize = parseSize(metadata?.size)
+            const fallbackSize =
+              'size' in item ? parseSize((item as { size?: unknown }).size) : null
+            const size = metadataSize ?? fallbackSize ?? null
+
+            const path = `${folder}/${item.name}`
+            const { data: urlData } = supabase.storage.from(storageBucket).getPublicUrl(path)
+
+            return {
+              name: item.name,
+              path,
+              size,
+              createdAt: item.created_at ?? null,
+              updatedAt: item.updated_at ?? null,
+              publicUrl: urlData?.publicUrl ?? null,
+            }
+          }),
+        )
+
+        setUploadedFiles(mapped)
+      } catch (error) {
+        setUploadedFilesError((error as Error).message)
+        setUploadedFiles([])
+      } finally {
+        if (!silent) {
+          setUploadedFilesLoading(false)
+        }
+      }
+    },
+    [labelsPlan, supabase, user],
   )
 
   useEffect(() => {
     if (!labelsPlan || !user) return
+    if (labelsPlan.dataset?.historyDisabled) {
+      setLabelsError(null)
+      setLabelsData([])
+      return
+    }
     loadLabels()
   }, [labelsPlan, loadLabels, user])
 
   useEffect(() => {
     if (!labelsPlan?.dataset || !user) return
 
-    const table = labelsPlan.dataset.table
+    const dataset = labelsPlan.dataset
+    if (dataset.historyDisabled) return
+
+    const table =
+      (labelsActiveTable && labelsActiveTable.length > 0 ? labelsActiveTable : null) ??
+      dataset.table
     if (!table) return
 
-    const emailFilter =
-      labelsPlan.dataset.emailColumn && userEmail
-        ? `${labelsPlan.dataset.emailColumn}=eq.${userEmail}`
-        : undefined
+    const filters = getDatasetFilters(dataset, user, userEmail)
+    const realtimeFilter = buildRealtimeFilter(filters)
 
     const channel = supabase
       .channel(`labels-${table}-${user.id ?? 'anon'}`)
@@ -468,7 +638,7 @@ export default function PanelPage() {
           event: '*',
           schema: 'public',
           table,
-          ...(emailFilter ? { filter: emailFilter } : {}),
+          ...(realtimeFilter ? { filter: realtimeFilter } : {}),
         },
         () => {
           loadLabels({ silent: true })
@@ -479,7 +649,16 @@ export default function PanelPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [labelsPlan?.dataset, loadLabels, supabase, user, userEmail])
+  }, [labelsActiveTable, labelsPlan?.dataset, loadLabels, supabase, user, userEmail])
+
+  useEffect(() => {
+    if (!labelsPlan?.dataset || !user) {
+      setUploadedFiles([])
+      setUploadedFilesError(null)
+      return
+    }
+    loadUploadedFiles()
+  }, [labelsPlan, loadUploadedFiles, user])
 
   const filteredTemplates = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -562,6 +741,7 @@ export default function PanelPage() {
         const tablesToTry = Array.from(new Set(candidateTables))
         const orderPreferences = buildOrderPreferences(dataset.orderBy)
         const rangeColumns = buildRangeColumns(dataset.orderBy)
+        const filters = getDatasetFilters(dataset, user, userEmail)
 
         let success = false
         let lastErrorMessage: string | null = null
@@ -576,9 +756,8 @@ export default function PanelPage() {
             for (const rangeColumn of rangeOptions) {
               let queryBuilder = supabase.from(tableName).select('*')
 
-              const email = user.email ?? null
-              if (dataset.emailColumn && email) {
-                queryBuilder = queryBuilder.eq(dataset.emailColumn, email)
+              for (const filter of filters) {
+                queryBuilder = queryBuilder.eq(filter.column, filter.value)
               }
 
               const applyServerRange = rangeColumn && rangeColumn !== 'fecha'
@@ -672,15 +851,17 @@ export default function PanelPage() {
         setTurnosDownloadLoading(false)
       }
     },
-    [supabase, turnosActiveTable, turnosPlan, user],
+    [supabase, turnosActiveTable, turnosPlan, user, userEmail],
   )
 
   const handleUploadLabel = useCallback(
-    async (file: File, meta?: LabelUploadMeta) => {
+    async (file: File, _meta?: LabelUploadMeta) => {
       if (!labelsPlan?.dataset || !user) {
         setLabelUploadError('No encontramos la configuración de etiquetas. Vuelve a iniciar sesión.')
         return
       }
+
+      void _meta
 
       if (!file) {
         setLabelUploadError('Selecciona un archivo PDF para subirlo.')
@@ -699,11 +880,12 @@ export default function PanelPage() {
 
       try {
         const dataset = labelsPlan.dataset
+        const storageBucket = dataset.storageBucket ?? DEFAULT_LABELS_STORAGE_BUCKET
         const sanitizedName = fileName.replace(/\s+/g, '-')
         const storagePath = `${user.id ?? 'anon'}/${Date.now()}-${sanitizedName}`
 
         const { error: uploadError } = await supabase.storage
-          .from(LABELS_STORAGE_BUCKET)
+          .from(storageBucket)
           .upload(storagePath, file, {
             cacheControl: '3600',
             upsert: false,
@@ -711,84 +893,35 @@ export default function PanelPage() {
           })
 
         if (uploadError) {
-          throw new Error(uploadError.message ?? 'No se pudo subir el PDF a Supabase Storage.')
+          const reason = uploadError.message ?? 'No se pudo subir el PDF a Supabase Storage.'
+          if (reason.toLowerCase().includes('not found')) {
+            throw new Error(
+              `No encontramos el bucket "${storageBucket}" en Supabase Storage. Revísalo en la consola de Supabase o actualiza la configuración del bucket.`,
+            )
+          }
+          throw new Error(reason)
         }
 
         const { data: publicUrlData } = supabase.storage
-          .from(LABELS_STORAGE_BUCKET)
+          .from(storageBucket)
           .getPublicUrl(storagePath)
 
-        const publicUrl = publicUrlData?.publicUrl
-
-        const insertPayload: Record<string, unknown> = {
-          file_name: fileName,
-          storage_path: storagePath,
-          status: 'pendiente',
-          pdf_url: publicUrl ?? null,
-          user_id: user.id ?? null,
+        const publicUrl = publicUrlData?.publicUrl ?? null
+        const messageParts = [`PDF subido a Supabase Storage (${storageBucket}).`]
+        messageParts.push(`Ruta interna: ${storagePath}`)
+        if (publicUrl) {
+          messageParts.push(`URL pública: ${publicUrl}`)
         }
 
-        if (labelsPlan.dataset.emailColumn && userEmail) {
-          insertPayload[labelsPlan.dataset.emailColumn] = userEmail
-        } else if (userEmail) {
-          insertPayload.user_email = userEmail
-        }
-
-        if (meta?.destination) {
-          insertPayload.destination = meta.destination
-        }
-
-        if (meta?.notes) {
-          insertPayload.notes = meta.notes
-        }
-
-        const { error: insertError } = await supabase.from(dataset.table).insert(insertPayload)
-
-        if (insertError) {
-          throw new Error(insertError.message ?? 'No se pudo guardar el registro en Supabase.')
-        }
-
-        let webhookMessage: string | null = null
-        try {
-          const response = await fetch('/api/n8n/labels', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              storagePath,
-              fileName,
-              publicUrl,
-              userEmail: userEmail || null,
-              destination: meta?.destination ?? null,
-            }),
-          })
-
-          if (!response.ok) {
-            const text = await response.text()
-            webhookMessage =
-              text ||
-              'PDF subido. No se pudo notificar a n8n. Revisa la configuración del webhook.'
-          }
-        } catch (error) {
-          console.error('Error notificando a n8n para etiquetas', error)
-          webhookMessage =
-            error instanceof Error
-              ? `PDF subido. No se pudo notificar a n8n: ${error.message}`
-              : 'PDF subido. No se pudo notificar a n8n.'
-        }
-
-        setLabelUploadMessage(
-          webhookMessage ??
-            'PDF subido y flujo en n8n notificado. El estado aparecerá en el historial en segundos.',
-        )
-
-        await loadLabels({ silent: true })
+        setLabelUploadMessage(messageParts.join(' '))
+        await loadUploadedFiles({ silent: true })
       } catch (error) {
         setLabelUploadError((error as Error).message)
       } finally {
         setLabelUploadLoading(false)
       }
     },
-    [labelsPlan, loadLabels, supabase, user, userEmail],
+    [labelsPlan, loadUploadedFiles, supabase, user],
   )
 
   if (!user) {
@@ -1063,6 +1196,12 @@ export default function PanelPage() {
                         uploading={labelUploadLoading}
                         onUpload={handleUploadLabel}
                         onRefresh={() => loadLabels()}
+                        historyDisabled={labelsHistoryDisabled}
+                        uploads={uploadedFiles}
+                        uploadsLoading={uploadedFilesLoading}
+                        uploadsError={uploadedFilesError}
+                        onReloadUploads={() => loadUploadedFiles()}
+                        storageBucket={labelsHistoryDisabled ? labelsStorageBucket : null}
                       />
                     ) : plan.records && plan.records.length > 0 ? (
                       <RecordsTable plan={plan} />
@@ -1156,6 +1295,12 @@ function LabelsDashboard({
   uploading,
   onUpload,
   onRefresh,
+  historyDisabled,
+  uploads,
+  uploadsLoading,
+  uploadsError,
+  onReloadUploads,
+  storageBucket,
 }: {
   data: LabelRecord[]
   loading: boolean
@@ -1165,6 +1310,12 @@ function LabelsDashboard({
   uploading: boolean
   onUpload: (file: File, meta?: LabelUploadMeta) => void | Promise<void>
   onRefresh: () => void | Promise<void>
+  historyDisabled: boolean
+  uploads: UploadedFileRecord[]
+  uploadsLoading: boolean
+  uploadsError: string | null
+  onReloadUploads: () => void | Promise<void>
+  storageBucket: string | null
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [destination, setDestination] = useState('')
@@ -1224,6 +1375,10 @@ function LabelsDashboard({
     onRefresh()
   }, [onRefresh])
 
+  const handleReloadUploads = useCallback(() => {
+    onReloadUploads()
+  }, [onReloadUploads])
+
   return (
     <div className="space-y-8">
       <section className="rounded-3xl border border-dashed border-gray-300 bg-[#FAF9F6] p-6 sm:p-7">
@@ -1236,8 +1391,8 @@ function LabelsDashboard({
               <div>
                 <h4 className="text-lg font-semibold text-gray-900">Subir albarán en PDF</h4>
                 <p className="text-sm text-gray-600">
-                  Guardamos el PDF en Supabase Storage, lanzamos n8n y verás el estado en el
-                  historial en segundos.
+                  Guardamos el PDF en Supabase Storage. Más adelante podrás automatizar la lectura
+                  con n8n.
                 </p>
               </div>
             </header>
@@ -1311,144 +1466,250 @@ function LabelsDashboard({
         </div>
       </section>
 
-      <section
-        id="historial-etiquetas"
-        className="rounded-3xl border border-gray-200 bg-white p-6 sm:p-7 shadow-sm"
-      >
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h4 className="text-lg font-semibold text-gray-900">Historial de etiquetas</h4>
-            <p className="text-sm text-gray-600">
-              Revisamos el estado devuelto por n8n y las etiquetas generadas para cada albarán.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleRefreshClick}
-            disabled={loading}
-            className={`inline-flex items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium transition ${
-              loading ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Actualizar
-          </button>
-        </header>
+      {historyDisabled ? (
+        <section className="rounded-3xl border border-gray-200 bg-white p-6 sm:p-7 shadow-sm">
+          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900">Archivos subidos</h4>
+              <p className="text-sm text-gray-600">
+                Mostramos los PDFs almacenados en Supabase
+                {storageBucket ? ` (${storageBucket})` : ''}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleReloadUploads}
+              disabled={uploadsLoading}
+              className={`inline-flex items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium transition ${
+                uploadsLoading ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <RefreshCw className={`h-4 w-4 ${uploadsLoading ? 'animate-spin' : ''}`} />
+              Actualizar
+            </button>
+          </header>
 
-        <div className="mt-5">
-          {historyError ? (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
-              {historyError}
-            </p>
-          ) : loading && data.length === 0 ? (
-            <p className="text-sm text-gray-600 flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Cargando historial desde Supabase…
-            </p>
-          ) : data.length === 0 ? (
-            <p className="text-sm text-gray-600">
-              Aún no hay etiquetas registradas. Sube tu primer albarán en PDF para iniciar el flujo.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-[#FAF9F6] text-gray-500 uppercase tracking-wide text-xs">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Archivo</th>
-                    <th className="px-4 py-3 text-left">Destino</th>
-                    <th className="px-4 py-3 text-left">Estado</th>
-                    <th className="px-4 py-3 text-left">Etiqueta</th>
-                    <th className="px-4 py-3 text-left">Creado</th>
-                    <th className="px-4 py-3 text-left">Actualizado</th>
-                    <th className="px-4 py-3 text-left">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-700">
-                  {data.map((record) => {
-                    const statusMeta = getLabelStatusMeta(record.status)
-                    return (
-                      <tr key={record.id} className="hover:bg-[#FAF9F6] transition">
+          <div className="mt-5">
+            {uploadsError ? (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
+                {uploadsError}
+              </p>
+            ) : uploadsLoading && uploads.length === 0 ? (
+              <p className="text-sm text-gray-600 flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Consultando archivos en Supabase…
+              </p>
+            ) : uploads.length === 0 ? (
+              <p className="text-sm text-gray-600">
+                Aún no subes ningún PDF. Sube tu primer albarán para verlo listado aquí.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-[#FAF9F6] text-gray-500 uppercase tracking-wide text-xs">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Archivo</th>
+                      <th className="px-4 py-3 text-left">Tamaño</th>
+                      <th className="px-4 py-3 text-left">Subido</th>
+                      <th className="px-4 py-3 text-left">Actualizado</th>
+                      <th className="px-4 py-3 text-left">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-gray-700">
+                    {uploads.map((file) => (
+                      <tr key={file.path} className="hover:bg-[#FAF9F6] transition">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <FileText className="h-4 w-4 text-gray-400" />
                             <div>
                               <p className="font-medium text-gray-900 truncate max-w-[220px]">
-                                {record.fileName || 'PDF sin nombre'}
+                                {file.name}
                               </p>
-                              {record.notes && (
-                                <p className="text-xs text-gray-500 mt-0.5">{record.notes}</p>
-                              )}
+                              <p className="text-xs text-gray-500 mt-0.5 break-all">{file.path}</p>
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          {record.destination ?? '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                              statusMeta.tone === 'success'
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : statusMeta.tone === 'error'
-                                ? 'bg-red-50 text-red-700'
-                                : statusMeta.tone === 'pending'
-                                ? 'bg-amber-50 text-amber-800'
-                                : 'bg-sky-50 text-sky-700'
-                            }`}
-                          >
-                            {statusMeta.tone === 'success' && <CheckCircle2 className="h-3.5 w-3.5" />}
-                            {statusMeta.tone === 'error' && <AlertTriangle className="h-3.5 w-3.5" />}
-                            {statusMeta.tone === 'pending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                            {statusMeta.tone === 'info' && <Tag className="h-3.5 w-3.5" />}
-                            {statusMeta.label}
-                          </span>
+                          {file.size != null ? formatBytes(file.size) : '—'}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          {record.labelCode ?? (record.labelUrl ? 'Generada' : '—')}
+                          {formatDateTime(file.createdAt ?? file.updatedAt ?? undefined)}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          {formatDateTime(record.createdAt)}
+                          {file.updatedAt ? formatDateTime(file.updatedAt) : '—'}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          {formatDateTime(record.updatedAt)}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {record.pdfUrl && (
-                              <a
-                                href={record.pdfUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
-                              >
-                                <FileText className="h-3.5 w-3.5" />
-                                Ver PDF
-                              </a>
-                            )}
-                            {record.labelUrl && (
-                              <a
-                                href={record.labelUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100"
-                              >
-                                <Tag className="h-3.5 w-3.5" />
-                                Descargar etiqueta
-                              </a>
-                            )}
-                          </div>
+                          {file.publicUrl ? (
+                            <a
+                              href={file.publicUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-gray-700 hover:text-gray-900"
+                            >
+                              Abrir
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            </a>
+                          ) : (
+                            '—'
+                          )}
                         </td>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : (
+        <section
+          id="historial-etiquetas"
+          className="rounded-3xl border border-gray-200 bg-white p-6 sm:p-7 shadow-sm"
+        >
+          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900">Historial de etiquetas</h4>
+              <p className="text-sm text-gray-600">
+                Revisamos el estado devuelto por n8n y las etiquetas generadas para cada albarán.
+              </p>
             </div>
-          )}
-        </div>
-      </section>
+            <button
+              type="button"
+              onClick={handleRefreshClick}
+              disabled={loading}
+              className={`inline-flex items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium transition ${
+                loading ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Actualizar
+            </button>
+          </header>
+
+          <div className="mt-5">
+            {historyError ? (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
+                {historyError}
+              </p>
+            ) : loading && data.length === 0 ? (
+              <p className="text-sm text-gray-600 flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Cargando historial desde Supabase…
+              </p>
+            ) : data.length === 0 ? (
+              <p className="text-sm text-gray-600">
+                Aún no hay etiquetas registradas. Sube tu primer albarán en PDF para iniciar el flujo.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-[#FAF9F6] text-gray-500 uppercase tracking-wide text-xs">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Archivo</th>
+                      <th className="px-4 py-3 text-left">Destino</th>
+                      <th className="px-4 py-3 text-left">Estado</th>
+                      <th className="px-4 py-3 text-left">Etiqueta</th>
+                      <th className="px-4 py-3 text-left">Creado</th>
+                      <th className="px-4 py-3 text-left">Actualizado</th>
+                      <th className="px-4 py-3 text-left">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-gray-700">
+                    {data.map((record) => {
+                      const statusMeta = getLabelStatusMeta(record.status)
+                      return (
+                        <tr key={record.id} className="hover:bg-[#FAF9F6] transition">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-gray-400" />
+                              <div>
+                                <p className="font-medium text-gray-900 truncate max-w-[220px]">
+                                  {record.fileName || 'PDF sin nombre'}
+                                </p>
+                                {record.notes && (
+                                  <p className="text-xs text-gray-500 mt-0.5">{record.notes}</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {record.destination ?? '—'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                                statusMeta.tone === 'success'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : statusMeta.tone === 'error'
+                                  ? 'bg-red-50 text-red-700'
+                                  : statusMeta.tone === 'pending'
+                                  ? 'bg-amber-50 text-amber-800'
+                                  : 'bg-sky-50 text-sky-700'
+                              }`}
+                            >
+                              {statusMeta.tone === 'success' && <CheckCircle2 className="h-3.5 w-3.5" />}
+                              {statusMeta.tone === 'error' && <AlertTriangle className="h-3.5 w-3.5" />}
+                              {statusMeta.tone === 'pending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                              {statusMeta.tone === 'info' && <Tag className="h-3.5 w-3.5" />}
+                              {statusMeta.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {record.labelCode ?? (record.labelUrl ? 'Generada' : '—')}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {formatDateTime(record.createdAt)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {formatDateTime(record.updatedAt)}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {record.pdfUrl && (
+                                <a
+                                  href={record.pdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+                                >
+                                  <FileText className="h-3.5 w-3.5" />
+                                  Ver PDF
+                                </a>
+                              )}
+                              {record.labelUrl && (
+                                <a
+                                  href={record.labelUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100"
+                                >
+                                  <Tag className="h-3.5 w-3.5" />
+                                  Descargar etiqueta
+                                </a>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   )
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return `${bytes} B`
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / Math.pow(1024, index)
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
 }
 
 function getLabelStatusMeta(status?: string | null): { label: string; tone: LabelStatusTone } {
@@ -1741,6 +2002,42 @@ function CTASection({ detail }: { detail: AutomationDetail }) {
       </div>
     </section>
   )
+}
+
+function getDatasetFilters(
+  dataset: PanelPlanDatasetConfig | undefined,
+  user: User | null,
+  userEmail: string,
+): Array<{ column: string; value: string }> {
+  const filters: Array<{ column: string; value: string }> = []
+  if (!dataset) {
+    return filters
+  }
+
+  if (dataset.emailColumn && userEmail) {
+    filters.push({ column: dataset.emailColumn, value: userEmail })
+  }
+
+  if (dataset.userIdColumn && user?.id) {
+    filters.push({ column: dataset.userIdColumn, value: user.id })
+  }
+
+  return filters
+}
+
+function buildRealtimeFilter(
+  filters: Array<{ column: string; value: string }>,
+): string | undefined {
+  if (!filters || filters.length === 0) {
+    return undefined
+  }
+
+  const { column, value } = filters[0] ?? {}
+  if (!column || typeof value === 'undefined' || value === null) {
+    return undefined
+  }
+
+  return `${column}=eq.${value}`
 }
 
 const ORDER_FALLBACK_COLUMNS = [
