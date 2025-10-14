@@ -4,6 +4,7 @@ import {
   listFilesFromDrive,
   uploadFileToDrive,
 } from '@/server/google-drive'
+import { processLabelAutomation } from '@/server/label-automation'
 
 export const runtime = 'nodejs'
 
@@ -24,6 +25,12 @@ function getFolderId(request: NextRequest, formData?: FormData) {
     )
   }
   return candidate
+}
+
+function getOptionalString(value: FormDataEntryValue | null): string | null {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  return text.length > 0 ? text : null
 }
 
 export async function GET(request: NextRequest) {
@@ -55,12 +62,32 @@ export async function POST(request: NextRequest) {
 
     const destination = formData.get('destination')
     const notes = formData.get('notes')
+    const manualLote = formData.get('manualLote')
+    const manualFechaEnvasado = formData.get('manualFechaEnvasado')
+    const manualCodigoCoc = formData.get('manualCodigoCoc')
+    const manualCodigoR = formData.get('manualCodigoR')
+    const userEmailValue = formData.get('userEmail')
+    const manualFields = {
+      lote: getOptionalString(manualLote),
+      fechaEnvasado: getOptionalString(manualFechaEnvasado),
+      codigoCoc: getOptionalString(manualCodigoCoc),
+      codigoR: getOptionalString(manualCodigoR),
+    }
     const metadata = {
       destination: destination ? String(destination) : undefined,
       notes: notes ? String(notes) : undefined,
+      userEmail: userEmailValue ? String(userEmailValue) : undefined,
+      manualFields,
     }
     const description =
-      metadata.destination || metadata.notes ? JSON.stringify(metadata) : undefined
+      metadata.destination ||
+      metadata.notes ||
+      manualFields.lote ||
+      manualFields.fechaEnvasado ||
+      manualFields.codigoCoc ||
+      manualFields.codigoR
+        ? JSON.stringify(metadata)
+        : undefined
 
     const uploaded = await uploadFileToDrive({
       folderId,
@@ -70,7 +97,40 @@ export async function POST(request: NextRequest) {
       description,
     })
 
-    return NextResponse.json({ file: uploaded })
+    let automation: unknown = null
+    let automationError: string | null = null
+
+    const driveFileId = typeof uploaded.id === 'string' ? uploaded.id : null
+    if (driveFileId) {
+      try {
+        automation = await processLabelAutomation({
+          fileId: driveFileId,
+          fileName: uploaded.name ?? file.name,
+          existingDescription: description ?? null,
+          destination:
+            typeof metadata.destination === 'string' && metadata.destination.length > 0
+              ? metadata.destination
+              : null,
+          notes:
+            typeof metadata.notes === 'string' && metadata.notes.length > 0
+              ? metadata.notes
+              : null,
+          folderId,
+          templatePath: process.env.LABEL_TEMPLATE_PATH ?? null,
+          manualFields,
+        })
+      } catch (error) {
+        automationError =
+          error instanceof Error
+            ? error.message
+            : 'No se pudo completar la automatización de etiquetas.'
+        console.error('[storage/uploads] Error al procesar la automatización de etiquetas:', error)
+      }
+    } else {
+      automationError = 'No se pudo identificar el archivo subido en Google Drive para automatizarlo.'
+    }
+
+    return NextResponse.json({ file: uploaded, automation, automationError })
   } catch (error) {
     const message =
       error instanceof Error

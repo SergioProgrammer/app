@@ -90,6 +90,33 @@ interface LabelRecord {
 interface LabelUploadMeta {
   destination?: string
   notes?: string
+  lote?: string
+  fechaEnvasado?: string
+  codigoCoc?: string
+  codigoR?: string
+}
+
+interface UploadedFileAutomationFields {
+  fechaEnvasado?: string | null
+  lote?: string | null
+  codigoCoc?: string | null
+  codigoR?: string | null
+}
+
+interface UploadedFileAutomation {
+  status: 'completed' | 'error'
+  processedAt: string
+  templateKey?: string | null
+  confidence?: number | null
+  fields?: UploadedFileAutomationFields
+  model?: string | null
+  notes?: string | null
+  error?: string | null
+  labelFileId?: string | null
+  labelFileName?: string | null
+  labelWebViewLink?: string | null
+  labelWebContentLink?: string | null
+  raw?: unknown
 }
 
 interface UploadedFileRecord {
@@ -103,6 +130,8 @@ interface UploadedFileRecord {
   destination?: string | null
   notes?: string | null
   mimeType?: string | null
+  automation?: UploadedFileAutomation | null
+  generatedFromFileId?: string | null
 }
 
 type LabelStatusTone = 'pending' | 'success' | 'error' | 'info'
@@ -607,6 +636,8 @@ export default function PanelPage() {
 
             let destination: string | null = null
             let notes: string | null = null
+            let automation: UploadedFileAutomation | null = null
+            let generatedFromFileId: string | null = null
             if (typeof file.description === 'string' && file.description.trim().length > 0) {
               try {
                 const parsed = JSON.parse(file.description)
@@ -616,6 +647,93 @@ export default function PanelPage() {
                   }
                   if (typeof parsed.notes === 'string') {
                     notes = parsed.notes
+                  }
+                  if (parsed.automation && typeof parsed.automation === 'object') {
+                    const automationPayload = parsed.automation as Record<string, unknown>
+                    const status = automationPayload.status
+                    const processedAtValue = automationPayload.processedAt
+                    if (
+                      (status === 'completed' || status === 'error') &&
+                      (typeof processedAtValue === 'string' || processedAtValue instanceof Date)
+                    ) {
+                      const fieldsPayload =
+                        automationPayload.fields && typeof automationPayload.fields === 'object'
+                          ? (automationPayload.fields as Record<string, unknown>)
+                          : null
+
+                      const processedAt =
+                        processedAtValue instanceof Date
+                          ? processedAtValue.toISOString()
+                          : typeof processedAtValue === 'string'
+                          ? processedAtValue
+                          : new Date().toISOString()
+
+                      automation = {
+                        status,
+                        processedAt,
+                        templateKey:
+                          typeof automationPayload.templateKey === 'string'
+                            ? automationPayload.templateKey
+                            : null,
+                        confidence:
+                          typeof automationPayload.confidence === 'number'
+                            ? automationPayload.confidence
+                            : null,
+                        model:
+                          typeof automationPayload.model === 'string'
+                            ? automationPayload.model
+                            : null,
+                        notes:
+                          typeof automationPayload.notes === 'string'
+                            ? automationPayload.notes
+                            : null,
+                        error:
+                          typeof automationPayload.error === 'string'
+                            ? automationPayload.error
+                            : null,
+                        labelFileId:
+                          typeof automationPayload.labelFileId === 'string'
+                            ? automationPayload.labelFileId
+                            : null,
+                        labelFileName:
+                          typeof automationPayload.labelFileName === 'string'
+                            ? automationPayload.labelFileName
+                            : null,
+                        labelWebViewLink:
+                          typeof automationPayload.labelWebViewLink === 'string'
+                            ? automationPayload.labelWebViewLink
+                            : null,
+                        labelWebContentLink:
+                          typeof automationPayload.labelWebContentLink === 'string'
+                            ? automationPayload.labelWebContentLink
+                            : null,
+                        raw: automationPayload.raw,
+                      }
+
+                      if (fieldsPayload) {
+                        automation.fields = {
+                          fechaEnvasado:
+                            typeof fieldsPayload.fechaEnvasado === 'string'
+                              ? fieldsPayload.fechaEnvasado
+                              : null,
+                          lote:
+                            typeof fieldsPayload.lote === 'string'
+                              ? fieldsPayload.lote
+                              : null,
+                          codigoCoc:
+                            typeof fieldsPayload.codigoCoc === 'string'
+                              ? fieldsPayload.codigoCoc
+                              : null,
+                          codigoR:
+                            typeof fieldsPayload.codigoR === 'string'
+                              ? fieldsPayload.codigoR
+                              : null,
+                        }
+                      }
+                    }
+                    }
+                  if (typeof parsed.generatedFromFileId === 'string') {
+                    generatedFromFileId = parsed.generatedFromFileId
                   }
                 }
               } catch {
@@ -637,17 +755,30 @@ export default function PanelPage() {
               updatedAt: file.updatedAt ?? null,
               publicUrl,
               mimeType,
+              generatedFromFileId,
             }
 
             if (destination || notes) {
               record.destination = destination
               record.notes = notes
             }
+            if (generatedFromFileId) {
+              record.generatedFromFileId = generatedFromFileId
+              if (!record.notes) {
+                record.notes = 'Generada automáticamente desde el albarán original.'
+              } else if (!record.notes.includes('Generada automáticamente')) {
+                record.notes = `${record.notes} (Generada automáticamente)`
+              }
+            }
+            if (automation) {
+              record.automation = automation
+            }
 
             return record
           })
 
-        setUploadedFiles(mapped)
+        const filtered = mapped.filter((record) => !record.generatedFromFileId)
+        setUploadedFiles(filtered)
         setUploadedFilesFolder(configuredFolder)
       } catch (error) {
         setUploadedFilesError((error as Error).message)
@@ -970,14 +1101,47 @@ export default function PanelPage() {
         if (meta?.notes) {
           formData.append('notes', meta.notes)
         }
+        if (meta?.lote) {
+          formData.append('manualLote', meta.lote)
+        }
+        if (meta?.fechaEnvasado) {
+          formData.append('manualFechaEnvasado', meta.fechaEnvasado)
+        }
+        if (meta?.codigoCoc) {
+          formData.append('manualCodigoCoc', meta.codigoCoc)
+        }
+        if (meta?.codigoR) {
+          formData.append('manualCodigoR', meta.codigoR)
+        }
+        if (userEmail.length > 0) {
+          formData.append('userEmail', userEmail)
+        }
 
         const response = await fetch('/api/storage/uploads', {
           method: 'POST',
           body: formData,
         })
 
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string
+          automationError?: string | null
+          automation?:
+            | {
+                status?: string
+                fields?: {
+                  fechaEnvasado?: string | null
+                  lote?: string | null
+                  codigoCoc?: string | null
+                  codigoR?: string | null
+                }
+                labelFileName?: string | null
+                labelWebViewLink?: string | null
+                labelWebContentLink?: string | null
+              }
+            | null
+        }
+
         if (!response.ok) {
-          const body = await response.json().catch(() => ({}))
           const message =
             typeof body.error === 'string'
               ? body.error
@@ -985,7 +1149,61 @@ export default function PanelPage() {
           throw new Error(message)
         }
 
-        setLabelUploadMessage(`Archivo "${fileName}" subido correctamente.`)
+        const automationError =
+          typeof body.automationError === 'string' && body.automationError.trim().length > 0
+            ? body.automationError.trim()
+            : null
+        const automationFields = body.automation?.fields ?? null
+        const automationLabelName =
+          typeof body.automation?.labelFileName === 'string' &&
+          body.automation.labelFileName.trim().length > 0
+            ? body.automation.labelFileName.trim()
+            : null
+        const automationLabelLink =
+          typeof body.automation?.labelWebViewLink === 'string' &&
+          body.automation.labelWebViewLink.trim().length > 0
+            ? body.automation.labelWebViewLink.trim()
+            : typeof body.automation?.labelWebContentLink === 'string' &&
+              body.automation.labelWebContentLink.trim().length > 0
+            ? body.automation.labelWebContentLink.trim()
+            : null
+
+        if (automationError) {
+          setLabelUploadMessage(
+            `Archivo "${fileName}" subido, pero la automatización falló: ${automationError}`,
+          )
+        } else {
+          const extractedParts = automationFields
+            ? [
+                automationFields.fechaEnvasado
+                  ? `Envasado: ${automationFields.fechaEnvasado}`
+                  : null,
+                automationFields.lote ? `Lote: ${automationFields.lote}` : null,
+                automationFields.codigoCoc ? `COC: ${automationFields.codigoCoc}` : null,
+                automationFields.codigoR ? `R: ${automationFields.codigoR}` : null,
+              ].filter((part): part is string => typeof part === 'string' && part.length > 0)
+            : []
+
+          const extractedMessage = automationFields
+            ? extractedParts.length > 0
+              ? `Datos extraídos → ${extractedParts.join(' · ')}.`
+              : 'No se detectaron datos en la etiqueta.'
+            : null
+
+          if (automationLabelName || automationLabelLink) {
+            const segments = [
+              `Archivo "${fileName}" subido.`,
+              extractedMessage,
+              `Etiqueta PDF generada: ${automationLabelName ?? 'consulta el historial'}.`,
+            ].filter((segment): segment is string => typeof segment === 'string' && segment.length > 0)
+
+            setLabelUploadMessage(segments.join(' '))
+          } else if (extractedMessage) {
+            setLabelUploadMessage(`Archivo "${fileName}" subido. ${extractedMessage}`)
+          } else {
+            setLabelUploadMessage(`Archivo "${fileName}" subido correctamente.`)
+          }
+        }
         setUploadedFilesMessage(`Archivo añadido al historial: ${fileName}`)
         await loadUploadedFiles({ silent: true })
       } catch (error) {
@@ -994,7 +1212,7 @@ export default function PanelPage() {
         setLabelUploadLoading(false)
       }
     },
-    [labelsPlan, loadUploadedFiles, user],
+    [labelsPlan, loadUploadedFiles, user, userEmail],
   )
 
   const handleDeleteUploadedFile = useCallback(
@@ -1446,7 +1664,50 @@ function LabelsDashboard({
   const [destination, setDestination] = useState('')
   const [notes, setNotes] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
+  const [manualLote, setManualLote] = useState('')
+  const [manualFechaEnvasado, setManualFechaEnvasado] = useState('')
+  const [manualCodigoCoc, setManualCodigoCoc] = useState('')
+  const [manualCodigoR, setManualCodigoR] = useState('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const stored = window.localStorage.getItem('labels:manual-fields')
+      if (!stored) return
+      const parsed = JSON.parse(stored) as Partial<LabelUploadMeta>
+      if (typeof parsed?.lote === 'string') {
+        setManualLote(parsed.lote)
+      }
+      if (typeof parsed?.fechaEnvasado === 'string') {
+        setManualFechaEnvasado(parsed.fechaEnvasado)
+      }
+      if (typeof parsed?.codigoCoc === 'string') {
+        setManualCodigoCoc(parsed.codigoCoc)
+      }
+      if (typeof parsed?.codigoR === 'string') {
+        setManualCodigoR(parsed.codigoR)
+      }
+    } catch {
+      // ignore malformed storage values
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const payload: LabelUploadMeta = {
+      lote: manualLote,
+      fechaEnvasado: manualFechaEnvasado,
+      codigoCoc: manualCodigoCoc,
+      codigoR: manualCodigoR,
+    }
+    try {
+      window.localStorage.setItem('labels:manual-fields', JSON.stringify(payload))
+    } catch {
+      // ignore storage quota issues
+    }
+  }, [manualCodigoCoc, manualCodigoR, manualFechaEnvasado, manualLote])
+
 
   const resetForm = useCallback(() => {
     setFile(null)
@@ -1488,10 +1749,31 @@ function LabelsDashboard({
       if (notes.trim().length > 0) {
         meta.notes = notes.trim()
       }
+      if (manualLote.trim().length > 0) {
+        meta.lote = manualLote.trim()
+      }
+      if (manualFechaEnvasado.trim().length > 0) {
+        meta.fechaEnvasado = manualFechaEnvasado.trim()
+      }
+      if (manualCodigoCoc.trim().length > 0) {
+        meta.codigoCoc = manualCodigoCoc.trim()
+      }
+      if (manualCodigoR.trim().length > 0) {
+        meta.codigoR = manualCodigoR.trim()
+      }
 
       await onUpload(file, meta)
     },
-    [destination, file, notes, onUpload],
+    [
+      destination,
+      file,
+      manualCodigoCoc,
+      manualCodigoR,
+      manualFechaEnvasado,
+      manualLote,
+      notes,
+      onUpload,
+    ],
   )
 
   const combinedError = localError ?? formError
@@ -1586,6 +1868,60 @@ function LabelsDashboard({
                 </div>
               </div>
 
+              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 sm:px-5 sm:py-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Datos manuales para la etiqueta
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Estos valores se aplicarán a todas las etiquetas generadas hasta que los cambies.
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500">Lote</label>
+                    <input
+                      type="text"
+                      value={manualLote}
+                      onChange={(event) => setManualLote(event.target.value)}
+                      placeholder="Ej. LOTE-20241014-01"
+                      disabled={uploading}
+                      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500">Fecha de envasado</label>
+                    <input
+                      type="date"
+                      value={manualFechaEnvasado}
+                      onChange={(event) => setManualFechaEnvasado(event.target.value)}
+                      disabled={uploading}
+                      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500">Código COC</label>
+                    <input
+                      type="text"
+                      value={manualCodigoCoc}
+                      onChange={(event) => setManualCodigoCoc(event.target.value)}
+                      placeholder="Ej. COC 123456"
+                      disabled={uploading}
+                      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500">Código R</label>
+                    <input
+                      type="text"
+                      value={manualCodigoR}
+                      onChange={(event) => setManualCodigoR(event.target.value)}
+                      placeholder="Ej. R-123456"
+                      disabled={uploading}
+                      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {combinedError && (
                 <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
                   {combinedError}
@@ -1663,6 +1999,14 @@ function LabelsDashboard({
                   <tbody className="divide-y divide-gray-100 text-gray-700">
                     {uploads.map((file) => {
                       const isDeleting = uploadsDeletingId === file.id
+                      const automation = file.automation ?? null
+                      const automationStatusLabel =
+                        automation?.status === 'completed'
+                          ? 'Automatización completada'
+                          : automation?.status === 'error'
+                          ? 'Automatización con errores'
+                          : null
+                      const extractedFields = automation?.fields ?? null
                       return (
                         <tr key={file.id} className="hover:bg-[#FAF9F6] transition">
                           <td className="px-4 py-3">
@@ -1683,6 +2027,92 @@ function LabelsDashboard({
                                     Notas: {file.notes}
                                   </p>
                                 )}
+                                {file.generatedFromFileId && (
+                                  <p className="text-xs text-gray-400 mt-0.5">
+                                    Origen: {formatShortId(file.generatedFromFileId)}
+                                  </p>
+                                )}
+                                {automation && (
+                                  <div className="mt-2 space-y-1">
+                                    {automationStatusLabel && (
+                                      <p
+                                        className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ${
+                                          automation.status === 'completed'
+                                            ? 'bg-emerald-50 text-emerald-700'
+                                            : 'bg-amber-50 text-amber-700'
+                                        }`}
+                                      >
+                                        {automationStatusLabel}
+                                        {typeof automation.confidence === 'number' && (
+                                          <span className="text-[10px] uppercase tracking-wide">
+                                            Confianza {Math.round(automation.confidence * 100)}%
+                                          </span>
+                                        )}
+                                      </p>
+                                    )}
+                                    <div className="text-xs text-gray-500 space-y-0.5">
+                                      {automation.templateKey && (
+                                        <p>Plantilla detectada: {automation.templateKey}</p>
+                                      )}
+                                      {extractedFields &&
+                                        (extractedFields.fechaEnvasado ||
+                                          extractedFields.lote ||
+                                          extractedFields.codigoCoc ||
+                                          extractedFields.codigoR) && (
+                                          <p className="flex flex-wrap gap-2">
+                                            {extractedFields.fechaEnvasado && (
+                                              <span className="inline-flex items-center rounded-full bg-gray-200/70 px-2 py-0.5">
+                                                Envasado {extractedFields.fechaEnvasado}
+                                              </span>
+                                            )}
+                                            {extractedFields.lote && (
+                                              <span className="inline-flex items-center rounded-full bg-gray-200/70 px-2 py-0.5">
+                                                Lote {extractedFields.lote}
+                                              </span>
+                                            )}
+                                            {extractedFields.codigoCoc && (
+                                              <span className="inline-flex items-center rounded-full bg-gray-200/70 px-2 py-0.5">
+                                                COC {extractedFields.codigoCoc}
+                                              </span>
+                                            )}
+                                            {extractedFields.codigoR && (
+                                              <span className="inline-flex items-center rounded-full bg-gray-200/70 px-2 py-0.5">
+                                                R {extractedFields.codigoR}
+                                              </span>
+                                            )}
+                                          </p>
+                                        )}
+                                      {automation.error && (
+                                        <p className="text-red-600">
+                                          Error: {automation.error}
+                                        </p>
+                                      )}
+                                      {automation.notes && (
+                                        <p className="italic">Notas: {automation.notes}</p>
+                                      )}
+                                      {(automation.labelWebViewLink ||
+                                        automation.labelWebContentLink) && (
+                                        <p className="pt-0.5">
+                                          <a
+                                            href={
+                                              automation.labelWebViewLink ??
+                                              automation.labelWebContentLink ??
+                                              '#'
+                                            }
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 text-gray-700 hover:text-gray-900 underline"
+                                          >
+                                            Ver etiqueta generada
+                                            {automation.labelFileName
+                                              ? ` (${automation.labelFileName})`
+                                              : ''}
+                                          </a>
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -1697,24 +2127,45 @@ function LabelsDashboard({
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600">
                             <div className="flex flex-wrap items-center gap-2">
-                              {file.publicUrl ? (
-                                <a
-                                  href={file.publicUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-gray-700 hover:text-gray-900"
-                                >
-                                  Abrir
-                                  <ChevronRight className="h-3.5 w-3.5" />
-                                </a>
+                              {(file.publicUrl || automation?.labelWebViewLink || automation?.labelWebContentLink) ? (
+                                <details className="relative group">
+                                  <summary className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 cursor-pointer list-none">
+                                    Abrir
+                                    <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+                                  </summary>
+                                  <div className="absolute right-0 z-20 mt-2 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                                    {file.publicUrl ? (
+                                      <a
+                                        href={file.publicUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                      >
+                                        Pedido original
+                                        <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
+                                      </a>
+                                    ) : null}
+                                    {automation?.labelWebViewLink || automation?.labelWebContentLink ? (
+                                      <a
+                                        href={automation.labelWebViewLink ?? automation.labelWebContentLink ?? '#'}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                      >
+                                        PDF etiqueta
+                                        <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                </details>
                               ) : (
                                 <span className="text-gray-400">Sin enlace</span>
                               )}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteUpload(file)}
-                                disabled={isDeleting}
-                                className={`inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium transition ${
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUpload(file)}
+                          disabled={isDeleting}
+                          className={`inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium transition ${
                                   isDeleting
                                     ? 'cursor-not-allowed text-gray-400 bg-gray-100'
                                     : 'text-gray-700 hover:bg-gray-100'
@@ -1887,6 +2338,13 @@ function formatBytes(bytes: number): string {
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   const value = bytes / Math.pow(1024, index)
   return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
+}
+
+function formatShortId(value?: string | null): string {
+  if (!value) return ''
+  const trimmed = value.trim()
+  if (trimmed.length <= 10) return trimmed
+  return `…${trimmed.slice(-8)}`
 }
 
 function getLabelStatusMeta(status?: string | null): { label: string; tone: LabelStatusTone } {

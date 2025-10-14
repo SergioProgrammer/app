@@ -1,5 +1,6 @@
 import { google, type drive_v3 } from 'googleapis'
 import { Readable } from 'node:stream'
+import type { Readable as NodeReadable } from 'node:stream'
 
 let cachedDrive: drive_v3.Drive | null = null
 
@@ -132,5 +133,57 @@ export async function deleteFileFromDrive(fileId: string) {
   await drive.files.delete({
     fileId,
     supportsAllDrives: true,
+  })
+}
+
+export async function downloadDriveFile(fileId: string) {
+  const drive = getDrive()
+
+  const [metaResponse, fileResponse] = await Promise.all([
+    drive.files.get({
+      fileId,
+      fields: 'mimeType',
+      supportsAllDrives: true,
+    }),
+    drive.files.get(
+      {
+        fileId,
+        alt: 'media',
+        supportsAllDrives: true,
+      },
+      { responseType: 'stream' },
+    ),
+  ])
+
+  const stream = fileResponse.data as NodeReadable
+  const buffer = await streamToBuffer(stream)
+
+  return {
+    buffer,
+    detectedMimeType:
+      typeof metaResponse.data.mimeType === 'string' ? metaResponse.data.mimeType : null,
+  }
+}
+
+export async function updateDriveFileMetadata(
+  fileId: string,
+  requestBody: drive_v3.Schema$File,
+): Promise<void> {
+  const drive = getDrive()
+  await drive.files.update({
+    fileId,
+    supportsAllDrives: true,
+    requestBody,
+  })
+}
+
+async function streamToBuffer(stream: NodeReadable): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  return new Promise<Buffer>((resolve, reject) => {
+    stream.on('data', (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    })
+    stream.on('end', () => resolve(Buffer.concat(chunks)))
+    stream.on('error', (error) => reject(error))
   })
 }
