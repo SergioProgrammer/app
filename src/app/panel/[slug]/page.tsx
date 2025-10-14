@@ -25,6 +25,7 @@ import {
   Settings,
   Sprout,
   Tag,
+  Trash2,
   UploadCloud,
   Workflow,
 } from 'lucide-react'
@@ -92,12 +93,15 @@ interface LabelUploadMeta {
 }
 
 interface UploadedFileRecord {
+  id: string
   name: string
   path: string
   size?: number | null
   createdAt?: string | null
   updatedAt?: string | null
   publicUrl?: string | null
+  destination?: string | null
+  notes?: string | null
 }
 
 type LabelStatusTone = 'pending' | 'success' | 'error' | 'info'
@@ -107,11 +111,6 @@ type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
 const TURNOS_RECENT_LIMIT = 8
 const TURNOS_FETCH_LIMIT = 32
 const LABELS_FETCH_LIMIT = 100
-const DEFAULT_LABELS_STORAGE_BUCKET =
-  process.env.NEXT_PUBLIC_SUPABASE_LABELS_BUCKET ??
-  process.env.NEXT_PUBLIC_LABELS_BUCKET ??
-  'albaranes_1'
-
 export default function PanelPage() {
   const params = useParams<{ slug: string }>()
   const rawSlug =
@@ -143,6 +142,9 @@ export default function PanelPage() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileRecord[]>([])
   const [uploadedFilesLoading, setUploadedFilesLoading] = useState(false)
   const [uploadedFilesError, setUploadedFilesError] = useState<string | null>(null)
+  const [uploadedFilesMessage, setUploadedFilesMessage] = useState<string | null>(null)
+  const [uploadedFilesDeletingId, setUploadedFilesDeletingId] = useState<string | null>(null)
+  const [uploadedFilesFolder, setUploadedFilesFolder] = useState<string | null>(null)
   const userEmail = user?.email ?? ''
   const userDisplayName = useMemo(() => {
     const atIndex = userEmail.indexOf('@')
@@ -228,7 +230,6 @@ export default function PanelPage() {
     [activePlans],
   )
   const labelsHistoryDisabled = labelsPlan?.dataset?.historyDisabled ?? false
-  const labelsStorageBucket = labelsPlan?.dataset?.storageBucket ?? DEFAULT_LABELS_STORAGE_BUCKET
 
   useEffect(() => {
     const dataset = turnosPlan?.dataset
@@ -540,8 +541,12 @@ export default function PanelPage() {
 
       const silent = options?.silent ?? false
       const dataset = labelsPlan.dataset
-      const storageBucket = dataset.storageBucket ?? DEFAULT_LABELS_STORAGE_BUCKET
-      const folder = user.id ?? 'anon'
+      const normalizeFolder = (value: string): string =>
+        value.trim().replace(/^\/+/, '').replace(/\/+$/, '')
+      const configuredFolder =
+        typeof dataset.storageFolder === 'string' && dataset.storageFolder.length > 0
+          ? normalizeFolder(dataset.storageFolder)
+          : ''
 
       if (!silent) {
         setUploadedFilesLoading(true)
@@ -549,61 +554,108 @@ export default function PanelPage() {
       setUploadedFilesError(null)
 
       try {
-        const { data, error } = await supabase.storage
-          .from(storageBucket)
-          .list(folder, {
-            limit: LABELS_FETCH_LIMIT,
-            sortBy: { column: 'created_at', order: 'desc' },
-          })
+        const params = new URLSearchParams()
+        if (configuredFolder) {
+          params.set('folder', configuredFolder)
+        }
 
-        if (error) {
-          const message = error.message ?? 'No se pudieron obtener los archivos subidos.'
-          if (message.toLowerCase().includes('not found')) {
-            setUploadedFiles([])
-            setUploadedFilesError(null)
-            return
-          }
+        const query = params.toString()
+        const response = await fetch(`/api/storage/uploads${query ? `?${query}` : ''}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        })
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}))
+          const message =
+            typeof body.error === 'string'
+              ? body.error
+              : 'No se pudieron obtener los archivos almacenados.'
           throw new Error(message)
         }
 
-        const items = (data ?? []).filter((item): item is typeof data[number] => Boolean(item?.name))
+        const body = (await response.json().catch(() => ({}))) as {
+          files?: Array<{
+            id?: string
+            name?: string
+            size?: number | string | null
+            createdAt?: string | null
+            updatedAt?: string | null
+            webViewLink?: string | null
+            webContentLink?: string | null
+            description?: string | null
+          }>
+        }
 
-        const mapped = await Promise.all(
-          items.map(async (item) => {
-            const parseSize = (value: unknown): number | null =>
-              typeof value === 'number' && Number.isFinite(value) ? value : null
+        const files = Array.isArray(body.files) ? body.files : []
+        const mapped = files
+          .filter((file) => typeof file?.id === 'string' && (file?.name?.length ?? 0) > 0)
+          .map<UploadedFileRecord>((file) => {
+            const id = file.id as string
+            const name = file.name as string
+            const sizeValue = file.size
+            const size =
+              typeof sizeValue === 'number'
+                ? sizeValue
+                : typeof sizeValue === 'string'
+                ? Number(sizeValue)
+                : null
+            const publicUrl = file.webViewLink ?? file.webContentLink ?? null
 
-            const metadata = item.metadata as Record<string, unknown> | null
-            const metadataSize = parseSize(metadata?.size)
-            const fallbackSize =
-              'size' in item ? parseSize((item as { size?: unknown }).size) : null
-            const size = metadataSize ?? fallbackSize ?? null
+            let destination: string | null = null
+            let notes: string | null = null
+            if (typeof file.description === 'string' && file.description.trim().length > 0) {
+              try {
+                const parsed = JSON.parse(file.description)
+                if (parsed && typeof parsed === 'object') {
+                  if (typeof parsed.destination === 'string') {
+                    destination = parsed.destination
+                  }
+                  if (typeof parsed.notes === 'string') {
+                    notes = parsed.notes
+                  }
+                }
+              } catch {
+                // ignore malformed description payloads
+              }
+            }
 
-            const path = `${folder}/${item.name}`
-            const { data: urlData } = supabase.storage.from(storageBucket).getPublicUrl(path)
+            const path =
+              configuredFolder && configuredFolder.length > 0
+                ? `${configuredFolder}/${name}`
+                : name
 
-            return {
-              name: item.name,
+            const record: UploadedFileRecord = {
+              id,
+              name,
               path,
               size,
-              createdAt: item.created_at ?? null,
-              updatedAt: item.updated_at ?? null,
-              publicUrl: urlData?.publicUrl ?? null,
+              createdAt: file.createdAt ?? null,
+              updatedAt: file.updatedAt ?? null,
+              publicUrl,
             }
-          }),
-        )
+
+            if (destination || notes) {
+              record.destination = destination
+              record.notes = notes
+            }
+
+            return record
+          })
 
         setUploadedFiles(mapped)
+        setUploadedFilesFolder(configuredFolder)
       } catch (error) {
         setUploadedFilesError((error as Error).message)
         setUploadedFiles([])
+        setUploadedFilesFolder(configuredFolder || null)
       } finally {
         if (!silent) {
           setUploadedFilesLoading(false)
         }
       }
     },
-    [labelsPlan, supabase, user],
+    [labelsPlan, user],
   )
 
   useEffect(() => {
@@ -655,6 +707,9 @@ export default function PanelPage() {
     if (!labelsPlan?.dataset || !user) {
       setUploadedFiles([])
       setUploadedFilesError(null)
+      setUploadedFilesMessage(null)
+      setUploadedFilesDeletingId(null)
+      setUploadedFilesFolder(null)
       return
     }
     loadUploadedFiles()
@@ -855,13 +910,11 @@ export default function PanelPage() {
   )
 
   const handleUploadLabel = useCallback(
-    async (file: File, _meta?: LabelUploadMeta) => {
+    async (file: File, meta?: LabelUploadMeta) => {
       if (!labelsPlan?.dataset || !user) {
         setLabelUploadError('No encontramos la configuración de etiquetas. Vuelve a iniciar sesión.')
         return
       }
-
-      void _meta
 
       if (!file) {
         setLabelUploadError('Selecciona un archivo PDF para subirlo.')
@@ -876,44 +929,42 @@ export default function PanelPage() {
 
       setLabelUploadError(null)
       setLabelUploadMessage(null)
+      setUploadedFilesMessage(null)
       setLabelUploadLoading(true)
 
       try {
         const dataset = labelsPlan.dataset
-        const storageBucket = dataset.storageBucket ?? DEFAULT_LABELS_STORAGE_BUCKET
-        const sanitizedName = fileName.replace(/\s+/g, '-')
-        const storagePath = `${user.id ?? 'anon'}/${Date.now()}-${sanitizedName}`
+        const folderId =
+          typeof dataset.storageFolder === 'string' ? dataset.storageFolder.trim() : ''
 
-        const { error: uploadError } = await supabase.storage
-          .from(storageBucket)
-          .upload(storagePath, file, {
-            cacheControl: '3600',
-            upsert: false,
-            contentType: file.type || 'application/pdf',
-          })
-
-        if (uploadError) {
-          const reason = uploadError.message ?? 'No se pudo subir el PDF a Supabase Storage.'
-          if (reason.toLowerCase().includes('not found')) {
-            throw new Error(
-              `No encontramos el bucket "${storageBucket}" en Supabase Storage. Revísalo en la consola de Supabase o actualiza la configuración del bucket.`,
-            )
-          }
-          throw new Error(reason)
+        const formData = new FormData()
+        formData.append('file', file)
+        if (folderId.length > 0) {
+          formData.append('folder', folderId)
+        }
+        if (meta?.destination) {
+          formData.append('destination', meta.destination)
+        }
+        if (meta?.notes) {
+          formData.append('notes', meta.notes)
         }
 
-        const { data: publicUrlData } = supabase.storage
-          .from(storageBucket)
-          .getPublicUrl(storagePath)
+        const response = await fetch('/api/storage/uploads', {
+          method: 'POST',
+          body: formData,
+        })
 
-        const publicUrl = publicUrlData?.publicUrl ?? null
-        const messageParts = [`PDF subido a Supabase Storage (${storageBucket}).`]
-        messageParts.push(`Ruta interna: ${storagePath}`)
-        if (publicUrl) {
-          messageParts.push(`URL pública: ${publicUrl}`)
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}))
+          const message =
+            typeof body.error === 'string'
+              ? body.error
+              : 'No se pudo subir el archivo. Intenta nuevamente.'
+          throw new Error(message)
         }
 
-        setLabelUploadMessage(messageParts.join(' '))
+        setLabelUploadMessage(`Archivo "${fileName}" subido correctamente.`)
+        setUploadedFilesMessage(`Archivo añadido al historial: ${fileName}`)
         await loadUploadedFiles({ silent: true })
       } catch (error) {
         setLabelUploadError((error as Error).message)
@@ -921,7 +972,50 @@ export default function PanelPage() {
         setLabelUploadLoading(false)
       }
     },
-    [labelsPlan, loadUploadedFiles, supabase, user],
+    [labelsPlan, loadUploadedFiles, user],
+  )
+
+  const handleDeleteUploadedFile = useCallback(
+    async (file: UploadedFileRecord) => {
+      if (!labelsPlan?.dataset || !user) {
+        setUploadedFilesError('No encontramos la configuración de archivos. Vuelve a iniciar sesión.')
+        return
+      }
+
+      if (!file.id) {
+        setUploadedFilesError('No pudimos identificar el archivo a eliminar.')
+        return
+      }
+
+      setUploadedFilesError(null)
+      setUploadedFilesMessage(null)
+      setUploadedFilesDeletingId(file.id)
+
+      try {
+        const response = await fetch('/api/storage/uploads', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileId: file.id }),
+        })
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}))
+          const message =
+            typeof body.error === 'string'
+              ? body.error
+              : 'No se pudo eliminar el archivo. Intenta nuevamente.'
+          throw new Error(message)
+        }
+
+        setUploadedFilesMessage(`Archivo eliminado del historial: ${file.name}`)
+        await loadUploadedFiles({ silent: true })
+      } catch (error) {
+        setUploadedFilesError((error as Error).message)
+      } finally {
+        setUploadedFilesDeletingId(null)
+      }
+    },
+    [labelsPlan, loadUploadedFiles, user],
   )
 
   if (!user) {
@@ -1200,8 +1294,11 @@ export default function PanelPage() {
                         uploads={uploadedFiles}
                         uploadsLoading={uploadedFilesLoading}
                         uploadsError={uploadedFilesError}
+                        uploadsMessage={uploadedFilesMessage}
+                        uploadsDeletingId={uploadedFilesDeletingId}
+                        uploadsFolder={uploadedFilesFolder}
                         onReloadUploads={() => loadUploadedFiles()}
-                        storageBucket={labelsHistoryDisabled ? labelsStorageBucket : null}
+                        onDeleteUpload={handleDeleteUploadedFile}
                       />
                     ) : plan.records && plan.records.length > 0 ? (
                       <RecordsTable plan={plan} />
@@ -1299,8 +1396,11 @@ function LabelsDashboard({
   uploads,
   uploadsLoading,
   uploadsError,
+  uploadsMessage,
+  uploadsDeletingId,
+  uploadsFolder,
   onReloadUploads,
-  storageBucket,
+  onDeleteUpload,
 }: {
   data: LabelRecord[]
   loading: boolean
@@ -1314,8 +1414,11 @@ function LabelsDashboard({
   uploads: UploadedFileRecord[]
   uploadsLoading: boolean
   uploadsError: string | null
+  uploadsMessage: string | null
+  uploadsDeletingId: string | null
+  uploadsFolder: string | null
   onReloadUploads: () => void | Promise<void>
-  storageBucket: string | null
+  onDeleteUpload: (file: UploadedFileRecord) => void | Promise<void>
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [destination, setDestination] = useState('')
@@ -1375,8 +1478,19 @@ function LabelsDashboard({
     onRefresh()
   }, [onRefresh])
 
+  const handleDeleteUpload = useCallback(
+    (file: UploadedFileRecord) => {
+      const confirmed = window.confirm(
+        `¿Seguro que quieres eliminar el archivo "${file.name}" del almacenamiento? Esta acción no se puede deshacer.`,
+      )
+      if (!confirmed) return
+      void onDeleteUpload(file)
+    },
+    [onDeleteUpload],
+  )
+
   const handleReloadUploads = useCallback(() => {
-    onReloadUploads()
+    void onReloadUploads()
   }, [onReloadUploads])
 
   return (
@@ -1391,8 +1505,8 @@ function LabelsDashboard({
               <div>
                 <h4 className="text-lg font-semibold text-gray-900">Subir albarán en PDF</h4>
                 <p className="text-sm text-gray-600">
-                  Guardamos el PDF en Supabase Storage. Más adelante podrás automatizar la lectura
-                  con n8n.
+                  Guardamos el PDF de forma segura para que el flujo pueda procesarlo y generar la
+                  etiqueta automáticamente.
                 </p>
               </div>
             </header>
@@ -1472,8 +1586,12 @@ function LabelsDashboard({
             <div>
               <h4 className="text-lg font-semibold text-gray-900">Archivos subidos</h4>
               <p className="text-sm text-gray-600">
-                Mostramos los PDFs almacenados en Supabase
-                {storageBucket ? ` (${storageBucket})` : ''}.
+                Mostramos los PDFs disponibles en tu historial.
+                {uploadsFolder !== null && (
+                  <span className="block text-xs text-gray-500 mt-1">
+                    Carpeta {uploadsFolder.length === 0 ? 'principal' : uploadsFolder}
+                  </span>
+                )}
               </p>
             </div>
             <button
@@ -1490,6 +1608,11 @@ function LabelsDashboard({
           </header>
 
           <div className="mt-5">
+            {uploadsMessage && !uploadsError && (
+              <p className="mb-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2">
+                {uploadsMessage}
+              </p>
+            )}
             {uploadsError ? (
               <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
                 {uploadsError}
@@ -1497,7 +1620,7 @@ function LabelsDashboard({
             ) : uploadsLoading && uploads.length === 0 ? (
               <p className="text-sm text-gray-600 flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Consultando archivos en Supabase…
+                Consultando archivos del historial…
               </p>
             ) : uploads.length === 0 ? (
               <p className="text-sm text-gray-600">
@@ -1516,45 +1639,77 @@ function LabelsDashboard({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-gray-700">
-                    {uploads.map((file) => (
-                      <tr key={file.path} className="hover:bg-[#FAF9F6] transition">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-gray-400" />
-                            <div>
-                              <p className="font-medium text-gray-900 truncate max-w-[220px]">
-                                {file.name}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-0.5 break-all">{file.path}</p>
+                    {uploads.map((file) => {
+                      const isDeleting = uploadsDeletingId === file.id
+                      return (
+                        <tr key={file.id} className="hover:bg-[#FAF9F6] transition">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-gray-400" />
+                              <div>
+                                <p className="font-medium text-gray-900 truncate max-w-[220px]">
+                                  {file.name}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-0.5 break-all">{file.path}</p>
+                                {file.destination && (
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    Destino: {file.destination}
+                                  </p>
+                                )}
+                                {file.notes && (
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    Notas: {file.notes}
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {file.size != null ? formatBytes(file.size) : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {formatDateTime(file.createdAt ?? file.updatedAt ?? undefined)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {file.updatedAt ? formatDateTime(file.updatedAt) : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {file.publicUrl ? (
-                            <a
-                              href={file.publicUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-gray-700 hover:text-gray-900"
-                            >
-                              Abrir
-                              <ChevronRight className="h-3.5 w-3.5" />
-                            </a>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {file.size != null ? formatBytes(file.size) : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {formatDateTime(file.createdAt ?? file.updatedAt ?? undefined)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {file.updatedAt ? formatDateTime(file.updatedAt) : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {file.publicUrl ? (
+                                <a
+                                  href={file.publicUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-gray-700 hover:text-gray-900"
+                                >
+                                  Abrir
+                                  <ChevronRight className="h-3.5 w-3.5" />
+                                </a>
+                              ) : (
+                                <span className="text-gray-400">Sin enlace</span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteUpload(file)}
+                                disabled={isDeleting}
+                                className={`inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium transition ${
+                                  isDeleting
+                                    ? 'cursor-not-allowed text-gray-400 bg-gray-100'
+                                    : 'text-gray-700 hover:bg-gray-100'
+                                }`}
+                              >
+                                {isDeleting ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                                {isDeleting ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

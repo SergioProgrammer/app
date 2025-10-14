@@ -6,13 +6,16 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "drive:auth": "node scripts/get-drive-refresh-token.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.57.4",
+    "dotenv": "^17.2.3",
     "framer-motion": "^12.23.14",
+    "googleapis": "^162.0.0",
     "lucide-react": "^0.544.0",
     "next": "^15.5.3",
     "react": "19.1.0",

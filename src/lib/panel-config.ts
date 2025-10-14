@@ -118,6 +118,7 @@ export interface PanelPlanDatasetConfig {
   emailColumn?: string
   userIdColumn?: string
   storageBucket?: string
+  storageFolder?: string | string[]
   historyDisabled?: boolean
   orderBy?: PanelPlanOrderConfig | PanelPlanOrderConfig[]
   fallbackTables?: string[]
@@ -605,7 +606,7 @@ const etiquetasPlan: PanelPlanConfig = {
     table: 'albaranes_pedidos',
     insertTable: 'albaranes_pedidos',
     userIdColumn: 'user_id',
-    storageBucket: 'albaranes_1',
+    storageFolder: '1AV26_7Mzke1eKIn3dN-rqdaBc9ND9NpG',
     historyDisabled: true,
     orderBy: [{ column: 'created_at', ascending: false }],
     fallbackTables: ['etiquetas_generadas'],
