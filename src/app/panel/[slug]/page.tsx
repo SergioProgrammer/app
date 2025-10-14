@@ -102,6 +102,7 @@ interface UploadedFileRecord {
   publicUrl?: string | null
   destination?: string | null
   notes?: string | null
+  mimeType?: string | null
 }
 
 type LabelStatusTone = 'pending' | 'success' | 'error' | 'info'
@@ -584,6 +585,7 @@ export default function PanelPage() {
             webViewLink?: string | null
             webContentLink?: string | null
             description?: string | null
+            mimeType?: string | null
           }>
         }
 
@@ -601,6 +603,7 @@ export default function PanelPage() {
                 ? Number(sizeValue)
                 : null
             const publicUrl = file.webViewLink ?? file.webContentLink ?? null
+            const mimeType = file.mimeType ?? null
 
             let destination: string | null = null
             let notes: string | null = null
@@ -633,6 +636,7 @@ export default function PanelPage() {
               createdAt: file.createdAt ?? null,
               updatedAt: file.updatedAt ?? null,
               publicUrl,
+              mimeType,
             }
 
             if (destination || notes) {
@@ -917,13 +921,31 @@ export default function PanelPage() {
       }
 
       if (!file) {
-        setLabelUploadError('Selecciona un archivo PDF para subirlo.')
+        setLabelUploadError('Selecciona un archivo antes de subirlo.')
         return
       }
 
-      const fileName = file.name ?? 'documento.pdf'
-      if (!fileName.toLowerCase().endsWith('.pdf')) {
-        setLabelUploadError('Solo se admiten archivos en formato PDF.')
+      const fileName = file.name ?? 'albaran.png'
+      const normalizedName = fileName.toLowerCase()
+      const mimeType = file.type?.toLowerCase() ?? ''
+      const allowedMimeTypes = new Set([
+        'image/png',
+        'image/jpeg',
+        'image/jpg',
+        'image/webp',
+        'image/heic',
+        'image/heif',
+        'image/gif',
+      ])
+      const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.heic', '.heif']
+      const isAllowed =
+        allowedMimeTypes.has(mimeType) ||
+        allowedExtensions.some((extension) => normalizedName.endsWith(extension))
+
+      if (!isAllowed) {
+        setLabelUploadError(
+          'Solo se admiten imágenes (PNG, JPG, WebP, HEIC, GIF). Convierte el albarán a imagen antes de subirlo.',
+        )
         return
       }
 
@@ -1186,7 +1208,7 @@ export default function PanelPage() {
                 <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900">Mi panel</h2>
                 <p className="mt-2 text-sm text-gray-600">
                   {isLabelsPanel
-                    ? 'Sube los albaranes en PDF, genera la etiqueta automática y revisa el historial enviado al almacén.'
+                    ? 'Sube los albaranes en imagen, genera la etiqueta automática y revisa el historial enviado al almacén.'
                     : 'Visualiza las automatizaciones activas y descarga reportes de turnos, inventario o tratamientos al instante.'}
                 </p>
               </div>
@@ -1454,7 +1476,7 @@ function LabelsDashboard({
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault()
       if (!file) {
-        setLocalError('Selecciona un PDF antes de subirlo.')
+        setLocalError('Selecciona un archivo antes de subirlo.')
         return
       }
       setLocalError(null)
@@ -1503,9 +1525,9 @@ function LabelsDashboard({
           <div className="flex-1">
             <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <h4 className="text-lg font-semibold text-gray-900">Subir albarán en PDF</h4>
+                <h4 className="text-lg font-semibold text-gray-900">Subir albarán en imagen</h4>
                 <p className="text-sm text-gray-600">
-                  Guardamos el PDF de forma segura para que el flujo pueda procesarlo y generar la
+                  Guardamos la imagen de manera segura para que el flujo pueda procesarla y generar la
                   etiqueta automáticamente.
                 </p>
               </div>
@@ -1516,7 +1538,7 @@ function LabelsDashboard({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="application/pdf"
+                  accept="image/*"
                   onChange={handleFileChange}
                   disabled={uploading}
                   className="block w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white focus:outline-none focus:ring-2 focus:ring-gray-900/10"
@@ -1531,7 +1553,7 @@ function LabelsDashboard({
                   }`}
                 >
                   {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {uploading ? 'Subiendo…' : 'Subir PDF'}
+                  {uploading ? 'Subiendo…' : 'Subir archivo'}
                 </button>
               </div>
 
@@ -1586,7 +1608,7 @@ function LabelsDashboard({
             <div>
               <h4 className="text-lg font-semibold text-gray-900">Archivos subidos</h4>
               <p className="text-sm text-gray-600">
-                Mostramos los PDFs disponibles en tu historial.
+                Mostramos los archivos disponibles en tu historial.
                 {uploadsFolder !== null && (
                   <span className="block text-xs text-gray-500 mt-1">
                     Carpeta {uploadsFolder.length === 0 ? 'principal' : uploadsFolder}
@@ -1624,7 +1646,7 @@ function LabelsDashboard({
               </p>
             ) : uploads.length === 0 ? (
               <p className="text-sm text-gray-600">
-                Aún no subes ningún PDF. Sube tu primer albarán para verlo listado aquí.
+                Aún no subes ninguna imagen. Sube tu primer albarán para verlo listado aquí.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -1753,7 +1775,7 @@ function LabelsDashboard({
               </p>
             ) : data.length === 0 ? (
               <p className="text-sm text-gray-600">
-                Aún no hay etiquetas registradas. Sube tu primer albarán en PDF para iniciar el flujo.
+                Aún no hay etiquetas registradas. Sube tu primer albarán en imagen para iniciar el flujo.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -1779,7 +1801,7 @@ function LabelsDashboard({
                               <FileText className="h-4 w-4 text-gray-400" />
                               <div>
                                 <p className="font-medium text-gray-900 truncate max-w-[220px]">
-                                  {record.fileName || 'PDF sin nombre'}
+                                  {record.fileName || 'Archivo sin nombre'}
                                 </p>
                                 {record.notes && (
                                   <p className="text-xs text-gray-500 mt-0.5">{record.notes}</p>
@@ -1828,7 +1850,7 @@ function LabelsDashboard({
                                   className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
                                 >
                                   <FileText className="h-3.5 w-3.5" />
-                                  Ver PDF
+                                  Ver archivo
                                 </a>
                               )}
                               {record.labelUrl && (
