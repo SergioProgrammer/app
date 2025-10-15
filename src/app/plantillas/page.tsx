@@ -35,7 +35,7 @@ function formatDate(date: Date | null): string {
 
 function loadTemplates(): TemplateItem[] {
   const publicDir = path.join(process.cwd(), 'public')
-  const templateFiles = ['Etiqueta.PNG']
+  const templateFiles = ['Etiqueta.png']
 
   return templateFiles.map((fileName) => {
     const absolutePath = path.join(publicDir, fileName)

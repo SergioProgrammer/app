@@ -25,7 +25,7 @@ export interface LabelRenderResult {
   mimeType: string
 }
 
-const DEFAULT_TEMPLATE_RELATIVE_PATH = path.join('public', 'Etiqueta.PNG')
+const DEFAULT_TEMPLATE_RELATIVE_PATH = path.join('public', 'Etiqueta.png')
 const DEFAULT_FONT_SIZE = 56
 const DEFAULT_FONT_COLOR = rgb(0, 0, 0)
 
