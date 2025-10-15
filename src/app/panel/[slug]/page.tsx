@@ -1095,12 +1095,6 @@ export default function PanelPage() {
         if (folderId.length > 0) {
           formData.append('folder', folderId)
         }
-        if (meta?.destination) {
-          formData.append('destination', meta.destination)
-        }
-        if (meta?.notes) {
-          formData.append('notes', meta.notes)
-        }
         if (meta?.lote) {
           formData.append('manualLote', meta.lote)
         }
@@ -1839,34 +1833,6 @@ function LabelsDashboard({
                 </button>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Destino (opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={destination}
-                    onChange={(event) => setDestination(event.target.value)}
-                    placeholder="Ej. Almacén central, campaña cítricos"
-                    disabled={uploading}
-                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Notas para el flujo
-                  </label>
-                  <input
-                    type="text"
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    placeholder="Añade contexto para n8n o el almacén"
-                    disabled={uploading}
-                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                  />
-                </div>
-              </div>
 
               <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 sm:px-5 sm:py-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">

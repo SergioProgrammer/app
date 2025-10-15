@@ -25,24 +25,41 @@ export interface LabelRenderResult {
   mimeType: string
 }
 
-const DEFAULT_TEMPLATE_RELATIVE_PATH = path.join('public', 'Etiqueta.png')
-const DEFAULT_FONT_SIZE = 26
+const DEFAULT_TEMPLATE_RELATIVE_PATH = path.join('public', 'Etiqueta.PNG')
+const DEFAULT_FONT_SIZE = 56
 const DEFAULT_FONT_COLOR = rgb(0, 0, 0)
 
 type LayoutKey = keyof LabelRenderFields
 
 interface LayoutEntry {
-  x: number
-  y: number
+  baseX: number
+  baseY: number
   fontSize?: number
   align?: 'left' | 'center' | 'right'
 }
 
+const BASE_WIDTH = 1262
+const BASE_HEIGHT = 768
+
 const TEXT_LAYOUT: Record<LayoutKey, LayoutEntry> = {
-  fechaEnvasado: { x: 0.64, y: 0.33 },
-  lote: { x: 0.64, y: 0.27 },
-  codigoCoc: { x: 0.64, y: 0.21 },
-  codigoR: { x: 0.64, y: 0.15 },
+  fechaEnvasado: { baseX: 340, baseY: 440, align: 'left', fontSize: 36 },
+  lote: { baseX: 230, baseY: 500, align: 'left', fontSize: 36 },
+  codigoCoc: { baseX: 220, baseY: 630, align: 'left', fontSize: 36 },
+  codigoR: { baseX: 1035, baseY: 415, align: 'left', fontSize: 28 },
+}
+
+const WEIGHT_LAYOUT: LayoutEntry = {
+  baseX: 250,
+  baseY: 570,
+  align: 'left',
+  fontSize: 38,
+}
+
+const BARCODE_NUMBER_LAYOUT = {
+  baseX: 690,
+  baseY: 670,
+  fontSize: 38,
+  align: 'center' as const,
 }
 
 let cachedTemplateBuffer: Buffer | null = null
@@ -61,6 +78,9 @@ export async function renderLabelPdf({
   const pdfDoc = await PDFDocument.create()
   const pngImage = await pdfDoc.embedPng(templateBuffer)
   const page: any = pdfDoc.addPage([pngImage.width, pngImage.height])
+
+  const scaleX = pngImage.width / BASE_WIDTH
+  const scaleY = pngImage.height / BASE_HEIGHT
 
   const pageProtoKeys = Object.getOwnPropertyNames(Object.getPrototypeOf(page))
 
@@ -91,11 +111,11 @@ export async function renderLabelPdf({
     if (!value) return
 
     const layout = TEXT_LAYOUT[key]
-    const fontSize = layout.fontSize ?? DEFAULT_FONT_SIZE
+    const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
     const textWidth = approximateTextWidth(value, fontSize)
 
-    const x = resolvePosition(layout.x, pngImage.width, layout.align, textWidth)
-    const y = layout.y * pngImage.height
+    const x = resolvePosition(layout.baseX * scaleX, layout.align, textWidth)
+    const y = pngImage.height - layout.baseY * scaleY
 
     if (typeof page.drawText === 'function') {
       page.drawText(value, {
@@ -106,6 +126,38 @@ export async function renderLabelPdf({
       })
     }
   })
+
+  const barcodeText = normalizeFieldValue(fields.codigoCoc)
+  if (barcodeText && typeof page.drawText === 'function') {
+    const layout = BARCODE_NUMBER_LAYOUT
+    const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
+    const textWidth = approximateTextWidth(barcodeText, fontSize)
+    const x = resolvePosition(layout.baseX * scaleX, layout.align, textWidth)
+    const y = pngImage.height - layout.baseY * scaleY
+
+    page.drawText(barcodeText, {
+      x,
+      y,
+      size: fontSize,
+      color: DEFAULT_FONT_COLOR,
+    })
+  }
+
+  if (typeof page.drawText === 'function') {
+    const layout = WEIGHT_LAYOUT
+    const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
+    const weightText = '40gr'
+    const textWidth = approximateTextWidth(weightText, fontSize)
+    const x = resolvePosition(layout.baseX * scaleX, layout.align, textWidth)
+    const y = pngImage.height - layout.baseY * scaleY
+
+    page.drawText(weightText, {
+      x,
+      y,
+      size: fontSize,
+      color: DEFAULT_FONT_COLOR,
+    })
+  }
 
   const pdfBytes = await pdfDoc.save()
   return {
@@ -128,12 +180,10 @@ async function loadTemplate(customPath?: string): Promise<Buffer> {
 }
 
 function resolvePosition(
-  relativeX: number,
-  totalWidth: number,
+  absoluteX: number,
   align: LayoutEntry['align'],
   textWidth: number,
 ): number {
-  const absoluteX = totalWidth * clamp(relativeX, 0, 1)
   if (align === 'center') {
     return absoluteX - textWidth / 2
   }
@@ -143,14 +193,15 @@ function resolvePosition(
   return absoluteX
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max)
-}
-
 function normalizeFieldValue(value?: string | null): string | null {
   if (!value) return null
   const trimmed = value.trim()
   if (!trimmed) return null
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch
+    return `${day}.${month}.${year.slice(-2)}`
+  }
   return trimmed.toUpperCase()
 }
 

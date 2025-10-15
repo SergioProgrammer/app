@@ -597,10 +597,7 @@ const etiquetasPlan: PanelPlanConfig = {
   id: 'etiquetas-albaranes',
   name: 'Etiquetas automáticas de albarán',
   summary: 'Sube el PDF, generamos la etiqueta y notificamos al almacén con trazabilidad completa.',
-  resources: [
-    { label: 'Checklist de integración n8n', href: '/automatizaciones' },
-    { label: 'Historial completo', variant: 'view', href: '#historial-etiquetas' },
-  ],
+  resources: [],
   dataset: {
     type: 'labels',
     table: 'albaranes_pedidos',

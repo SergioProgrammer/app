@@ -60,8 +60,6 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    const destination = formData.get('destination')
-    const notes = formData.get('notes')
     const manualLote = formData.get('manualLote')
     const manualFechaEnvasado = formData.get('manualFechaEnvasado')
     const manualCodigoCoc = formData.get('manualCodigoCoc')
@@ -74,14 +72,10 @@ export async function POST(request: NextRequest) {
       codigoR: getOptionalString(manualCodigoR),
     }
     const metadata = {
-      destination: destination ? String(destination) : undefined,
-      notes: notes ? String(notes) : undefined,
       userEmail: userEmailValue ? String(userEmailValue) : undefined,
       manualFields,
     }
     const description =
-      metadata.destination ||
-      metadata.notes ||
       manualFields.lote ||
       manualFields.fechaEnvasado ||
       manualFields.codigoCoc ||
@@ -107,14 +101,8 @@ export async function POST(request: NextRequest) {
           fileId: driveFileId,
           fileName: uploaded.name ?? file.name,
           existingDescription: description ?? null,
-          destination:
-            typeof metadata.destination === 'string' && metadata.destination.length > 0
-              ? metadata.destination
-              : null,
-          notes:
-            typeof metadata.notes === 'string' && metadata.notes.length > 0
-              ? metadata.notes
-              : null,
+          destination: null,
+          notes: null,
           folderId,
           templatePath: process.env.LABEL_TEMPLATE_PATH ?? null,
           manualFields,
