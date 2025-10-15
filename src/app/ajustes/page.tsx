@@ -1,23 +1,91 @@
 import PanelLayout from '@/components/panel-layout'
 
-const notificationPreferences = [
+type AutomationFocus = 'Agronomía' | 'Almacén' | 'Logística'
+
+interface AutomationProcess {
+  name: string
+  description: string
+  impact: string
+}
+
+interface AutomationCategory {
+  id: string
+  title: string
+  focus: AutomationFocus
+  summary: string
+  processes: AutomationProcess[]
+}
+
+const whatsappBaseUrl = 'https://wa.me/34655689827'
+
+function getWhatsAppLink(processName: string) {
+  const message = `Hola, quiero activar la automatización "${processName}" en mi operación.`
+  return `${whatsappBaseUrl}?text=${encodeURIComponent(message)}`
+}
+
+const automationCategories: AutomationCategory[] = [
   {
-    id: 'email-updates',
-    label: 'Resúmenes por email',
-    description: 'Recibe un informe semanal con métricas clave de tus automatizaciones.',
-    defaultChecked: true,
+    id: 'agronomia',
+    title: 'Agronomía en campo',
+    focus: 'Agronomía',
+    summary:
+      'Sincroniza monitoreos, tratamientos y órdenes de trabajo para mantener cada lote con trazabilidad diaria sin hojas de cálculo.',
+    processes: [
+      {
+        name: 'Planificador de riegos inteligente',
+        description:
+          'Analiza humedad del suelo, pronóstico y turnos disponibles para ordenar riegos prioritarios enviando avisos a encargados vía WhatsApp.',
+        impact: 'Evita riegos duplicados y optimiza el uso de agua en jornadas críticas.',
+      },
+      {
+        name: 'Bitácora automática de aplicaciones',
+        description:
+          'Genera fichas PDF con cada aplicación fitosanitaria, adjunta evidencia fotográfica y sincroniza la información con tu histórico nativo.',
+        impact: 'Simplifica auditorías y reduce tiempo en reportes regulatorios.',
+      },
+    ],
   },
   {
-    id: 'whatsapp-alerts',
-    label: 'Alertas por WhatsApp',
-    description: 'Te avisamos si un flujo se pausa o requiere tu intervención.',
-    defaultChecked: true,
+    id: 'almacen',
+    title: 'Control de almacén',
+    focus: 'Almacén',
+    summary:
+      'Integra lecturas de etiquetas con stock en tiempo real, alertando de bajas críticas y movimientos pendientes de validar.',
+    processes: [
+      {
+        name: 'Conteo cíclico guiado',
+        description:
+          'Construye listas de conteo semanales, asigna responsables por zona y captura resultados con etiquetas QR o códigos de barras.',
+        impact: 'Mantiene inventario confiable sin detener operaciones diarias.',
+      },
+      {
+        name: 'Recepción con validación automática',
+        description:
+          'Compara albaranes contra pedidos, destaca incidencias y genera tickets de seguimiento para compras cuando falta stock.',
+        impact: 'Reduce discrepancias y acelera la puesta en stock de insumos clave.',
+      },
+    ],
   },
   {
-    id: 'product-updates',
-    label: 'Novedades del producto',
-    description: 'Actualizaciones ocasionales sobre nuevas plantillas e integraciones.',
-    defaultChecked: false,
+    id: 'logistica',
+    title: 'Logística y expediciones',
+    focus: 'Logística',
+    summary:
+      'Coordina expediciones, rutas y confirmaciones de entrega con alertas proactivas para equipos internos y clientes finales.',
+    processes: [
+      {
+        name: 'Asignador de rutas por demanda',
+        description:
+          'Ordena pedidos por prioridad, consolida cargas según destino y envía rutas sugeridas con actualizaciones en tiempo real.',
+        impact: 'Disminuye tiempos muertos y mejora la puntualidad de entregas.',
+      },
+      {
+        name: 'Confirmación automática de entregas',
+        description:
+          'Envía recordatorios previos, captura evidencia fotográfica y cierra entregas en tu ERP sin intervención manual.',
+        impact: 'Acelera cierres de logística y mejora la satisfacción del cliente.',
+      },
+    ],
   },
 ]
 
@@ -27,154 +95,69 @@ export default function AjustesPage() {
       <div className="space-y-12 sm:space-y-16">
         <section className="rounded-3xl bg-white px-6 py-8 shadow-sm border border-gray-100">
           <div className="max-w-3xl space-y-4">
-            <span className="inline-flex items-center rounded-full bg-sky-100 text-sky-700 px-4 py-1 text-xs font-semibold uppercase tracking-[0.08em]">
-              Ajustes
+            <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-4 py-1 text-xs font-semibold uppercase tracking-[0.08em]">
+              Procesos recomendados
             </span>
             <h1 className="text-3xl sm:text-4xl font-semibold text-gray-900">
-              Configura tu cuenta y preferencias en pocos pasos
+              Activa automatizaciones clave para agronomía, almacén y logística
             </h1>
             <p className="text-gray-600 text-sm sm:text-base">
-              Actualiza tu información, habilita verificaciones adicionales y decide cómo quieres recibir alertas importantes.
+              Descubre los flujos que recomendamos para empresas agro con operaciones integradas. Cada proceso conecta a tus
+              equipos y mantiene los datos listos para auditorías, expediciones y control de stock.
             </p>
           </div>
         </section>
 
-        <section className="grid gap-4 sm:gap-6 lg:grid-cols-[2fr_1fr]">
-          <div className="space-y-6">
-            <article className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-7 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Perfil</h2>
-                  <p className="text-sm text-gray-600">Gestiona los datos principales de tu cuenta.</p>
+        <section className="space-y-10">
+          {automationCategories.map((category) => (
+            <article
+              key={category.id}
+              className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8 shadow-sm space-y-6"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-2">
+                  <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-xs font-semibold tracking-[0.08em] uppercase">
+                    {category.focus}
+                  </span>
+                  <h2 className="text-2xl font-semibold text-gray-900">{category.title}</h2>
+                  <p className="text-sm text-gray-600">{category.summary}</p>
                 </div>
                 <a
-                  href="#"
+                  href={`${whatsappBaseUrl}?text=${encodeURIComponent(
+                    `Hola, quiero priorizar un paquete de automatizaciones para ${category.focus.toLowerCase()}.`,
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center justify-center rounded-xl bg-gray-900 text-white px-4 py-2.5 text-sm font-medium hover:opacity-90 transition"
                 >
-                  Editar perfil
+                  Coordinar paquete completo
                 </a>
               </div>
 
-              <dl className="mt-6 space-y-4 text-sm text-gray-700">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <dt className="font-medium text-gray-900">Nombre completo</dt>
-                  <dd>Sara Quintana</dd>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <dt className="font-medium text-gray-900">Correo</dt>
-                  <dd>info@saraquintana.es</dd>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <dt className="font-medium text-gray-900">Empresa</dt>
-                  <dd>Procesia</dd>
-                </div>
-              </dl>
-            </article>
-
-            <article className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-7 shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900">Seguridad</h2>
-              <p className="mt-2 text-sm text-gray-600">Refuerza el acceso y protege los datos de tus automatizaciones.</p>
-
-              <div className="mt-6 space-y-5">
-                <div className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-[#FAF9F6] p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="grid gap-4 sm:gap-6 sm:grid-cols-2">
+                {category.processes.map((process) => (
+                  <div
+                    key={process.name}
+                    className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5 flex flex-col gap-4"
+                  >
                     <div>
-                      <p className="text-sm font-medium text-gray-900">Doble factor de autenticación</p>
-                      <p className="text-xs text-gray-600">Protege tu cuenta solicitando un código adicional en cada acceso.</p>
+                      <h3 className="text-lg font-semibold text-gray-900">{process.name}</h3>
+                      <p className="mt-2 text-sm text-gray-600">{process.description}</p>
                     </div>
+                    <p className="text-xs uppercase tracking-wide text-emerald-700">{process.impact}</p>
                     <a
-                      href="#"
-                      className="inline-flex items-center justify-center rounded-lg bg-gray-900 text-white px-3 py-2 text-xs font-semibold hover:opacity-90 transition"
+                      href={getWhatsAppLink(process.name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-auto inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white px-3 py-2 text-xs font-semibold hover:bg-emerald-700 transition"
                     >
-                      Activar
+                      Añadir este proceso
                     </a>
                   </div>
-                </div>
-
-                <div className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-[#FAF9F6] p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Enlaces conectados</p>
-                      <p className="text-xs text-gray-600">Revisa y revoca el acceso a Gmail, WhatsApp o CRMs conectados.</p>
-                    </div>
-                    <a
-                      href="/ajustes/integraciones"
-                      className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-900 hover:bg-gray-100 transition"
-                    >
-                      Ver integraciones
-                    </a>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-[#FAF9F6] p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Actividad reciente</p>
-                      <p className="text-xs text-gray-600">Consulta los últimos accesos y cambios realizados en tu cuenta.</p>
-                    </div>
-                    <a
-                      href="/ajustes/actividad"
-                      className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-900 hover:bg-gray-100 transition"
-                    >
-                      Revisar
-                    </a>
-                  </div>
-                </div>
+                ))}
               </div>
             </article>
-          </div>
-
-          <aside className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-7 shadow-sm space-y-6">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Preferencias</h2>
-              <p className="mt-2 text-sm text-gray-600">Personaliza cómo quieres recibir avisos y novedades.</p>
-            </div>
-            <form className="space-y-4">
-              {notificationPreferences.map((preference) => (
-                <label
-                  key={preference.id}
-                  htmlFor={preference.id}
-                  className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-[#FAF9F6] p-4 cursor-pointer"
-                >
-                  <input
-                    id={preference.id}
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
-                    defaultChecked={preference.defaultChecked}
-                  />
-                  <span>
-                    <span className="block text-sm font-medium text-gray-900">{preference.label}</span>
-                    <span className="block text-xs text-gray-600 mt-1">{preference.description}</span>
-                  </span>
-                </label>
-              ))}
-            </form>
-
-            <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-4 text-sm text-gray-600">
-              ¿No ves la preferencia que buscas? Escríbenos y la añadimos.
-            </div>
-            <a
-              href="mailto:info@saraquintana.es"
-              className="inline-flex items-center justify-center rounded-xl bg-gray-900 text-white px-4 py-2.5 text-sm font-medium hover:opacity-90 transition"
-            >
-              Contactar soporte
-            </a>
-          </aside>
-        </section>
-
-        <section className="rounded-3xl bg-gray-900 text-white px-8 py-10 sm:px-10 sm:py-12 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-semibold">Administra accesos de equipo</h2>
-            <p className="mt-2 text-sm text-white/80 max-w-xl">
-              Añade nuevos miembros, asigna roles y controla qué automatizaciones puede ver cada uno para mantener tus operaciones seguras.
-            </p>
-          </div>
-          <a
-            href="/ajustes/equipo"
-            className="inline-flex items-center justify-center rounded-xl bg-white text-gray-900 px-4 py-2.5 text-sm font-semibold hover:bg-gray-100 transition"
-          >
-            Gestionar equipo
-          </a>
+          ))}
         </section>
       </div>
     </PanelLayout>

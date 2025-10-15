@@ -5,16 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import type { User } from '@supabase/supabase-js'
-import {
-  LayoutDashboard,
-  CreditCard,
-  Workflow,
-  Settings,
-  LogOut,
-  Menu,
-  X,
-  ChevronRight,
-} from 'lucide-react'
+import { History, Layers, LogOut, Menu, X, ChevronRight } from 'lucide-react'
 
 interface PanelLayoutProps {
   children: ReactNode
@@ -22,24 +13,14 @@ interface PanelLayoutProps {
 
 const navItems = [
   {
-    label: 'Cuaderno en vivo',
+    label: 'Historial',
     href: '/dashboard',
-    icon: LayoutDashboard,
+    icon: History,
   },
   {
-    label: 'Plan agronómico',
-    href: '/suscripcion',
-    icon: CreditCard,
-  },
-  {
-    label: 'Flujos de campo',
-    href: '/automatizaciones',
-    icon: Workflow,
-  },
-  {
-    label: 'Configuración de finca',
-    href: '/ajustes',
-    icon: Settings,
+    label: 'Plantillas',
+    href: '/plantillas',
+    icon: Layers,
   },
 ]
 
@@ -53,6 +34,36 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
     const atIndex = userEmail.indexOf('@')
     return atIndex === -1 ? userEmail : userEmail.slice(0, atIndex)
   }, [userEmail])
+  const activationDate = useMemo(() => {
+    if (!user?.created_at) return 'Sin fecha registrada'
+    try {
+      return new Date(user.created_at).toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      })
+    } catch {
+      return 'Sin fecha registrada'
+    }
+  }, [user?.created_at])
+  const companyName = useMemo(() => {
+    const rawCompany = user?.user_metadata?.company
+    if (typeof rawCompany === 'string' && rawCompany.trim().length > 0) {
+      return rawCompany
+    }
+    return 'Sin empresa registrada'
+  }, [user])
+  const activeModulesSummary = useMemo(() => {
+    const modules = user?.user_metadata?.activeModules
+    if (Array.isArray(modules) && modules.length > 0) {
+      return modules.join(', ')
+    }
+    const singleModule = user?.user_metadata?.primaryModule
+    if (typeof singleModule === 'string' && singleModule.trim().length > 0) {
+      return singleModule
+    }
+    return 'Sin automatizaciones activas registradas'
+  }, [user])
 
   useEffect(() => {
     async function loadUser() {
@@ -108,7 +119,7 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
           </div>
           <div className="mt-6 rounded-2xl bg-white/10 p-4 backdrop-blur">
             <p className="text-sm font-medium">{userDisplayName || user.email}</p>
-            <p className="mt-1 text-xs text-white/70">Programa estrella: Agente WhatsApp de campo</p>
+            <p className="mt-1 text-xs text-white/70">Programa estrella: Generación de etiquetado autónomo</p>
           </div>
         </div>
 
@@ -147,16 +158,46 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
         </div>
 
         <div className="px-6 pb-6">
-          <div className="rounded-2xl border border-gray-200 bg-white p-4">
-            <p className="text-sm font-semibold text-gray-900">¿Necesitas ayuda en campo?</p>
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Resumen del perfil</p>
+              <p className="mt-1 text-xs text-gray-600">Activo desde {activationDate}</p>
+            </div>
+            <dl className="space-y-3 text-xs text-gray-600">
+              <div className="flex items-start justify-between gap-3">
+                <dt className="font-medium text-gray-900">Correo</dt>
+                <dd className="ml-auto max-w-[180px] text-right text-gray-700 break-all md:max-w-[200px]">{user.email}</dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="font-medium text-gray-900">Empresa</dt>
+                <dd className="text-right text-gray-700">{companyName}</dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="font-medium text-gray-900">Automatizaciones activas</dt>
+                <dd className="text-right text-gray-700">{activeModulesSummary}</dd>
+              </div>
+            </dl>
+            <a
+              href="https://wa.me/34655689827"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex w-full items-center justify-center rounded-lg border border-gray-200 bg-[#FAF9F6] px-3 py-2 text-xs font-semibold text-gray-900 hover:bg-gray-100 transition"
+            >
+              Gestionar perfil
+            </a>
+          </div>
+          <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-4">
+            <p className="text-sm font-semibold text-gray-900">¿Necesitas ayuda inmediata?</p>
             <p className="mt-1 text-xs text-gray-600">
-              Te acompañamos a desplegar el agente que entiende tus audios y sincroniza inventario, riego y cuadrillas.
+              Ajustamos flujos para agronomía, almacén y logística según tus prioridades.
             </p>
             <a
-              href="mailto:info@saraquintana.es"
+              href="https://wa.me/34655689827"
+              target="_blank"
+              rel="noopener noreferrer"
               className="mt-3 inline-flex items-center justify-center rounded-lg bg-gray-900 text-white px-3 py-2 text-xs font-semibold hover:opacity-90 transition"
             >
-              Hablar con soporte agronómico
+              Hablar con soporte
             </a>
           </div>
           <button
