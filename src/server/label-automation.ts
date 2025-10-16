@@ -7,6 +7,7 @@ import { renderLabelPdf } from './label-renderer'
 export interface ManualLabelFields {
   lote?: string | null
   fechaEnvasado?: string | null
+  labelCode?: string | null
   codigoCoc?: string | null
   codigoR?: string | null
 }
@@ -165,6 +166,7 @@ function mergeDescriptionPayload(
   payload.manualFields = {
     lote: normalizeField(manualFields?.lote ?? payload.manualFields?.lote),
     fechaEnvasado: normalizeField(manualFields?.fechaEnvasado ?? payload.manualFields?.fechaEnvasado),
+    labelCode: normalizeField(manualFields?.labelCode ?? payload.manualFields?.labelCode),
     codigoCoc: normalizeField(manualFields?.codigoCoc ?? payload.manualFields?.codigoCoc),
     codigoR: normalizeField(manualFields?.codigoR ?? payload.manualFields?.codigoR),
   }

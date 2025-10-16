@@ -62,12 +62,14 @@ export async function POST(request: NextRequest) {
 
     const manualLote = formData.get('manualLote')
     const manualFechaEnvasado = formData.get('manualFechaEnvasado')
+    const manualLabelCode = formData.get('manualLabelCode')
     const manualCodigoCoc = formData.get('manualCodigoCoc')
     const manualCodigoR = formData.get('manualCodigoR')
     const userEmailValue = formData.get('userEmail')
     const manualFields = {
       lote: getOptionalString(manualLote),
       fechaEnvasado: getOptionalString(manualFechaEnvasado),
+      labelCode: getOptionalString(manualLabelCode),
       codigoCoc: getOptionalString(manualCodigoCoc),
       codigoR: getOptionalString(manualCodigoR),
     }
@@ -79,6 +81,7 @@ export async function POST(request: NextRequest) {
       manualFields.lote ||
       manualFields.fechaEnvasado ||
       manualFields.codigoCoc ||
+      manualFields.labelCode ||
       manualFields.codigoR
         ? JSON.stringify(metadata)
         : undefined

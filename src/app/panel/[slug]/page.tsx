@@ -26,7 +26,6 @@ import {
   Sprout,
   Tag,
   Trash2,
-  UploadCloud,
   Workflow,
 } from 'lucide-react'
 import {
@@ -88,10 +87,9 @@ interface LabelRecord {
 }
 
 interface LabelUploadMeta {
-  destination?: string
-  notes?: string
   lote?: string
   fechaEnvasado?: string
+  labelCode?: string
   codigoCoc?: string
   codigoR?: string
 }
@@ -99,6 +97,7 @@ interface LabelUploadMeta {
 interface UploadedFileAutomationFields {
   fechaEnvasado?: string | null
   lote?: string | null
+  labelCode?: string | null
   codigoCoc?: string | null
   codigoR?: string | null
 }
@@ -720,6 +719,10 @@ export default function PanelPage() {
                             typeof fieldsPayload.lote === 'string'
                               ? fieldsPayload.lote
                               : null,
+                          labelCode:
+                            typeof fieldsPayload.labelCode === 'string'
+                              ? fieldsPayload.labelCode
+                              : null,
                           codigoCoc:
                             typeof fieldsPayload.codigoCoc === 'string'
                               ? fieldsPayload.codigoCoc
@@ -1101,6 +1104,9 @@ export default function PanelPage() {
         if (meta?.fechaEnvasado) {
           formData.append('manualFechaEnvasado', meta.fechaEnvasado)
         }
+        if (meta?.labelCode) {
+          formData.append('manualLabelCode', meta.labelCode)
+        }
         if (meta?.codigoCoc) {
           formData.append('manualCodigoCoc', meta.codigoCoc)
         }
@@ -1125,6 +1131,7 @@ export default function PanelPage() {
                 fields?: {
                   fechaEnvasado?: string | null
                   lote?: string | null
+                  labelCode?: string | null
                   codigoCoc?: string | null
                   codigoR?: string | null
                 }
@@ -1173,6 +1180,9 @@ export default function PanelPage() {
                   ? `Envasado: ${automationFields.fechaEnvasado}`
                   : null,
                 automationFields.lote ? `Lote: ${automationFields.lote}` : null,
+                automationFields.labelCode
+                  ? `Código de barras: ${automationFields.labelCode}`
+                  : null,
                 automationFields.codigoCoc ? `COC: ${automationFields.codigoCoc}` : null,
                 automationFields.codigoR ? `R: ${automationFields.codigoR}` : null,
               ].filter((part): part is string => typeof part === 'string' && part.length > 0)
@@ -1655,13 +1665,13 @@ function LabelsDashboard({
   onDeleteUpload: (file: UploadedFileRecord) => void | Promise<void>
 }) {
   const [file, setFile] = useState<File | null>(null)
-  const [destination, setDestination] = useState('')
-  const [notes, setNotes] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
   const [manualLote, setManualLote] = useState('')
   const [manualFechaEnvasado, setManualFechaEnvasado] = useState('')
+  const [manualLabelCode, setManualLabelCode] = useState('')
   const [manualCodigoCoc, setManualCodigoCoc] = useState('')
   const [manualCodigoR, setManualCodigoR] = useState('')
+  const [activeStep, setActiveStep] = useState(1)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -1675,6 +1685,9 @@ function LabelsDashboard({
       }
       if (typeof parsed?.fechaEnvasado === 'string') {
         setManualFechaEnvasado(parsed.fechaEnvasado)
+      }
+      if (typeof parsed?.labelCode === 'string') {
+        setManualLabelCode(parsed.labelCode)
       }
       if (typeof parsed?.codigoCoc === 'string') {
         setManualCodigoCoc(parsed.codigoCoc)
@@ -1692,6 +1705,7 @@ function LabelsDashboard({
     const payload: LabelUploadMeta = {
       lote: manualLote,
       fechaEnvasado: manualFechaEnvasado,
+      labelCode: manualLabelCode,
       codigoCoc: manualCodigoCoc,
       codigoR: manualCodigoR,
     }
@@ -1700,13 +1714,35 @@ function LabelsDashboard({
     } catch {
       // ignore storage quota issues
     }
-  }, [manualCodigoCoc, manualCodigoR, manualFechaEnvasado, manualLote])
+  }, [manualCodigoCoc, manualCodigoR, manualFechaEnvasado, manualLabelCode, manualLote])
 
+  const stepsInfo = useMemo(
+    () => [
+      { id: 1, title: 'Sube el archivo', completed: file !== null },
+      { id: 2, title: 'Introduce lote', completed: manualLote.trim().length > 0 },
+      { id: 3, title: 'Código de barras', completed: manualLabelCode.trim().length > 0 },
+      { id: 4, title: 'Código COC', completed: manualCodigoCoc.trim().length > 0 },
+      { id: 5, title: 'Fecha de envasado', completed: manualFechaEnvasado.trim().length > 0 },
+      { id: 6, title: 'Código R', completed: manualCodigoR.trim().length > 0 },
+    ],
+    [file, manualCodigoCoc, manualCodigoR, manualFechaEnvasado, manualLabelCode, manualLote],
+  )
+
+  const summaryStep = stepsInfo.length + 1
+  const allStepsCompleted = stepsInfo.every((step) => step.completed)
+  const canSubmit =
+    Boolean(file) &&
+    manualLote.trim().length > 0 &&
+    manualLabelCode.trim().length > 0 &&
+    manualCodigoCoc.trim().length > 0 &&
+    manualFechaEnvasado.trim().length > 0 &&
+    manualCodigoR.trim().length > 0
+
+  const stepButtonBaseClass =
+    'flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold transition'
 
   const resetForm = useCallback(() => {
     setFile(null)
-    setDestination('')
-    setNotes('')
     setLocalError(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -1716,6 +1752,7 @@ function LabelsDashboard({
   useEffect(() => {
     if (successMessage && !uploading) {
       resetForm()
+      setActiveStep(1)
     }
   }, [resetForm, successMessage, uploading])
 
@@ -1737,17 +1774,14 @@ function LabelsDashboard({
       setLocalError(null)
 
       const meta: LabelUploadMeta = {}
-      if (destination.trim().length > 0) {
-        meta.destination = destination.trim()
-      }
-      if (notes.trim().length > 0) {
-        meta.notes = notes.trim()
-      }
       if (manualLote.trim().length > 0) {
         meta.lote = manualLote.trim()
       }
       if (manualFechaEnvasado.trim().length > 0) {
         meta.fechaEnvasado = manualFechaEnvasado.trim()
+      }
+      if (manualLabelCode.trim().length > 0) {
+        meta.labelCode = manualLabelCode.trim()
       }
       if (manualCodigoCoc.trim().length > 0) {
         meta.codigoCoc = manualCodigoCoc.trim()
@@ -1759,16 +1793,105 @@ function LabelsDashboard({
       await onUpload(file, meta)
     },
     [
-      destination,
       file,
       manualCodigoCoc,
       manualCodigoR,
       manualFechaEnvasado,
+      manualLabelCode,
       manualLote,
-      notes,
       onUpload,
     ],
   )
+
+
+  const validateStep = useCallback(
+    (step: number): string | null => {
+      switch (step) {
+        case 1:
+          return file ? null : 'Selecciona una imagen antes de continuar.'
+        case 2:
+          return manualLote.trim().length > 0 ? null : 'Introduce el lote para continuar.'
+        case 3:
+          return manualLabelCode.trim().length > 0
+            ? null
+            : 'Introduce el código de barras para continuar.'
+        case 4:
+          return manualCodigoCoc.trim().length > 0
+            ? null
+            : 'Introduce el código COC para continuar.'
+        case 5:
+          return manualFechaEnvasado.trim().length > 0
+            ? null
+            : 'Selecciona la fecha de envasado antes de seguir.'
+        case 6:
+          return manualCodigoR.trim().length > 0 ? null : 'Introduce el código R para continuar.'
+        default:
+          return null
+      }
+    },
+    [
+      file,
+      manualCodigoCoc,
+      manualCodigoR,
+      manualFechaEnvasado,
+      manualLabelCode,
+      manualLote,
+    ],
+  )
+
+  const handleContinue = useCallback(() => {
+    if (uploading) return
+    if (activeStep >= summaryStep) return
+    const error = validateStep(activeStep)
+    if (error) {
+      setLocalError(error)
+      return
+    }
+    setLocalError(null)
+    setActiveStep((previous) => Math.min(previous + 1, summaryStep))
+  }, [activeStep, summaryStep, uploading, validateStep])
+
+  const handleBack = useCallback(() => {
+    if (uploading) return
+    setLocalError(null)
+    setActiveStep((previous) => Math.max(1, previous - 1))
+  }, [uploading])
+
+  const goToStep = useCallback(
+    (stepNumber: number) => {
+      if (uploading) return
+      if (stepNumber < 1 || stepNumber > summaryStep) return
+      if (stepNumber === summaryStep && !allStepsCompleted) return
+      if (stepNumber > 1) {
+        const previousCompleted = stepsInfo
+          .filter((step) => step.id < stepNumber)
+          .every((step) => step.completed)
+        if (!previousCompleted) return
+      }
+      setLocalError(null)
+      setActiveStep(stepNumber)
+    },
+    [allStepsCompleted, stepsInfo, summaryStep, uploading],
+  )
+
+  useEffect(() => {
+    const firstIncomplete = stepsInfo.find((step) => !step.completed)
+    if (firstIncomplete && activeStep > firstIncomplete.id) {
+      setActiveStep(firstIncomplete.id)
+    }
+    if (!firstIncomplete && activeStep > summaryStep) {
+      setActiveStep(summaryStep)
+    }
+  }, [activeStep, stepsInfo, summaryStep])
+
+  const handleViewHistory = useCallback(() => {
+    const targetId = historyDisabled ? 'archivos-subidos' : 'historial-etiquetas'
+    if (typeof document === 'undefined') return
+    const section = document.getElementById(targetId)
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [historyDisabled])
 
   const combinedError = localError ?? formError
 
@@ -1791,119 +1914,295 @@ function LabelsDashboard({
     void onReloadUploads()
   }, [onReloadUploads])
 
-  return (
-    <div className="space-y-8">
-      <section className="rounded-3xl border border-dashed border-gray-300 bg-[#FAF9F6] p-6 sm:p-7">
-        <div className="flex items-start gap-4">
-          <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-2xl bg-black text-[#FAF9F6]">
-            <UploadCloud className="h-6 w-6" />
-          </div>
-          <div className="flex-1">
-            <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <h4 className="text-lg font-semibold text-gray-900">Subir albarán en imagen</h4>
-                <p className="text-sm text-gray-600">
-                  Guardamos la imagen de manera segura para que el flujo pueda procesarla y generar la
-                  etiqueta automáticamente.
-                </p>
-              </div>
-            </header>
 
-            <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  disabled={uploading}
-                  className="block w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                />
+  const renderTextStep = (
+    stepNumber: number,
+    title: string,
+    description: string,
+    value: string,
+    onChange: (value: string) => void,
+    placeholder: string,
+    type: 'text' | 'date' = 'text',
+    nextLabel?: string,
+  ) => {
+    const continueLabel = nextLabel ?? (stepNumber === stepsInfo.length ? 'Ir al resumen' : 'Continuar')
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5">
+        <p className="text-sm font-semibold text-gray-900">{`Paso ${stepNumber}. ${title}`}</p>
+        <p className="mt-1 text-sm text-gray-600">{description}</p>
+        <div className="mt-4">
+          <input
+            type={type}
+            value={value}
+            onChange={(event) => {
+              setLocalError(null)
+              onChange(event.target.value)
+            }}
+            placeholder={type === 'date' ? undefined : placeholder}
+            disabled={uploading}
+            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+          />
+        </div>
+        <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+            disabled={uploading}
+          >
+            Volver
+          </button>
+          <button
+            type="button"
+            onClick={handleContinue}
+            className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+            disabled={uploading}
+          >
+            {continueLabel}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const renderActiveStep = () => {
+    if (activeStep === summaryStep) {
+      const summaryItems = [
+        { label: 'Archivo', value: file ? file.name : 'Sin archivo seleccionado' },
+        { label: 'Lote', value: manualLote.trim() || 'Sin dato' },
+        { label: 'Código de barras', value: manualLabelCode.trim() || 'Sin dato' },
+        { label: 'Código COC', value: manualCodigoCoc.trim() || 'Sin dato' },
+        { label: 'Fecha de envasado', value: manualFechaEnvasado.trim() || 'Sin dato' },
+        { label: 'Código R', value: manualCodigoR.trim() || 'Sin dato' },
+      ]
+
+      return (
+        <form
+          onSubmit={handleSubmit}
+          className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5 space-y-5"
+        >
+          <div>
+            <p className="text-sm font-semibold text-gray-900">{`Paso ${summaryStep}. Revisa y genera`}</p>
+            <p className="mt-1 text-sm text-gray-600">
+              Comprueba los datos antes de generar la etiqueta automática.
+            </p>
+          </div>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            {summaryItems.map((item) => (
+              <div key={item.label} className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                <dt className="text-xs uppercase tracking-wide text-gray-500">{item.label}</dt>
+                <dd className="mt-1 text-sm text-gray-900 break-words">{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+              disabled={uploading}
+            >
+              Volver
+            </button>
+            <button
+              type="submit"
+              disabled={!canSubmit || uploading}
+              className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition ${
+                !canSubmit || uploading
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-900 text-white hover:opacity-90'
+              }`}
+            >
+              {uploading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generando…
+                </span>
+              ) : (
+                'Generar etiqueta'
+              )}
+            </button>
+          </div>
+        </form>
+      )
+    }
+
+    switch (activeStep) {
+      case 1:
+        return (
+          <div className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5">
+            <p className="text-sm font-semibold text-gray-900">Paso 1. Sube el archivo</p>
+            <p className="mt-1 text-sm text-gray-600">
+              Adjunta la imagen del albarán (PNG, JPG, WebP, HEIC…). La etiqueta se generará a partir de esta foto.
+            </p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                disabled={uploading}
+                className="block w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              />
+              <button
+                type="button"
+                onClick={handleContinue}
+                className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+                disabled={uploading}
+              >
+                Continuar
+              </button>
+            </div>
+            {file && (
+              <p className="mt-2 text-xs text-gray-500">
+                Archivo seleccionado: <span className="font-medium text-gray-700">{file.name}</span>
+              </p>
+            )}
+          </div>
+        )
+      case 2:
+        return renderTextStep(
+          2,
+          'Introduce el lote',
+          'Escribe el lote tal y como aparece en el documento.',
+          manualLote,
+          setManualLote,
+          'Ej. LOTE-20241014-01',
+        )
+      case 3:
+        return renderTextStep(
+          3,
+          'Código de barras',
+          'Introduce el número completo que aparece debajo del código de barras.',
+          manualLabelCode,
+          setManualLabelCode,
+          'Ej. 8437012345678',
+        )
+      case 4:
+        return renderTextStep(
+          4,
+          'Código COC',
+          'Escribe el código COC tal y como figura en el albarán.',
+          manualCodigoCoc,
+          setManualCodigoCoc,
+          'Ej. COC-123456',
+        )
+      case 5:
+        return renderTextStep(
+          5,
+          'Fecha de envasado',
+          'Selecciona la fecha exacta de envasado.',
+          manualFechaEnvasado,
+          setManualFechaEnvasado,
+          '',
+          'date',
+        )
+      case 6:
+        return renderTextStep(
+          6,
+          'Código R',
+          'Introduce el código R asociado a este lote.',
+          manualCodigoR,
+          setManualCodigoR,
+          'Ej. R-123456',
+          'text',
+          'Ir al resumen',
+        )
+      default:
+        return null
+    }
+  }
+
+
+  return (
+    <div className="space-y-10">
+      <section id="archivos-subidos" className="rounded-3xl border border-gray-200 bg-white p-6 sm:p-7 shadow-sm">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h4 className="text-xl font-semibold text-gray-900">Genera tu etiqueta</h4>
+            <p className="text-sm text-gray-600">
+              Sigue los pasos en orden y rellena solo los datos imprescindibles.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleViewHistory}
+            className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+            disabled={uploading}
+          >
+            Ver historial completo
+          </button>
+        </header>
+
+        <div className="mt-6 space-y-5">
+          <div className="flex flex-wrap gap-2">
+            {stepsInfo.map((step) => {
+              const isActive = activeStep === step.id
+              const isCompleted = step.completed
+              const accessible =
+                step.id === 1 ||
+                stepsInfo
+                  .filter((candidate) => candidate.id < step.id)
+                  .every((candidate) => candidate.completed)
+              let stateClasses = ''
+              if (isCompleted) {
+                stateClasses = 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              } else if (isActive) {
+                stateClasses = 'border-gray-900 bg-gray-50 text-gray-900'
+              } else {
+                stateClasses = 'border-gray-200 text-gray-500'
+              }
+              const disabled = !accessible || uploading
+              return (
                 <button
-                  type="submit"
-                  disabled={uploading}
-                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                    uploading
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-gray-900 text-white hover:opacity-90'
+                  key={step.id}
+                  type="button"
+                  onClick={() => goToStep(step.id)}
+                  disabled={disabled}
+                  className={`${stepButtonBaseClass} ${stateClasses} ${
+                    disabled ? 'opacity-60 cursor-not-allowed' : 'hover:bg-[#FAF9F6]'
                   }`}
                 >
-                  {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {uploading ? 'Subiendo…' : 'Subir archivo'}
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-current text-xs">
+                    {String(step.id).padStart(2, '0')}
+                  </span>
+                  <span className="text-sm">{step.title}</span>
                 </button>
-              </div>
-
-
-              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 sm:px-5 sm:py-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Datos manuales para la etiqueta
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  Estos valores se aplicarán a todas las etiquetas generadas hasta que los cambies.
-                </p>
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-gray-500">Lote</label>
-                    <input
-                      type="text"
-                      value={manualLote}
-                      onChange={(event) => setManualLote(event.target.value)}
-                      placeholder="Ej. LOTE-20241014-01"
-                      disabled={uploading}
-                      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-gray-500">Fecha de envasado</label>
-                    <input
-                      type="date"
-                      value={manualFechaEnvasado}
-                      onChange={(event) => setManualFechaEnvasado(event.target.value)}
-                      disabled={uploading}
-                      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-gray-500">Código COC</label>
-                    <input
-                      type="text"
-                      value={manualCodigoCoc}
-                      onChange={(event) => setManualCodigoCoc(event.target.value)}
-                      placeholder="Ej. COC 123456"
-                      disabled={uploading}
-                      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-gray-500">Código R</label>
-                    <input
-                      type="text"
-                      value={manualCodigoR}
-                      onChange={(event) => setManualCodigoR(event.target.value)}
-                      placeholder="Ej. R-123456"
-                      disabled={uploading}
-                      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {combinedError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
-                  {combinedError}
-                </p>
-              )}
-
-              {successMessage && !combinedError && (
-                <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2">
-                  {successMessage}
-                </p>
-              )}
-            </form>
+              )
+            })}
+            <button
+              type="button"
+              onClick={() => goToStep(summaryStep)}
+              disabled={!allStepsCompleted || uploading}
+              className={`${stepButtonBaseClass} ${
+                activeStep === summaryStep
+                  ? 'border-gray-900 bg-gray-50 text-gray-900'
+                  : allStepsCompleted
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-gray-200 text-gray-500'
+              } ${!allStepsCompleted || uploading ? 'opacity-60 cursor-not-allowed' : 'hover:bg-[#FAF9F6]'}`}
+            >
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-current text-xs">
+                {String(summaryStep).padStart(2, '0')}
+              </span>
+              <span className="text-sm">Resumen</span>
+            </button>
           </div>
+
+          <div>{renderActiveStep()}</div>
+
+          {combinedError && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
+              {combinedError}
+            </p>
+          )}
+          {successMessage && !combinedError && (
+            <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2">
+              {successMessage}
+            </p>
+          )}
         </div>
       </section>
-
       {historyDisabled ? (
         <section className="rounded-3xl border border-gray-200 bg-white p-6 sm:p-7 shadow-sm">
           <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

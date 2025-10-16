@@ -15,6 +15,7 @@ import {
 export interface LabelRenderFields {
   fechaEnvasado?: string | null
   lote?: string | null
+  labelCode?: string | null
   codigoCoc?: string | null
   codigoR?: string | null
 }
@@ -29,8 +30,6 @@ const DEFAULT_TEMPLATE_RELATIVE_PATH = path.join('public', 'Etiqueta.png')
 const DEFAULT_FONT_SIZE = 56
 const DEFAULT_FONT_COLOR = rgb(0, 0, 0)
 
-type LayoutKey = keyof LabelRenderFields
-
 interface LayoutEntry {
   baseX: number
   baseY: number
@@ -40,6 +39,8 @@ interface LayoutEntry {
 
 const BASE_WIDTH = 1262
 const BASE_HEIGHT = 768
+
+type LayoutKey = Exclude<keyof LabelRenderFields, 'labelCode'>
 
 const TEXT_LAYOUT: Record<LayoutKey, LayoutEntry> = {
   fechaEnvasado: { baseX: 340, baseY: 440, align: 'left', fontSize: 36 },
@@ -127,7 +128,7 @@ export async function renderLabelPdf({
     }
   })
 
-  const barcodeText = normalizeFieldValue(fields.codigoCoc)
+  const barcodeText = normalizeFieldValue(fields.labelCode ?? fields.codigoCoc)
   if (barcodeText && typeof page.drawText === 'function') {
     const layout = BARCODE_NUMBER_LAYOUT
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
