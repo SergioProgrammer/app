@@ -528,7 +528,9 @@ export default function CreacionPlantillaPage() {
                         type="number"
                         min={min}
                         max={max}
-                        value={Math.round(fields[activeField][property] as number)}
+                        value={Math.round(
+                          ((fields[activeField]?.[property] as number | undefined) ?? 0) * 100,
+                        ) / 100}
                         onChange={(event) =>
                           handleBoxInputChange(
                             activeField,
@@ -548,7 +550,7 @@ export default function CreacionPlantillaPage() {
                       min={0}
                       max={1}
                       step={0.05}
-                      value={Number(fields[activeField].baseline.toFixed(2))}
+                      value={Number(((fields[activeField]?.baseline ?? 0).toFixed(2)))}
                       onChange={(event) =>
                         handleBoxInputChange(
                           activeField,
@@ -563,7 +565,7 @@ export default function CreacionPlantillaPage() {
                   <label className="block text-xs font-semibold text-gray-600">
                     Alineación
                     <select
-                      value={fields[activeField].align}
+                      value={fields[activeField]?.align ?? 'left'}
                       onChange={(event) =>
                         handleBoxInputChange(activeField, 'align', event.target.value as AlignMode)
                       }
@@ -579,7 +581,7 @@ export default function CreacionPlantillaPage() {
                     Texto de prueba
                     <input
                       type="text"
-                      value={fields[activeField].sample}
+                      value={fields[activeField]?.sample ?? ''}
                       onChange={(event) =>
                         handleBoxInputChange(activeField, 'sample', event.target.value)
                       }
