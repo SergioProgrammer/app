@@ -145,13 +145,19 @@ export default function CreacionPlantillaPage() {
 
   const mutateField = useCallback(
     (fieldKey: FieldKey, updater: (current: FieldBox) => FieldBox) => {
-      setFields((current) => ({
-        ...current,
-        [fieldKey]: updater(current[fieldKey]),
-      }))
+      setFields((current) => {
+        const currentField = current[fieldKey]
+        if (!currentField) return current
+        return {
+          ...current,
+          [fieldKey]: updater(currentField),
+        }
+      })
     },
     [],
   )
+
+  const activeFieldBox = fields[activeField]
 
   const getPointerPosition = useCallback(
     (event: MouseEvent<HTMLDivElement>, options?: { allowOutside?: boolean }) => {
@@ -402,8 +408,8 @@ export default function CreacionPlantillaPage() {
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-gray-500">
                   <MousePointer2 className="h-3.5 w-3.5" />
                   {drawingField
-                    ? `Dibuja el área para ${fields[drawingField].sample}`
-                    : `Selección activa: ${fields[activeField].sample} (arrastra para mover)`}
+                    ? `Dibuja el área para ${fields[drawingField]?.sample ?? 'campo seleccionado'}`
+                    : `Selección activa: ${(activeFieldBox?.sample ?? 'campo seleccionado')} (arrastra para mover)`}
                 </div>
                 {imageNaturalWidth && imageNaturalHeight && (
                   <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500">
@@ -504,7 +510,7 @@ export default function CreacionPlantillaPage() {
                   className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
                 >
                   <MousePointer2 className="h-4 w-4 text-gray-500" />
-                  Dibujar zona para {fields[activeField].sample}
+                  Dibujar zona para {activeFieldBox?.sample ?? 'campo seleccionado'}
                 </button>
               </div>
 
@@ -514,81 +520,95 @@ export default function CreacionPlantillaPage() {
                   Ajusta valores numéricos para afinar la posición. Usa baseline si el texto queda
                   demasiado alto o bajo dentro del recuadro.
                 </p>
-                <div className="mt-4 space-y-3">
-                  {([
-                    { label: 'Posición X', property: 'x', min: 0, max: imageNaturalWidth ?? 2000 },
-                    { label: 'Posición Y', property: 'y', min: 0, max: imageNaturalHeight ?? 2000 },
-                    { label: 'Ancho', property: 'width', min: 10, max: imageNaturalWidth ?? 2000 },
-                    { label: 'Alto', property: 'height', min: 10, max: imageNaturalHeight ?? 2000 },
-                    { label: 'Tamaño fuente', property: 'fontSize', min: 10, max: 160 },
-                  ] as const).map(({ label, property, min, max }) => (
-                    <label key={property} className="block text-xs font-semibold text-gray-600">
-                      {label}
+                {activeFieldBox ? (
+                  <div className="mt-4 space-y-3">
+                    {([
+                      { label: 'Posición X', property: 'x', min: 0, max: imageNaturalWidth ?? 2000 },
+                      { label: 'Posición Y', property: 'y', min: 0, max: imageNaturalHeight ?? 2000 },
+                      { label: 'Ancho', property: 'width', min: 10, max: imageNaturalWidth ?? 2000 },
+                      { label: 'Alto', property: 'height', min: 10, max: imageNaturalHeight ?? 2000 },
+                      { label: 'Tamaño fuente', property: 'fontSize', min: 10, max: 160 },
+                    ] as const).map(({ label, property, min, max }) => {
+                      const rawValue = activeFieldBox[property]
+                      const displayValue = Number.isFinite(rawValue)
+                        ? Math.round(rawValue * 100) / 100
+                        : ''
+                      return (
+                        <label key={property} className="block text-xs font-semibold text-gray-600">
+                          {label}
+                          <input
+                            type="number"
+                            min={min}
+                            max={max}
+                            value={displayValue}
+                            onChange={(event) =>
+                              handleBoxInputChange(
+                                activeField,
+                                property,
+                                Number.parseFloat(event.target.value) || 0,
+                              )
+                            }
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                          />
+                        </label>
+                      )
+                    })}
+
+                    <label className="block text-xs font-semibold text-gray-600">
+                      Baseline (0 top - 1 bottom)
                       <input
                         type="number"
-                        min={min}
-                        max={max}
-                        value={Math.round(
-                          ((fields[activeField]?.[property] as number | undefined) ?? 0) * 100,
-                        ) / 100}
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={
+                          Number.isFinite(activeFieldBox.baseline)
+                            ? Number(activeFieldBox.baseline.toFixed(2))
+                            : ''
+                        }
                         onChange={(event) =>
                           handleBoxInputChange(
                             activeField,
-                            property,
-                            Number.parseFloat(event.target.value) || 0,
+                            'baseline',
+                            Math.min(Math.max(Number.parseFloat(event.target.value) || 0, 0), 1),
                           )
                         }
                         className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
                       />
                     </label>
-                  ))}
 
-                  <label className="block text-xs font-semibold text-gray-600">
-                    Baseline (0 top - 1 bottom)
-                    <input
-                      type="number"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={Number(((fields[activeField]?.baseline ?? 0).toFixed(2)))}
-                      onChange={(event) =>
-                        handleBoxInputChange(
-                          activeField,
-                          'baseline',
-                          Math.min(Math.max(Number.parseFloat(event.target.value) || 0, 0), 1),
-                        )
-                      }
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                    />
-                  </label>
+                    <label className="block text-xs font-semibold text-gray-600">
+                      Alineación
+                      <select
+                        value={activeFieldBox.align}
+                        onChange={(event) =>
+                          handleBoxInputChange(activeField, 'align', event.target.value as AlignMode)
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                      >
+                        <option value="left">Izquierda</option>
+                        <option value="center">Centro</option>
+                        <option value="right">Derecha</option>
+                      </select>
+                    </label>
 
-                  <label className="block text-xs font-semibold text-gray-600">
-                    Alineación
-                    <select
-                      value={fields[activeField]?.align ?? 'left'}
-                      onChange={(event) =>
-                        handleBoxInputChange(activeField, 'align', event.target.value as AlignMode)
-                      }
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                    >
-                      <option value="left">Izquierda</option>
-                      <option value="center">Centro</option>
-                      <option value="right">Derecha</option>
-                    </select>
-                  </label>
-
-                  <label className="block text-xs font-semibold text-gray-600">
-                    Texto de prueba
-                    <input
-                      type="text"
-                      value={fields[activeField]?.sample ?? ''}
-                      onChange={(event) =>
-                        handleBoxInputChange(activeField, 'sample', event.target.value)
-                      }
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                    />
-                  </label>
-                </div>
+                    <label className="block text-xs font-semibold text-gray-600">
+                      Texto de prueba
+                      <input
+                        type="text"
+                        value={activeFieldBox.sample}
+                        onChange={(event) =>
+                          handleBoxInputChange(activeField, 'sample', event.target.value)
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <p className="mt-4 text-xs text-gray-500">
+                    Selecciona un campo para ajustar sus propiedades.
+                  </p>
+                )}
               </section>
 
               <section className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
