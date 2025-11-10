@@ -1,11 +1,12 @@
 'use client'
 
-import { ReactNode, useEffect, useMemo, useState } from 'react'
+import { ReactNode, useEffect, useMemo, useState, type FormEvent } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import type { User } from '@supabase/supabase-js'
-import { History, Layers, LogOut, Menu, X, ChevronRight } from 'lucide-react'
+import { History, Layers, LogOut, Menu, X, ChevronRight, Search } from 'lucide-react'
+import { getPanelSlugForUser } from '@/lib/panel-config'
 
 interface PanelLayoutProps {
   children: ReactNode
@@ -27,43 +28,17 @@ const navItems = [
 export default function PanelLayout({ children }: PanelLayoutProps) {
   const supabase = createClient()
   const pathname = usePathname()
+  const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [isOpen, setIsOpen] = useState(false)
+  const [lotQuery, setLotQuery] = useState('')
+  const [lotError, setLotError] = useState<string | null>(null)
   const userEmail = user?.email ?? ''
   const userDisplayName = useMemo(() => {
     const atIndex = userEmail.indexOf('@')
     return atIndex === -1 ? userEmail : userEmail.slice(0, atIndex)
   }, [userEmail])
-  const activationDate = useMemo(() => {
-    if (!user?.created_at) return 'Sin fecha registrada'
-    try {
-      return new Date(user.created_at).toLocaleDateString('es-ES', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-      })
-    } catch {
-      return 'Sin fecha registrada'
-    }
-  }, [user?.created_at])
-  const companyName = useMemo(() => {
-    const rawCompany = user?.user_metadata?.company
-    if (typeof rawCompany === 'string' && rawCompany.trim().length > 0) {
-      return rawCompany
-    }
-    return 'Sin empresa registrada'
-  }, [user])
-  const activeModulesSummary = useMemo(() => {
-    const modules = user?.user_metadata?.activeModules
-    if (Array.isArray(modules) && modules.length > 0) {
-      return modules.join(', ')
-    }
-    const singleModule = user?.user_metadata?.primaryModule
-    if (typeof singleModule === 'string' && singleModule.trim().length > 0) {
-      return singleModule
-    }
-    return 'Sin automatizaciones activas registradas'
-  }, [user])
+  const defaultPanelSlug = useMemo(() => getPanelSlugForUser(user), [user])
 
   useEffect(() => {
     async function loadUser() {
@@ -81,12 +56,29 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
     loadUser()
   }, [supabase])
 
-  const containerClass = useMemo(() => {
-    if (pathname === '/dashboard') {
-      return 'mx-auto w-full max-w-7xl'
+  const handleLotInputChange = (value: string) => {
+    setLotQuery(value)
+    if (lotError) {
+      setLotError(null)
     }
-    return 'mx-auto w-full max-w-5xl'
-  }, [pathname])
+  }
+
+  const handleLotSearch = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault()
+    const trimmed = lotQuery.trim()
+    if (!trimmed) {
+      setLotError('Introduce un lote para buscar.')
+      return
+    }
+    const normalized = trimmed.replace(/\s+/g, '').toUpperCase()
+    setLotError(null)
+    setLotQuery('')
+    const targetSlug = defaultPanelSlug || 'general'
+    router.push(`/panel/${targetSlug}?lote=${encodeURIComponent(normalized)}#archivos-subidos`)
+    setIsOpen(false)
+  }
+
+  const containerClass = 'w-full'
 
   if (!user) {
     return (
@@ -123,7 +115,7 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-2">
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
           {navItems.map((item) => {
             const Icon = item.icon
             const active = isActive(item.href)
@@ -155,37 +147,38 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
               </Link>
             )
           })}
+
+          <form
+            onSubmit={handleLotSearch}
+            className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3 shadow-sm"
+          >
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Buscar lote</p>
+              <p className="mt-1 text-xs text-gray-600">
+                Introduce el lote y te llevamos al pedido original guardado.
+              </p>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={lotQuery}
+                onChange={(event) => handleLotInputChange(event.target.value)}
+                placeholder="Ej. AB1234"
+                className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              />
+            </div>
+            {lotError && <p className="text-xs text-red-600">{lotError}</p>}
+            <button
+              type="submit"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              Abrir pedido
+            </button>
+          </form>
         </div>
 
         <div className="px-6 pb-6">
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">Resumen del perfil</p>
-              <p className="mt-1 text-xs text-gray-600">Activo desde {activationDate}</p>
-            </div>
-            <dl className="space-y-3 text-xs text-gray-600">
-              <div className="flex items-start justify-between gap-3">
-                <dt className="font-medium text-gray-900">Correo</dt>
-                <dd className="ml-auto max-w-[180px] text-right text-gray-700 break-all md:max-w-[200px]">{user.email}</dd>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <dt className="font-medium text-gray-900">Empresa</dt>
-                <dd className="text-right text-gray-700">{companyName}</dd>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <dt className="font-medium text-gray-900">Automatizaciones activas</dt>
-                <dd className="text-right text-gray-700">{activeModulesSummary}</dd>
-              </div>
-            </dl>
-            <a
-              href="https://wa.me/34655689827"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex w-full items-center justify-center rounded-lg border border-gray-200 bg-[#FAF9F6] px-3 py-2 text-xs font-semibold text-gray-900 hover:bg-gray-100 transition"
-            >
-              Gestionar perfil
-            </a>
-          </div>
           <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-4">
             <p className="text-sm font-semibold text-gray-900">¿Necesitas ayuda inmediata?</p>
             <p className="mt-1 text-xs text-gray-600">
@@ -243,7 +236,7 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
             <X className="h-6 w-6 text-gray-500" />
           </button>
         </div>
-        <div className="p-5 space-y-2 overflow-y-auto">
+        <div className="p-5 space-y-4 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon
             const active = isActive(item.href)
@@ -263,6 +256,32 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
               </Link>
             )
           })}
+
+          <form onSubmit={handleLotSearch} className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Buscar lote</p>
+              <p className="mt-1 text-xs text-gray-600">
+                Accede directo al pedido original desde aquí.
+              </p>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={lotQuery}
+                onChange={(event) => handleLotInputChange(event.target.value)}
+                placeholder="Ej. AB1234"
+                className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              />
+            </div>
+            {lotError && <p className="text-xs text-red-600">{lotError}</p>}
+            <button
+              type="submit"
+              className="inline-flex w-full items-center justify-center rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              Abrir pedido
+            </button>
+          </form>
 
           <button
             onClick={async () => {

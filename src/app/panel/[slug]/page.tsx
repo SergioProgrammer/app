@@ -9,7 +9,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import {
@@ -37,6 +37,17 @@ import {
   type PanelPlanOrderConfig,
   type PanelPlanResource,
 } from '@/lib/panel-config'
+import {
+  DEFAULT_LABEL_TYPE,
+  DEFAULT_PRODUCT,
+  LABEL_TYPE_OPTIONS,
+  LABEL_TYPE_PRODUCTS,
+  PRODUCT_SELECTION_STORAGE_KEY,
+  type LabelType,
+  type ProductSelection,
+  getLabelTypeLabel,
+  parseStoredProductSelection,
+} from '@/lib/product-selection'
 
 interface PlanRecord {
   id: string
@@ -89,17 +100,21 @@ interface LabelRecord {
 interface LabelUploadMeta {
   lote?: string
   fechaEnvasado?: string
+  fechaCarga?: string
   labelCode?: string
   codigoCoc?: string
   codigoR?: string
+  weight?: string
 }
 
 interface UploadedFileAutomationFields {
   fechaEnvasado?: string | null
+  fechaCarga?: string | null
   lote?: string | null
   labelCode?: string | null
   codigoCoc?: string | null
   codigoR?: string | null
+  weight?: string | null
 }
 
 interface UploadedFileAutomation {
@@ -133,11 +148,47 @@ interface UploadedFileRecord {
   generatedFromFileId?: string | null
 }
 
+interface LotSearchResult {
+  lot: string
+  file: UploadedFileRecord | null
+  status: 'searching' | 'found' | 'not-found'
+}
+
 type LabelStatusTone = 'pending' | 'success' | 'error' | 'info'
 
 type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
 
 const TURNOS_RECENT_LIMIT = 8
+const DEFAULT_WEIGHT = '40gr'
+const LOT_PATTERN = /^[A-Z]{2}\d{4}$/
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const MANUAL_ORDER_FILE_PREFIX = 'pedido-manual-'
+
+function generateLotValue(seed: string): string {
+  const lettersFromSeed = seed
+    .replace(/[^A-Za-z]/g, '')
+    .toUpperCase()
+    .slice(0, 2)
+  const prefix =
+    lettersFromSeed.length === 2
+      ? lettersFromSeed
+      : `${pickRandomLetter()}${pickRandomLetter()}`
+  const digits = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, '0')
+  return `${prefix}${digits}`
+}
+
+function normalizeLot(value: string): string | null {
+  const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return LOT_PATTERN.test(compact) ? compact : null
+}
+
+function pickRandomLetter(): string {
+  const index = Math.floor(Math.random() * LETTERS.length)
+  return LETTERS[index]
+}
+
 const TURNOS_FETCH_LIMIT = 32
 const LABELS_FETCH_LIMIT = 100
 export default function PanelPage() {
@@ -174,6 +225,31 @@ export default function PanelPage() {
   const [uploadedFilesMessage, setUploadedFilesMessage] = useState<string | null>(null)
   const [uploadedFilesDeletingId, setUploadedFilesDeletingId] = useState<string | null>(null)
   const [uploadedFilesFolder, setUploadedFilesFolder] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const lotQueryParamRaw = searchParams?.get('lote') ?? ''
+  const normalizedLotQuery = useMemo(() => {
+    const trimmed = lotQueryParamRaw.trim()
+    if (!trimmed) return ''
+    return normalizeLot(trimmed) ?? trimmed.toUpperCase()
+  }, [lotQueryParamRaw])
+  const lotSearchResult = useMemo<LotSearchResult | null>(() => {
+    if (!normalizedLotQuery) return null
+    if (uploadedFilesLoading) {
+      return { lot: normalizedLotQuery, file: null, status: 'searching' }
+    }
+    const match = uploadedFiles.find((file) => {
+      const lotField = file.automation?.fields?.lote
+      if (typeof lotField !== 'string') return false
+      return lotField.trim().toUpperCase() === normalizedLotQuery
+    })
+    return {
+      lot: normalizedLotQuery,
+      file: match ?? null,
+      status: match ? 'found' : 'not-found',
+    }
+  }, [normalizedLotQuery, uploadedFiles, uploadedFilesLoading])
+  const highlightedUploadId =
+    lotSearchResult?.status === 'found' && lotSearchResult.file ? lotSearchResult.file.id : null
   const userEmail = user?.email ?? ''
   const userDisplayName = useMemo(() => {
     const atIndex = userEmail.indexOf('@')
@@ -254,10 +330,15 @@ export default function PanelPage() {
     () => activePlans.find((plan) => plan.dataset?.type === 'turnos'),
     [activePlans],
   )
-  const labelsPlan = useMemo(
-    () => activePlans.find((plan) => plan.dataset?.type === 'labels'),
-    [activePlans],
-  )
+const labelsPlan = useMemo(
+  () => activePlans.find((plan) => plan.dataset?.type === 'labels'),
+  [activePlans],
+)
+
+const nonLabelPlans = useMemo(
+  () => activePlans.filter((plan) => plan.dataset?.type !== 'labels'),
+  [activePlans],
+)
   const labelsHistoryDisabled = labelsPlan?.dataset?.historyDisabled ?? false
 
   useEffect(() => {
@@ -715,6 +796,10 @@ export default function PanelPage() {
                             typeof fieldsPayload.fechaEnvasado === 'string'
                               ? fieldsPayload.fechaEnvasado
                               : null,
+                          fechaCarga:
+                            typeof fieldsPayload.fechaCarga === 'string'
+                              ? fieldsPayload.fechaCarga
+                              : null,
                           lote:
                             typeof fieldsPayload.lote === 'string'
                               ? fieldsPayload.lote
@@ -730,6 +815,10 @@ export default function PanelPage() {
                           codigoR:
                             typeof fieldsPayload.codigoR === 'string'
                               ? fieldsPayload.codigoR
+                              : null,
+                          weight:
+                            typeof fieldsPayload.weight === 'string'
+                              ? fieldsPayload.weight
                               : null,
                         }
                       }
@@ -1072,13 +1161,15 @@ export default function PanelPage() {
         'image/gif',
       ])
       const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.heic', '.heif']
+      const isManualOrderFile = file.name.startsWith(MANUAL_ORDER_FILE_PREFIX) && mimeType === 'text/plain'
       const isAllowed =
+        isManualOrderFile ||
         allowedMimeTypes.has(mimeType) ||
         allowedExtensions.some((extension) => normalizedName.endsWith(extension))
 
       if (!isAllowed) {
         setLabelUploadError(
-          'Solo se admiten imágenes (PNG, JPG, WebP, HEIC, GIF). Convierte el albarán a imagen antes de subirlo.',
+          'Solo se admiten imágenes (PNG, JPG, WebP, HEIC, GIF). Convierte el albarán a imagen antes de subirlo o continúa sin archivo.',
         )
         return
       }
@@ -1103,6 +1194,7 @@ export default function PanelPage() {
         }
         if (meta?.fechaEnvasado) {
           formData.append('manualFechaEnvasado', meta.fechaEnvasado)
+          formData.append('manualFechaCarga', meta.fechaEnvasado)
         }
         if (meta?.labelCode) {
           formData.append('manualLabelCode', meta.labelCode)
@@ -1112,6 +1204,9 @@ export default function PanelPage() {
         }
         if (meta?.codigoR) {
           formData.append('manualCodigoR', meta.codigoR)
+        }
+        if (meta?.weight) {
+          formData.append('manualWeight', meta.weight)
         }
         if (userEmail.length > 0) {
           formData.append('userEmail', userEmail)
@@ -1130,10 +1225,12 @@ export default function PanelPage() {
                 status?: string
                 fields?: {
                   fechaEnvasado?: string | null
+                  fechaCarga?: string | null
                   lote?: string | null
                   labelCode?: string | null
                   codigoCoc?: string | null
                   codigoR?: string | null
+                  weight?: string | null
                 }
                 labelFileName?: string | null
                 labelWebViewLink?: string | null
@@ -1174,12 +1271,14 @@ export default function PanelPage() {
             `Archivo "${fileName}" subido, pero la automatización falló: ${automationError}`,
           )
         } else {
-          const extractedParts = automationFields
-            ? [
-                automationFields.fechaEnvasado
-                  ? `Envasado: ${automationFields.fechaEnvasado}`
-                  : null,
-                automationFields.lote ? `Lote: ${automationFields.lote}` : null,
+                const extractedParts = automationFields
+                  ? [
+                      automationFields.fechaEnvasado
+                        ? `Envasado: ${automationFields.fechaEnvasado}`
+                        : null,
+                automationFields.fechaCarga ? `Fecha de envasado: ${automationFields.fechaCarga}` : null,
+                      automationFields.lote ? `Lote: ${automationFields.lote}` : null,
+                      automationFields.weight ? `Peso: ${automationFields.weight}` : null,
                 automationFields.labelCode
                   ? `Código de barras: ${automationFields.labelCode}`
                   : null,
@@ -1362,8 +1461,123 @@ export default function PanelPage() {
                   </div>
                 </div>
               </div>
-            </section>
-          )}
+          </section>
+        )}
+
+        {labelsPlan && (
+          <LabelsDashboard
+            data={labelsData}
+            loading={labelsLoading}
+            historyError={labelsError}
+            formError={labelUploadError}
+            successMessage={labelUploadMessage}
+            uploading={labelUploadLoading}
+            onUpload={handleUploadLabel}
+            onRefresh={() => loadLabels()}
+            historyDisabled={labelsHistoryDisabled}
+            uploads={uploadedFiles}
+            uploadsLoading={uploadedFilesLoading}
+            uploadsError={uploadedFilesError}
+            uploadsMessage={uploadedFilesMessage}
+            uploadsDeletingId={uploadedFilesDeletingId}
+            uploadsFolder={uploadedFilesFolder}
+            lotSearchResult={lotSearchResult}
+            highlightedUploadId={highlightedUploadId}
+            onReloadUploads={() => loadUploadedFiles()}
+            onDeleteUpload={handleDeleteUploadedFile}
+          />
+        )}
+
+        {nonLabelPlans.length > 0 && (
+          <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8 shadow-sm">
+            <div className="space-y-6">
+              {nonLabelPlans.map((plan) => (
+                <article
+                  key={plan.id}
+                  className="rounded-3xl border border-gray-200 bg-white p-6 sm:p-7 shadow-sm flex flex-col gap-6"
+                >
+                <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-semibold text-gray-900">{plan.name}</h3>
+                    {plan.summary && <p className="text-sm text-gray-600">{plan.summary}</p>}
+                  </div>
+                  {plan.resources && plan.resources.length > 0 && (
+                    <div className="flex flex-wrap gap-3">
+                      {plan.resources.map((resource) => {
+                        if (resource.variant === 'download' && plan.dataset?.type === 'turnos') {
+                          return (
+                            <div key={`${plan.id}-${resource.label}`} className="flex items-center gap-2">
+                              <select
+                                value={turnosDownloadRange}
+                                onChange={(event) =>
+                                  setTurnosDownloadRange(event.target.value as TurnosDownloadRange)
+                                }
+                                className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                              >
+                                <option value="day">Hoy</option>
+                                <option value="week">Última semana</option>
+                                <option value="month">Último mes</option>
+                                <option value="year">Último año</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadTurnos(turnosDownloadRange)}
+                                disabled={turnosDownloadLoading}
+                                className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                                  turnosDownloadLoading
+                                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                    : 'bg-gray-900 text-white hover:opacity-90'
+                                }`}
+                              >
+                                {turnosDownloadLoading ? 'Generando…' : `Descargar ${resource.label}`}
+                              </button>
+                            </div>
+                          )
+                        }
+
+                        if (resource.href) {
+                          return (
+                            <a
+                              key={`${plan.id}-${resource.label}`}
+                              href={resource.href}
+                              className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                                resource.variant === 'download'
+                                  ? 'bg-gray-900 text-white hover:opacity-90'
+                                  : 'border border-gray-300 bg-white text-gray-900 hover:bg-gray-100'
+                              }`}
+                            >
+                              {resource.variant === 'download' ? 'Descargar' : 'Ver'} {resource.label}
+                            </a>
+                          )
+                        }
+
+                        return null
+                      })}
+                    </div>
+                  )}
+                </header>
+
+                {plan.dataset?.type === 'turnos' ? (
+                  <TurnosDashboard
+                    loading={turnosLoading}
+                    error={turnosError}
+                    data={turnosData}
+                    stats={turnosStats}
+                    chartData={turnosChartData}
+                    summaryByDate={turnosByDate}
+                  />
+                ) : plan.records && plan.records.length > 0 ? (
+                  <RecordsTable plan={plan} />
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    Aún no se registran datos para este plan. En cuanto lleguen registros, aparecerán aquí listos para revisar o descargar.
+                  </p>
+                )}
+              </article>
+              ))}
+            </div>
+          </section>
+        )}
 
           {!isLabelsPanel && (
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -1423,139 +1637,6 @@ export default function PanelPage() {
               </div>
             </section>
           )}
-
-          <section className="rounded-3xl bg-white border border-gray-100 p-6 sm:p-8 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900">Mi panel</h2>
-                <p className="mt-2 text-sm text-gray-600">
-                  {isLabelsPanel
-                    ? 'Sube los albaranes en imagen, genera la etiqueta automática y revisa el historial enviado al almacén.'
-                    : 'Visualiza las automatizaciones activas y descarga reportes de turnos, inventario o tratamientos al instante.'}
-                </p>
-              </div>
-            </div>
-
-            {activePlans.length === 0 ? (
-              <div className="mt-8 rounded-2xl border border-dashed border-gray-300 bg-[#FAF9F6] p-6 text-center text-sm text-gray-600">
-                Selecciona algún plan para ver resultados aquí. Cuando activemos tus automatizaciones, verás turnos, inventarios y campañas listos para revisar o descargar.
-              </div>
-            ) : (
-              <div className="mt-8 space-y-6">
-                {activePlans.map((plan) => (
-                  <article
-                    key={plan.id}
-                    className="rounded-3xl border border-gray-200 bg-white p-6 sm:p-7 shadow-sm flex flex-col gap-6"
-                  >
-                    <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="space-y-1">
-                        <h3 className="text-xl font-semibold text-gray-900">{plan.name}</h3>
-                        {plan.summary && <p className="text-sm text-gray-600">{plan.summary}</p>}
-                      </div>
-                      {plan.resources && plan.resources.length > 0 && (
-                        <div className="flex flex-wrap gap-3">
-                          {plan.resources.map((resource) => {
-                            if (resource.variant === 'download' && plan.dataset?.type === 'turnos') {
-                              return (
-                                <div
-                                  key={`${plan.id}-${resource.label}`}
-                                  className="flex items-center gap-2"
-                                >
-                                  <select
-                                    value={turnosDownloadRange}
-                                    onChange={(event) =>
-                                      setTurnosDownloadRange(
-                                        event.target.value as TurnosDownloadRange,
-                                      )
-                                    }
-                                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                  >
-                                    <option value="day">Hoy</option>
-                                    <option value="week">Última semana</option>
-                                    <option value="month">Último mes</option>
-                                    <option value="year">Último año</option>
-                                  </select>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDownloadTurnos(turnosDownloadRange)}
-                                    disabled={turnosDownloadLoading}
-                                    className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                                      turnosDownloadLoading
-                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                        : 'bg-gray-900 text-white hover:opacity-90'
-                                    }`}
-                                  >
-                                    {turnosDownloadLoading
-                                      ? 'Generando…'
-                                      : `Descargar ${resource.label}`}
-                                  </button>
-                                </div>
-                              )
-                            }
-
-                            if (resource.href) {
-                              return (
-                                <a
-                                  key={`${plan.id}-${resource.label}`}
-                                  href={resource.href}
-                                  className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                                    resource.variant === 'download'
-                                      ? 'bg-gray-900 text-white hover:opacity-90'
-                                      : 'border border-gray-300 bg-white text-gray-900 hover:bg-gray-100'
-                                  }`}
-                                >
-                                  {resource.variant === 'download' ? 'Descargar' : 'Ver'} {resource.label}
-                                </a>
-                              )
-                            }
-
-                            return null
-                          })}
-                        </div>
-                      )}
-                    </header>
-
-                    {plan.dataset?.type === 'turnos' ? (
-                      <TurnosDashboard
-                        loading={turnosLoading}
-                        error={turnosError}
-                        data={turnosData}
-                        stats={turnosStats}
-                        chartData={turnosChartData}
-                        summaryByDate={turnosByDate}
-                      />
-                    ) : plan.dataset?.type === 'labels' ? (
-                      <LabelsDashboard
-                        data={labelsData}
-                        loading={labelsLoading}
-                        historyError={labelsError}
-                        formError={labelUploadError}
-                        successMessage={labelUploadMessage}
-                        uploading={labelUploadLoading}
-                        onUpload={handleUploadLabel}
-                        onRefresh={() => loadLabels()}
-                        historyDisabled={labelsHistoryDisabled}
-                        uploads={uploadedFiles}
-                        uploadsLoading={uploadedFilesLoading}
-                        uploadsError={uploadedFilesError}
-                        uploadsMessage={uploadedFilesMessage}
-                        uploadsDeletingId={uploadedFilesDeletingId}
-                        uploadsFolder={uploadedFilesFolder}
-                        onReloadUploads={() => loadUploadedFiles()}
-                        onDeleteUpload={handleDeleteUploadedFile}
-                      />
-                    ) : plan.records && plan.records.length > 0 ? (
-                      <RecordsTable plan={plan} />
-                    ) : (
-                      <p className="text-sm text-gray-600">
-                        Aún no se registran datos para este plan. En cuanto lleguen registros, aparecerán aquí listos para revisar o descargar.
-                      </p>
-                    )}
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
 
           {!isLabelsPanel &&
             sections.map((section) => (
@@ -1643,6 +1724,8 @@ function LabelsDashboard({
   uploadsMessage,
   uploadsDeletingId,
   uploadsFolder,
+  lotSearchResult,
+  highlightedUploadId,
   onReloadUploads,
   onDeleteUpload,
 }: {
@@ -1661,16 +1744,21 @@ function LabelsDashboard({
   uploadsMessage: string | null
   uploadsDeletingId: string | null
   uploadsFolder: string | null
+  lotSearchResult: LotSearchResult | null
+  highlightedUploadId: string | null
   onReloadUploads: () => void | Promise<void>
   onDeleteUpload: (file: UploadedFileRecord) => void | Promise<void>
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
-  const [manualLote, setManualLote] = useState('')
-  const [manualFechaEnvasado, setManualFechaEnvasado] = useState('')
-  const [manualLabelCode, setManualLabelCode] = useState('')
-  const [manualCodigoCoc, setManualCodigoCoc] = useState('')
+  const [manualLote, setManualLote] = useState(() => generateLotValue('ALBARAN'))
+  const [manualFechaCarga, setManualFechaCarga] = useState('')
   const [manualCodigoR, setManualCodigoR] = useState('')
+  const [manualWeight, setManualWeight] = useState(DEFAULT_WEIGHT)
+  const [labelType, setLabelType] = useState<LabelType>(DEFAULT_LABEL_TYPE)
+  const [productName, setProductName] = useState(
+    () => LABEL_TYPE_PRODUCTS[DEFAULT_LABEL_TYPE][0] ?? DEFAULT_PRODUCT,
+  )
   const [activeStep, setActiveStep] = useState(1)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -1681,19 +1769,21 @@ function LabelsDashboard({
       if (!stored) return
       const parsed = JSON.parse(stored) as Partial<LabelUploadMeta>
       if (typeof parsed?.lote === 'string') {
-        setManualLote(parsed.lote)
+        const normalized = normalizeLot(parsed.lote)
+        if (normalized) {
+          setManualLote(normalized)
+        }
       }
-      if (typeof parsed?.fechaEnvasado === 'string') {
-        setManualFechaEnvasado(parsed.fechaEnvasado)
-      }
-      if (typeof parsed?.labelCode === 'string') {
-        setManualLabelCode(parsed.labelCode)
-      }
-      if (typeof parsed?.codigoCoc === 'string') {
-        setManualCodigoCoc(parsed.codigoCoc)
+      if (typeof parsed?.fechaCarga === 'string') {
+        setManualFechaCarga(parsed.fechaCarga)
+      } else if (typeof parsed?.fechaEnvasado === 'string') {
+        setManualFechaCarga(parsed.fechaEnvasado)
       }
       if (typeof parsed?.codigoR === 'string') {
         setManualCodigoR(parsed.codigoR)
+      }
+      if (typeof parsed?.weight === 'string' && parsed.weight.trim().length > 0) {
+        setManualWeight(parsed.weight)
       }
     } catch {
       // ignore malformed storage values
@@ -1702,41 +1792,86 @@ function LabelsDashboard({
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const applyStoredSelection = (rawValue: string | null) => {
+      const stored = parseStoredProductSelection(rawValue)
+      if (stored) {
+        setLabelType(stored.labelType)
+        setProductName(stored.productName)
+      }
+    }
+
+    applyStoredSelection(window.localStorage.getItem(PRODUCT_SELECTION_STORAGE_KEY))
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== PRODUCT_SELECTION_STORAGE_KEY) return
+      applyStoredSelection(event.newValue)
+    }
+
+    window.addEventListener('storage', handleStorage)
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [])
+
+  useEffect(() => {
+    setProductName((current) => {
+      const options = LABEL_TYPE_PRODUCTS[labelType]
+      if (options.includes(current)) {
+        return current
+      }
+      return options[0] ?? DEFAULT_PRODUCT
+    })
+  }, [labelType])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const payload: ProductSelection = {
+      labelType,
+      productName,
+      savedAt: new Date().toISOString(),
+    }
+    try {
+      window.localStorage.setItem(PRODUCT_SELECTION_STORAGE_KEY, JSON.stringify(payload))
+    } catch {
+      // ignore storage errors
+    }
+  }, [labelType, productName])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
     const payload: LabelUploadMeta = {
       lote: manualLote,
-      fechaEnvasado: manualFechaEnvasado,
-      labelCode: manualLabelCode,
-      codigoCoc: manualCodigoCoc,
+      fechaEnvasado: manualFechaCarga,
+      fechaCarga: manualFechaCarga,
       codigoR: manualCodigoR,
+      weight: manualWeight,
     }
     try {
       window.localStorage.setItem('labels:manual-fields', JSON.stringify(payload))
     } catch {
       // ignore storage quota issues
     }
-  }, [manualCodigoCoc, manualCodigoR, manualFechaEnvasado, manualLabelCode, manualLote])
+  }, [manualCodigoR, manualFechaCarga, manualLote, manualWeight])
 
   const stepsInfo = useMemo(
     () => [
-      { id: 1, title: 'Sube el archivo', completed: file !== null },
-      { id: 2, title: 'Introduce lote', completed: manualLote.trim().length > 0 },
-      { id: 3, title: 'Código de barras', completed: manualLabelCode.trim().length > 0 },
-      { id: 4, title: 'Código COC', completed: manualCodigoCoc.trim().length > 0 },
-      { id: 5, title: 'Fecha de envasado', completed: manualFechaEnvasado.trim().length > 0 },
-      { id: 6, title: 'Código R', completed: manualCodigoR.trim().length > 0 },
+      { id: 1, title: 'Subir pedido', completed: true },
+      { id: 2, title: 'Producto', completed: productName.trim().length > 0 },
+      { id: 3, title: 'Peso', completed: manualWeight.trim().length > 0 },
+      { id: 4, title: 'Fecha', completed: manualFechaCarga.trim().length > 0 },
+      { id: 5, title: 'Código R', completed: manualCodigoR.trim().length > 0 },
     ],
-    [file, manualCodigoCoc, manualCodigoR, manualFechaEnvasado, manualLabelCode, manualLote],
+    [manualCodigoR, manualFechaCarga, manualWeight, productName],
   )
 
   const summaryStep = stepsInfo.length + 1
   const allStepsCompleted = stepsInfo.every((step) => step.completed)
   const canSubmit =
-    Boolean(file) &&
     manualLote.trim().length > 0 &&
-    manualLabelCode.trim().length > 0 &&
-    manualCodigoCoc.trim().length > 0 &&
-    manualFechaEnvasado.trim().length > 0 &&
-    manualCodigoR.trim().length > 0
+    manualFechaCarga.trim().length > 0 &&
+    manualCodigoR.trim().length > 0 &&
+    manualWeight.trim().length > 0 &&
+    productName.trim().length > 0
 
   const stepButtonBaseClass =
     'flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold transition'
@@ -1744,6 +1879,10 @@ function LabelsDashboard({
   const resetForm = useCallback(() => {
     setFile(null)
     setLocalError(null)
+    setManualLote(generateLotValue('ALBARAN'))
+    setManualFechaCarga('')
+    setManualCodigoR('')
+    setManualWeight(DEFAULT_WEIGHT)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -1756,49 +1895,66 @@ function LabelsDashboard({
     }
   }, [resetForm, successMessage, uploading])
 
-  const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const nextFile = event.target.files?.[0] ?? null
-    setFile(nextFile)
-    if (nextFile) {
-      setLocalError(null)
-    }
-  }, [])
+  const handleFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const nextFile = event.target.files?.[0] ?? null
+      setFile(nextFile)
+      if (nextFile) {
+        setLocalError(null)
+        const generatedLot = generateLotValue(nextFile.name ?? 'ALBARAN')
+        setManualLote(generatedLot)
+      }
+    },
+    [setManualLote, setLocalError],
+  )
+
+  const buildManualUploadFile = useCallback(() => {
+    const manualNotes = [
+      'Pedido creado sin archivo adjunto.',
+      `Tipo de etiqueta: ${getLabelTypeLabel(labelType)}`,
+      `Producto: ${productName.trim() || 'Sin producto'}`,
+      `Peso: ${manualWeight.trim() || DEFAULT_WEIGHT}`,
+      `Fecha: ${manualFechaCarga.trim() || 'Sin fecha'}`,
+      `Código R: ${manualCodigoR.trim() || 'Sin dato'}`,
+      `Lote: ${manualLote.trim() || 'Sin lote'}`,
+    ].join('\n')
+    return new File([manualNotes], `${MANUAL_ORDER_FILE_PREFIX}${Date.now().toString(36)}.txt`, {
+      type: 'text/plain',
+    })
+  }, [labelType, manualCodigoR, manualFechaCarga, manualLote, manualWeight, productName])
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault()
-      if (!file) {
-        setLocalError('Selecciona un archivo antes de subirlo.')
-        return
-      }
+      const uploadFile = file ?? buildManualUploadFile()
       setLocalError(null)
 
       const meta: LabelUploadMeta = {}
-      if (manualLote.trim().length > 0) {
-        meta.lote = manualLote.trim()
+
+      const normalizedLot = normalizeLot(manualLote) ?? generateLotValue(uploadFile.name ?? 'ALBARAN')
+      meta.lote = normalizedLot
+      if (!normalizeLot(manualLote)) {
+        setManualLote(normalizedLot)
       }
-      if (manualFechaEnvasado.trim().length > 0) {
-        meta.fechaEnvasado = manualFechaEnvasado.trim()
-      }
-      if (manualLabelCode.trim().length > 0) {
-        meta.labelCode = manualLabelCode.trim()
-      }
-      if (manualCodigoCoc.trim().length > 0) {
-        meta.codigoCoc = manualCodigoCoc.trim()
+
+      if (manualFechaCarga.trim().length > 0) {
+        meta.fechaEnvasado = manualFechaCarga.trim()
+        meta.fechaCarga = manualFechaCarga.trim()
       }
       if (manualCodigoR.trim().length > 0) {
         meta.codigoR = manualCodigoR.trim()
       }
+      meta.weight = manualWeight.trim().length > 0 ? manualWeight.trim() : DEFAULT_WEIGHT
 
-      await onUpload(file, meta)
+      await onUpload(uploadFile, meta)
     },
     [
       file,
-      manualCodigoCoc,
       manualCodigoR,
-      manualFechaEnvasado,
-      manualLabelCode,
+      manualFechaCarga,
       manualLote,
+      manualWeight,
+      buildManualUploadFile,
       onUpload,
     ],
   )
@@ -1808,34 +1964,30 @@ function LabelsDashboard({
     (step: number): string | null => {
       switch (step) {
         case 1:
-          return file ? null : 'Selecciona una imagen antes de continuar.'
+          return null
         case 2:
-          return manualLote.trim().length > 0 ? null : 'Introduce el lote para continuar.'
+          return productName.trim().length > 0
+            ? null
+            : 'Selecciona el producto que vas a etiquetar antes de continuar.'
         case 3:
-          return manualLabelCode.trim().length > 0
+          return manualWeight.trim().length > 0
             ? null
-            : 'Introduce el código de barras para continuar.'
+            : 'Indica el peso que debe aparecer en la etiqueta.'
         case 4:
-          return manualCodigoCoc.trim().length > 0
+          return manualFechaCarga.trim().length > 0
             ? null
-            : 'Introduce el código COC para continuar.'
+            : 'Selecciona la fecha que debe aparecer antes de seguir.'
         case 5:
-          return manualFechaEnvasado.trim().length > 0
-            ? null
-            : 'Selecciona la fecha de envasado antes de seguir.'
-        case 6:
           return manualCodigoR.trim().length > 0 ? null : 'Introduce el código R para continuar.'
         default:
           return null
       }
     },
     [
-      file,
-      manualCodigoCoc,
       manualCodigoR,
-      manualFechaEnvasado,
-      manualLabelCode,
-      manualLote,
+      manualFechaCarga,
+      manualWeight,
+      productName,
     ],
   )
 
@@ -1967,13 +2119,26 @@ function LabelsDashboard({
 
   const renderActiveStep = () => {
     if (activeStep === summaryStep) {
+      const resumenValueParts: string[] = []
+      if (productName.trim().length > 0) {
+        resumenValueParts.push(`${productName.trim()} · ${getLabelTypeLabel(labelType)}`)
+      } else {
+        resumenValueParts.push(getLabelTypeLabel(labelType))
+      }
+      if (manualLote.trim().length > 0) {
+        resumenValueParts.push(`Lote ${manualLote.trim()}`)
+      }
+      const resumenValue =
+        resumenValueParts.length > 0
+          ? resumenValueParts.join(' · ')
+          : 'Selecciona el producto en el paso anterior para completar este resumen.'
+
       const summaryItems = [
-        { label: 'Archivo', value: file ? file.name : 'Sin archivo seleccionado' },
-        { label: 'Lote', value: manualLote.trim() || 'Sin dato' },
-        { label: 'Código de barras', value: manualLabelCode.trim() || 'Sin dato' },
-        { label: 'Código COC', value: manualCodigoCoc.trim() || 'Sin dato' },
-        { label: 'Fecha de envasado', value: manualFechaEnvasado.trim() || 'Sin dato' },
+        { label: 'Subir pedido', value: file ? file.name : 'Sin pedido adjunto' },
+        { label: 'Peso', value: manualWeight.trim() || DEFAULT_WEIGHT },
+        { label: 'Fecha', value: manualFechaCarga.trim() || 'Sin fecha seleccionada' },
         { label: 'Código R', value: manualCodigoR.trim() || 'Sin dato' },
+        { label: 'Resumen', value: resumenValue },
       ]
 
       return (
@@ -1982,9 +2147,9 @@ function LabelsDashboard({
           className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5 space-y-5"
         >
           <div>
-            <p className="text-sm font-semibold text-gray-900">{`Paso ${summaryStep}. Revisa y genera`}</p>
+            <p className="text-sm font-semibold text-gray-900">{`Paso ${summaryStep}. Resumen`}</p>
             <p className="mt-1 text-sm text-gray-600">
-              Comprueba los datos antes de generar la etiqueta automática.
+              Confirma esta información antes de generar la etiqueta automática.
             </p>
           </div>
           <dl className="grid gap-3 sm:grid-cols-2">
@@ -2030,20 +2195,132 @@ function LabelsDashboard({
     switch (activeStep) {
       case 1:
         return (
+          <div className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5 space-y-5">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Paso 1. Subir pedido (opcional)</p>
+              <p className="mt-1 text-sm text-gray-600">
+                Estamos en la primera fase de pruebas. Selecciona el tipo de etiqueta y, si quieres, adjunta el pedido,
+                pero no es necesario para continuar.
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Tipo de etiqueta</p>
+              <p className="mt-1 text-sm text-gray-600">
+                Elige si corresponde a Mercadona, Aldi o una etiqueta blanca. Usaremos esta selección para el resto de pasos.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {(Object.keys(LABEL_TYPE_OPTIONS) as LabelType[]).map((optionKey) => {
+                  const option = LABEL_TYPE_OPTIONS[optionKey]
+                  const isActive = labelType === optionKey
+                  return (
+                    <button
+                      key={optionKey}
+                      type="button"
+                      onClick={() => setLabelType(optionKey)}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${
+                        isActive
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                      }`}
+                      disabled={uploading}
+                    >
+                      <p className="text-sm font-semibold">{option.label}</p>
+                      <p className="mt-1 text-xs text-gray-500">{option.description}</p>
+                      {option.helper && (
+                        <p className="mt-2 text-xs font-medium text-emerald-700">{option.helper}</p>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-4">
+              <p className="text-sm font-semibold text-gray-900">Archivo (opcional)</p>
+              <p className="mt-1 text-sm text-gray-600">
+                Puedes dejar este campo vacío: generaremos un pedido manual con los datos que introduzcas.
+              </p>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  disabled={uploading}
+                  className="block w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                />
+                <button
+                  type="button"
+                  onClick={handleContinue}
+                  className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+                  disabled={uploading}
+                >
+                  Continuar
+                </button>
+              </div>
+              {file ? (
+                <p className="mt-2 text-xs text-gray-500">
+                  Archivo seleccionado: <span className="font-medium text-gray-700">{file.name}</span>
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-gray-500">Sin archivo adjunto (lo generaremos en automático).</p>
+              )}
+            </div>
+          </div>
+        )
+      case 2: {
+        const availableProducts = LABEL_TYPE_PRODUCTS[labelType]
+        return (
           <div className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5">
-            <p className="text-sm font-semibold text-gray-900">Paso 1. Sube el archivo</p>
+            <p className="text-sm font-semibold text-gray-900">Paso 2. Producto</p>
             <p className="mt-1 text-sm text-gray-600">
-              Adjunta la imagen del albarán (PNG, JPG, WebP, HEIC…). La etiqueta se generará a partir de esta foto.
+              {labelType === 'mercadona'
+                ? 'Para Mercadona solo trabajamos con Albahaca.'
+                : 'Selecciona el producto que debe aparecer en la etiqueta.'}
             </p>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
+            <div
+              className={`mt-4 grid gap-3 ${
+                availableProducts.length > 1 ? 'sm:grid-cols-2' : 'sm:grid-cols-1'
+              }`}
+            >
+              {availableProducts.map((option) => {
+                const isActive = productName === option
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => {
+                      setLocalError(null)
+                      setProductName(option)
+                    }}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      isActive
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                    }`}
+                    disabled={uploading}
+                  >
+                    <p className="text-sm font-semibold">{option}</p>
+                    {labelType !== 'mercadona' && (
+                      <p className="mt-1 text-xs text-gray-500">{`Disponible para ${getLabelTypeLabel(labelType).toLowerCase()}.`}</p>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            {labelType === 'mercadona' && (
+              <p className="mt-3 text-xs text-emerald-700">
+                Mercadona utiliza etiqueta fija de Albahaca. No necesitas elegir nada más en este paso.
+              </p>
+            )}
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
                 disabled={uploading}
-                className="block w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-              />
+              >
+                Volver
+              </button>
               <button
                 type="button"
                 onClick={handleContinue}
@@ -2053,53 +2330,31 @@ function LabelsDashboard({
                 Continuar
               </button>
             </div>
-            {file && (
-              <p className="mt-2 text-xs text-gray-500">
-                Archivo seleccionado: <span className="font-medium text-gray-700">{file.name}</span>
-              </p>
-            )}
           </div>
         )
-      case 2:
-        return renderTextStep(
-          2,
-          'Introduce el lote',
-          'Escribe el lote tal y como aparece en el documento.',
-          manualLote,
-          setManualLote,
-          'Ej. LOTE-20241014-01',
-        )
+      }
       case 3:
         return renderTextStep(
           3,
-          'Código de barras',
-          'Introduce el número completo que aparece debajo del código de barras.',
-          manualLabelCode,
-          setManualLabelCode,
-          'Ej. 8437012345678',
+          'Peso',
+          'Escribe el peso exacto que debe aparecer en la etiqueta (por ejemplo 40gr, 250 g, 0.5 kg).',
+          manualWeight,
+          setManualWeight,
+          'Ej. 40gr',
         )
       case 4:
         return renderTextStep(
           4,
-          'Código COC',
-          'Escribe el código COC tal y como figura en el albarán.',
-          manualCodigoCoc,
-          setManualCodigoCoc,
-          'Ej. COC-123456',
+          'Fecha',
+          'Selecciona la fecha que debe aparecer en la etiqueta tal y como figura en el pedido.',
+          manualFechaCarga,
+          setManualFechaCarga,
+          '',
+          'date',
         )
       case 5:
         return renderTextStep(
           5,
-          'Fecha de envasado',
-          'Selecciona la fecha exacta de envasado.',
-          manualFechaEnvasado,
-          setManualFechaEnvasado,
-          '',
-          'date',
-        )
-      case 6:
-        return renderTextStep(
-          6,
           'Código R',
           'Introduce el código R asociado a este lote.',
           manualCodigoR,
@@ -2230,6 +2485,68 @@ function LabelsDashboard({
             </button>
           </header>
 
+          {lotSearchResult && (
+            <div
+              className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${
+                lotSearchResult.status === 'found'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                  : lotSearchResult.status === 'searching'
+                  ? 'border-gray-200 bg-gray-50 text-gray-700'
+                  : 'border-amber-200 bg-amber-50 text-amber-900'
+              }`}
+            >
+              {lotSearchResult.status === 'searching' ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Buscando el lote {lotSearchResult.lot} en tus pedidos…</span>
+                </div>
+              ) : lotSearchResult.status === 'found' && lotSearchResult.file ? (
+                <>
+                  <p className="text-sm font-semibold">
+                    Lote {lotSearchResult.lot} localizado en {lotSearchResult.file.name}
+                  </p>
+                  <p className="mt-1 text-sm">
+                    Abre el pedido original o la etiqueta generada con los botones inferiores.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {lotSearchResult.file.publicUrl && (
+                      <a
+                        href={lotSearchResult.file.publicUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
+                      >
+                        Abrir pedido original
+                      </a>
+                    )}
+                    {(lotSearchResult.file.automation?.labelWebViewLink ||
+                      lotSearchResult.file.automation?.labelWebContentLink) && (
+                      <a
+                        href={
+                          lotSearchResult.file.automation?.labelWebViewLink ??
+                          lotSearchResult.file.automation?.labelWebContentLink ??
+                          '#'
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 transition hover:bg-gray-100"
+                      >
+                        Ver PDF etiqueta
+                      </a>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold">No encontramos el lote {lotSearchResult.lot}</p>
+                  <p className="mt-1 text-sm">
+                    Asegúrate de que ya se haya subido ese pedido o intenta con otro identificador.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="mt-5">
             {uploadsMessage && !uploadsError && (
               <p className="mb-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2">
@@ -2272,8 +2589,14 @@ function LabelsDashboard({
                           ? 'Automatización con errores'
                           : null
                       const extractedFields = automation?.fields ?? null
+                      const isHighlighted = highlightedUploadId === file.id
                       return (
-                        <tr key={file.id} className="hover:bg-[#FAF9F6] transition">
+                        <tr
+                          key={file.id}
+                          className={`transition ${
+                            isHighlighted ? 'bg-emerald-50/80 ring-1 ring-emerald-200' : 'hover:bg-[#FAF9F6]'
+                          }`}
+                        >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <FileText className="h-4 w-4 text-gray-400" />
@@ -2282,6 +2605,11 @@ function LabelsDashboard({
                                   {file.name}
                                 </p>
                                 <p className="text-xs text-gray-500 mt-0.5 break-all">{file.path}</p>
+                                {isHighlighted && (
+                                  <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                                    Coincide con la búsqueda
+                                  </span>
+                                )}
                                 {file.destination && (
                                   <p className="text-xs text-gray-500 mt-0.5">
                                     Destino: {file.destination}

@@ -5,6 +5,7 @@ import {
   uploadFileToDrive,
 } from '@/server/google-drive'
 import { processLabelAutomation } from '@/server/label-automation'
+import { extractFechaCargaFromImage } from '@/server/label-ocr'
 
 export const runtime = 'nodejs'
 
@@ -62,16 +63,34 @@ export async function POST(request: NextRequest) {
 
     const manualLote = formData.get('manualLote')
     const manualFechaEnvasado = formData.get('manualFechaEnvasado')
+    const manualFechaCarga = formData.get('manualFechaCarga')
     const manualLabelCode = formData.get('manualLabelCode')
     const manualCodigoCoc = formData.get('manualCodigoCoc')
     const manualCodigoR = formData.get('manualCodigoR')
+    const manualWeight = formData.get('manualWeight')
     const userEmailValue = formData.get('userEmail')
+    const fechaEnvasadoValue = getOptionalString(manualFechaEnvasado)
+    const fechaCargaValue = getOptionalString(manualFechaCarga)
+
+    let detectedFechaCarga: string | null = null
+    try {
+      detectedFechaCarga = await extractFechaCargaFromImage(buffer)
+    } catch (error) {
+      console.error('[storage/uploads] OCR failed:', error)
+    }
+
     const manualFields = {
       lote: getOptionalString(manualLote),
-      fechaEnvasado: getOptionalString(manualFechaEnvasado),
+      fechaCarga: fechaCargaValue ?? fechaEnvasadoValue ?? detectedFechaCarga,
+      fechaEnvasado: fechaEnvasadoValue,
       labelCode: getOptionalString(manualLabelCode),
       codigoCoc: getOptionalString(manualCodigoCoc),
       codigoR: getOptionalString(manualCodigoR),
+      weight: getOptionalString(manualWeight),
+    }
+
+    if (!manualFields.fechaEnvasado && manualFields.fechaCarga) {
+      manualFields.fechaEnvasado = manualFields.fechaCarga
     }
     const metadata = {
       userEmail: userEmailValue ? String(userEmailValue) : undefined,
@@ -80,9 +99,11 @@ export async function POST(request: NextRequest) {
     const description =
       manualFields.lote ||
       manualFields.fechaEnvasado ||
+      manualFields.fechaCarga ||
       manualFields.codigoCoc ||
       manualFields.labelCode ||
-      manualFields.codigoR
+      manualFields.codigoR ||
+      manualFields.weight
         ? JSON.stringify(metadata)
         : undefined
 

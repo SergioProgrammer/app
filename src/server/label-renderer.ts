@@ -18,6 +18,7 @@ export interface LabelRenderFields {
   labelCode?: string | null
   codigoCoc?: string | null
   codigoR?: string | null
+  weight?: string | null
 }
 
 export interface LabelRenderResult {
@@ -40,28 +41,29 @@ interface LayoutEntry {
 const BASE_WIDTH = 1262
 const BASE_HEIGHT = 768
 
-type LayoutKey = Exclude<keyof LabelRenderFields, 'labelCode'>
+type LayoutKey = Exclude<keyof LabelRenderFields, 'labelCode' | 'weight'>
 
 const TEXT_LAYOUT: Record<LayoutKey, LayoutEntry> = {
-  fechaEnvasado: { baseX: 340, baseY: 440, align: 'left', fontSize: 36 },
-  lote: { baseX: 230, baseY: 500, align: 'left', fontSize: 36 },
-  codigoCoc: { baseX: 220, baseY: 630, align: 'left', fontSize: 36 },
-  codigoR: { baseX: 1035, baseY: 415, align: 'left', fontSize: 28 },
+  fechaEnvasado: { baseX: 325, baseY: 415, align: 'left', fontSize: 36 },
+  lote: { baseX: 215, baseY: 490, align: 'left', fontSize: 36 },
+  codigoCoc: { baseX: 205, baseY: 630, align: 'left', fontSize: 36 },
+  codigoR: { baseX: 1020, baseY: 505, align: 'left', fontSize: 28 },
 }
 
 const WEIGHT_LAYOUT: LayoutEntry = {
-  baseX: 250,
+  baseX: 235,
   baseY: 570,
   align: 'left',
   fontSize: 38,
 }
 
 const BARCODE_NUMBER_LAYOUT = {
-  baseX: 690,
+  baseX: 675,
   baseY: 670,
   fontSize: 38,
   align: 'center' as const,
 }
+const BARCODE_SHIFT_SPACES = 2
 
 let cachedTemplateBuffer: Buffer | null = null
 let cachedTemplatePath: string | null = null
@@ -108,7 +110,11 @@ export async function renderLabelPdf({
   }
 
   (Object.keys(TEXT_LAYOUT) as LayoutKey[]).forEach((key: LayoutKey) => {
-    const value = normalizeFieldValue(fields[key])
+    const isDateField = key === 'fechaEnvasado'
+    const value = normalizeFieldValue(fields[key], {
+      preserveFormat: isDateField,
+      formatAsDate: isDateField,
+    })
     if (!value) return
 
     const layout = TEXT_LAYOUT[key]
@@ -128,12 +134,16 @@ export async function renderLabelPdf({
     }
   })
 
-  const barcodeText = normalizeFieldValue(fields.labelCode ?? fields.codigoCoc)
+  const barcodeText = normalizeFieldValue(fields.labelCode ?? fields.codigoCoc, {
+    preserveFormat: true,
+  })
   if (barcodeText && typeof page.drawText === 'function') {
     const layout = BARCODE_NUMBER_LAYOUT
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
     const textWidth = approximateTextWidth(barcodeText, fontSize)
-    const x = resolvePosition(layout.baseX * scaleX, layout.align, textWidth)
+    const x =
+      resolvePosition(layout.baseX * scaleX, layout.align, textWidth) +
+      approximateTextWidth(' '.repeat(BARCODE_SHIFT_SPACES), fontSize)
     const y = pngImage.height - layout.baseY * scaleY
 
     page.drawText(barcodeText, {
@@ -147,7 +157,7 @@ export async function renderLabelPdf({
   if (typeof page.drawText === 'function') {
     const layout = WEIGHT_LAYOUT
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
-    const weightText = '40gr'
+    const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '40gr'
     const textWidth = approximateTextWidth(weightText, fontSize)
     const x = resolvePosition(layout.baseX * scaleX, layout.align, textWidth)
     const y = pngImage.height - layout.baseY * scaleY
@@ -194,14 +204,31 @@ function resolvePosition(
   return absoluteX
 }
 
-function normalizeFieldValue(value?: string | null): string | null {
+function normalizeFieldValue(
+  value?: string | null,
+  options?: { preserveFormat?: boolean; formatAsDate?: boolean },
+): string | null {
   if (!value) return null
   const trimmed = value.trim()
   if (!trimmed) return null
   const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (options?.formatAsDate) {
+    if (isoMatch) {
+      const [, year, month, day] = isoMatch
+      return buildDayMonthYear(day, month, year)
+    }
+    const localeMatch = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/)
+    if (localeMatch) {
+      const [, day, month, year] = localeMatch
+      return buildDayMonthYear(day, month, year)
+    }
+  }
   if (isoMatch) {
     const [, year, month, day] = isoMatch
-    return `${day}.${month}.${year.slice(-2)}`
+    return options?.preserveFormat ? trimmed : buildDayMonthYear(day, month, year)
+  }
+  if (options?.preserveFormat) {
+    return trimmed
   }
   return trimmed.toUpperCase()
 }
@@ -209,6 +236,13 @@ function normalizeFieldValue(value?: string | null): string | null {
 function approximateTextWidth(text: string, fontSize: number): number {
   const averageCharWidth = fontSize * 0.6
   return text.length * averageCharWidth
+}
+
+function buildDayMonthYear(day: string, month: string, year: string): string {
+  const normalizedDay = day.padStart(2, '0')
+  const normalizedMonth = month.padStart(2, '0')
+  const shortYear = year.length === 4 ? year.slice(-2) : year.slice(-2).padStart(2, '0')
+  return `${normalizedDay}.${normalizedMonth}.${shortYear}`
 }
 
 function buildLabelFileName(originalFileName: string): string {
