@@ -1,15 +1,18 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import fontkit from '@pdf-lib/fontkit'
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   PDFDocument,
+  StandardFonts,
   drawObject,
   popGraphicsState,
   pushGraphicsState,
   rgb,
   scale,
   translate,
+  type PDFFont,
 } from 'pdf-lib'
 
 export interface LabelRenderFields {
@@ -27,9 +30,26 @@ export interface LabelRenderResult {
   mimeType: string
 }
 
-const DEFAULT_TEMPLATE_RELATIVE_PATH = path.join('public', 'Etiqueta.png')
+const DEFAULT_TEMPLATE_CANDIDATES = [
+  path.join('public', 'Etiqueta.pdf'),
+  path.join('public', 'Etiqueta.png'),
+]
 const DEFAULT_FONT_SIZE = 56
 const DEFAULT_FONT_COLOR = rgb(0, 0, 0)
+const DEFAULT_FONT_NAME = StandardFonts.HelveticaBold
+const LABEL_FONT_ENV_KEY = 'LABEL_FONT_PATH'
+const DEFAULT_FONT_CANDIDATES = [
+  path.join('public', 'fonts', 'Arial-Bold.ttf'),
+  path.join('public', 'Arial-Bold.ttf'),
+  path.join('public', 'fonts', 'arialbd.ttf'),
+  '/Library/Fonts/Arial Bold.ttf',
+  '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+  'C:\\Windows\\Fonts\\arialbd.ttf',
+  '/usr/share/fonts/truetype/msttcorefonts/Arial_Bold.ttf',
+  '/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf',
+]
+let cachedFontBytes: Uint8Array | null = null
+let customFontLoadAttempted = false
 
 interface LayoutEntry {
   baseX: number
@@ -57,14 +77,6 @@ const WEIGHT_LAYOUT: LayoutEntry = {
   fontSize: 38,
 }
 
-const BARCODE_NUMBER_LAYOUT = {
-  baseX: 675,
-  baseY: 670,
-  fontSize: 38,
-  align: 'center' as const,
-}
-const BARCODE_SHIFT_SPACES = 2
-
 let cachedTemplateBuffer: Buffer | null = null
 let cachedTemplatePath: string | null = null
 
@@ -77,13 +89,47 @@ export async function renderLabelPdf({
   fileName: string
   templatePath?: string
 }): Promise<LabelRenderResult> {
-  const templateBuffer = await loadTemplate(templatePath)
+  const { buffer: templateBuffer, resolvedPath } = await loadTemplate(templatePath)
+  const templateExtension = path.extname(resolvedPath).toLowerCase()
   const pdfDoc = await PDFDocument.create()
-  const pngImage = await pdfDoc.embedPng(templateBuffer)
-  const page: any = pdfDoc.addPage([pngImage.width, pngImage.height])
+  const labelFont = await resolveLabelFont(pdfDoc)
+  let page: any
+  let pageWidth: number
+  let pageHeight: number
 
-  const scaleX = pngImage.width / BASE_WIDTH
-  const scaleY = pngImage.height / BASE_HEIGHT
+  if (templateExtension === '.pdf') {
+    const templateDoc = await PDFDocument.load(templateBuffer)
+    const [templatePage] = await pdfDoc.copyPages(templateDoc, [0])
+    page = pdfDoc.addPage(templatePage)
+    pageWidth = page.getWidth()
+    pageHeight = page.getHeight()
+  } else {
+    const pngImage = await pdfDoc.embedPng(templateBuffer)
+    page = pdfDoc.addPage([pngImage.width, pngImage.height])
+    pageWidth = pngImage.width
+    pageHeight = pngImage.height
+
+    if (typeof page.drawImage === 'function') {
+      page.drawImage(pngImage, {
+        x: 0,
+        y: 0,
+        width: pngImage.width,
+        height: pngImage.height,
+      })
+    } else {
+      const imageName = page.node.newXObject(`Im-${Date.now().toString(36)}`, pngImage.ref)
+      page.pushOperators(
+        pushGraphicsState(),
+        translate(0, 0),
+        scale(pngImage.width, pngImage.height),
+        drawObject(imageName),
+        popGraphicsState(),
+      )
+    }
+  }
+
+  const scaleX = pageWidth / BASE_WIDTH
+  const scaleY = pageHeight / BASE_HEIGHT
 
   const pageProtoKeys = Object.getOwnPropertyNames(Object.getPrototypeOf(page))
 
@@ -91,38 +137,30 @@ export async function renderLabelPdf({
     console.log('[label-renderer] page prototype keys:', pageProtoKeys)
   }
 
-  if (typeof page.drawImage === 'function') {
-    page.drawImage(pngImage, {
-      x: 0,
-      y: 0,
-      width: pngImage.width,
-      height: pngImage.height,
-    })
-  } else {
-    const imageName = page.node.newXObject(`Im-${Date.now().toString(36)}`, pngImage.ref)
-    page.pushOperators(
-      pushGraphicsState(),
-      translate(0, 0),
-      scale(pngImage.width, pngImage.height),
-      drawObject(imageName),
-      popGraphicsState(),
-    )
-  }
-
   (Object.keys(TEXT_LAYOUT) as LayoutKey[]).forEach((key: LayoutKey) => {
+    if (key === 'codigoCoc') {
+      return
+    }
     const isDateField = key === 'fechaEnvasado'
-    const value = normalizeFieldValue(fields[key], {
+    let value = normalizeFieldValue(fields[key], {
       preserveFormat: isDateField,
       formatAsDate: isDateField,
     })
+    if (key === 'codigoR' && value) {
+      value = value.replace(/^[Rr]\s*-?\s*/, '').trim()
+    }
     if (!value) return
 
     const layout = TEXT_LAYOUT[key]
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
-    const textWidth = approximateTextWidth(value, fontSize)
+    const textWidth = measureTextWidth(value, fontSize, labelFont)
+    const offsetX = key === 'codigoR' ? -20 : 20
+    const offsetY = key === 'codigoR' ? 40 : 30
+    const baseX = layout.baseX + offsetX
+    const baseY = layout.baseY - offsetY
 
-    const x = resolvePosition(layout.baseX * scaleX, layout.align, textWidth)
-    const y = pngImage.height - layout.baseY * scaleY
+    const x = resolvePosition(baseX * scaleX, layout.align, textWidth)
+    const y = pageHeight - baseY * scaleY
 
     if (typeof page.drawText === 'function') {
       page.drawText(value, {
@@ -130,43 +168,27 @@ export async function renderLabelPdf({
         y,
         size: fontSize,
         color: DEFAULT_FONT_COLOR,
+        font: labelFont,
       })
     }
   })
-
-  const barcodeText = normalizeFieldValue(fields.labelCode ?? fields.codigoCoc, {
-    preserveFormat: true,
-  })
-  if (barcodeText && typeof page.drawText === 'function') {
-    const layout = BARCODE_NUMBER_LAYOUT
-    const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
-    const textWidth = approximateTextWidth(barcodeText, fontSize)
-    const x =
-      resolvePosition(layout.baseX * scaleX, layout.align, textWidth) +
-      approximateTextWidth(' '.repeat(BARCODE_SHIFT_SPACES), fontSize)
-    const y = pngImage.height - layout.baseY * scaleY
-
-    page.drawText(barcodeText, {
-      x,
-      y,
-      size: fontSize,
-      color: DEFAULT_FONT_COLOR,
-    })
-  }
 
   if (typeof page.drawText === 'function') {
     const layout = WEIGHT_LAYOUT
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
     const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '40gr'
-    const textWidth = approximateTextWidth(weightText, fontSize)
-    const x = resolvePosition(layout.baseX * scaleX, layout.align, textWidth)
-    const y = pngImage.height - layout.baseY * scaleY
+    const textWidth = measureTextWidth(weightText, fontSize, labelFont)
+    const offsetBaseX = layout.baseX + 20
+    const offsetBaseY = layout.baseY - 30
+    const x = resolvePosition(offsetBaseX * scaleX, layout.align, textWidth)
+    const y = pageHeight - offsetBaseY * scaleY
 
     page.drawText(weightText, {
       x,
       y,
       size: fontSize,
       color: DEFAULT_FONT_COLOR,
+      font: labelFont,
     })
   }
 
@@ -178,16 +200,73 @@ export async function renderLabelPdf({
   }
 }
 
-async function loadTemplate(customPath?: string): Promise<Buffer> {
-  const resolvedPath = path.isAbsolute(customPath ?? '')
-    ? customPath!
-    : path.join(process.cwd(), customPath ?? DEFAULT_TEMPLATE_RELATIVE_PATH)
-
-  if (!cachedTemplateBuffer || cachedTemplatePath !== resolvedPath) {
-    cachedTemplateBuffer = await readFile(resolvedPath)
-    cachedTemplatePath = resolvedPath
+async function resolveLabelFont(pdfDoc: PDFDocument): Promise<PDFFont> {
+  const fontBytes = await loadPreferredFontBytes()
+  if (fontBytes) {
+    try {
+      pdfDoc.registerFontkit(fontkit)
+      return await pdfDoc.embedFont(fontBytes, { subset: true })
+    } catch (error) {
+      console.warn('[label-renderer] No se pudo incrustar Arial Bold, usamos la fuente por defecto.', error)
+    }
   }
-  return cachedTemplateBuffer
+  return pdfDoc.embedFont(DEFAULT_FONT_NAME)
+}
+
+async function loadPreferredFontBytes(): Promise<Uint8Array | null> {
+  if (cachedFontBytes) {
+    return cachedFontBytes
+  }
+  if (customFontLoadAttempted) {
+    return null
+  }
+  customFontLoadAttempted = true
+  const candidates = getFontSearchPaths()
+  for (const candidate of candidates) {
+    try {
+      const buffer = await readFile(candidate)
+      cachedFontBytes = buffer
+      return cachedFontBytes
+    } catch {
+      // continue with next candidate
+    }
+  }
+  return null
+}
+
+function getFontSearchPaths(): string[] {
+  const explicit = process.env[LABEL_FONT_ENV_KEY]
+  const candidates = [
+    explicit,
+    ...DEFAULT_FONT_CANDIDATES,
+  ].filter((candidate): candidate is string => Boolean(candidate))
+  return candidates.map((candidate) => {
+    if (/^[A-Za-z]:\\/.test(candidate) || candidate.startsWith('\\\\')) {
+      return candidate
+    }
+    return path.isAbsolute(candidate) ? candidate : path.join(process.cwd(), candidate)
+  })
+}
+
+async function loadTemplate(customPath?: string): Promise<{ buffer: Buffer; resolvedPath: string }> {
+  const searchPaths = customPath ? [customPath] : DEFAULT_TEMPLATE_CANDIDATES
+  for (const candidate of searchPaths) {
+    const resolvedPath = path.isAbsolute(candidate)
+      ? candidate
+      : path.join(process.cwd(), candidate)
+    if (cachedTemplateBuffer && cachedTemplatePath === resolvedPath) {
+      return { buffer: cachedTemplateBuffer, resolvedPath }
+    }
+    try {
+      const buffer = await readFile(resolvedPath)
+      cachedTemplateBuffer = buffer
+      cachedTemplatePath = resolvedPath
+      return { buffer, resolvedPath }
+    } catch {
+      continue
+    }
+  }
+  throw new Error('No se encontró la plantilla de etiqueta (buscamos Etiqueta.pdf o Etiqueta.png en /public).')
 }
 
 function resolvePosition(
@@ -233,9 +312,14 @@ function normalizeFieldValue(
   return trimmed.toUpperCase()
 }
 
-function approximateTextWidth(text: string, fontSize: number): number {
-  const averageCharWidth = fontSize * 0.6
-  return text.length * averageCharWidth
+function measureTextWidth(text: string, fontSize: number, font: PDFFont): number {
+  if (!text) return 0
+  try {
+    return font.widthOfTextAtSize(text, fontSize)
+  } catch {
+    const averageCharWidth = fontSize * 0.6
+    return text.length * averageCharWidth
+  }
 }
 
 function buildDayMonthYear(day: string, month: string, year: string): string {
