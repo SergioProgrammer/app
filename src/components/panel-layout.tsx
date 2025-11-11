@@ -14,7 +14,7 @@ interface PanelLayoutProps {
 
 const navItems = [
   {
-    label: 'Historial',
+    label: 'Generar Etiqueta',
     href: '/dashboard',
     icon: History,
   },
