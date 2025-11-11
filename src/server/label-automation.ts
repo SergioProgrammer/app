@@ -48,7 +48,8 @@ interface DescriptionPayload {
 }
 
 const DEFAULT_WEIGHT_TEXT = '40gr'
-const LOT_PATTERN = /^[A-Z]{2}\d{4}$/
+const LOT_PATTERN = /^[A-Z]{2}\d{5}$/
+const LEGACY_LOT_PATTERN = /^[A-Z]{2}\d{4}$/
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 export async function processLabelAutomation({
@@ -219,6 +220,11 @@ function normalizeLotFormat(value: string | null | undefined): string | null {
   if (LOT_PATTERN.test(compact)) {
     return compact
   }
+  if (LEGACY_LOT_PATTERN.test(compact)) {
+    const prefix = compact.slice(0, 2)
+    const digits = compact.slice(-4)
+    return `${prefix}${digits.padStart(5, '0')}`
+  }
   return null
 }
 
@@ -231,9 +237,9 @@ function generateLot(seed: string): string {
     lettersFromSeed.length === 2
       ? lettersFromSeed
       : `${pickRandomLetter()}${pickRandomLetter()}`
-  const digits = Math.floor(Math.random() * 10000)
+  const digits = Math.floor(Math.random() * 100000)
     .toString()
-    .padStart(4, '0')
+    .padStart(5, '0')
   return `${prefix}${digits}`
 }
 

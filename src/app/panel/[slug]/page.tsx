@@ -17,7 +17,6 @@ import {
   BarChart,
   CheckCircle2,
   CreditCard,
-  ChevronRight,
   FileText,
   Loader2,
   RefreshCw,
@@ -160,33 +159,144 @@ type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
 
 const TURNOS_RECENT_LIMIT = 8
 const DEFAULT_WEIGHT = '40gr'
-const LOT_PATTERN = /^[A-Z]{2}\d{4}$/
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const LOT_PREFIX_LENGTH = 2
+const LOT_INITIAL_PREFIX = 'NS'
+const LOT_INITIAL_NUMBER = '86913'
+const LOT_NUMBER_LENGTH = LOT_INITIAL_NUMBER.length
+const LOT_SEQUENCE_STORAGE_KEY = 'labels:last-lot-sequence'
+const LOT_SEQUENCE_DEFAULT = `${LOT_INITIAL_PREFIX}${LOT_INITIAL_NUMBER}`
+const LOT_PATTERN = new RegExp(`^[A-Z]{${LOT_PREFIX_LENGTH}}\\d{${LOT_NUMBER_LENGTH}}$`)
+const LEGACY_LOT_PATTERN = new RegExp(`^[A-Z]{${LOT_PREFIX_LENGTH}}\\d{${LOT_NUMBER_LENGTH + 1}}$`)
+const LOT_MAX_NUMBER = Number('9'.repeat(LOT_NUMBER_LENGTH))
 const MANUAL_ORDER_FILE_PREFIX = 'pedido-manual-'
+const INITIAL_PRODUCT_NAME = LABEL_TYPE_PRODUCTS[DEFAULT_LABEL_TYPE][0] ?? DEFAULT_PRODUCT
+const COMPANY_DEFAULT_CODIGO_COC = (process.env.NEXT_PUBLIC_COMPANY_COC ?? '4063061581198').toUpperCase()
+const DEFAULT_BARCODE_VALUE = (process.env.NEXT_PUBLIC_DEFAULT_BARCODE ?? '8437018336005').trim()
+const PRODUCT_BARCODE_MAP: Record<string, string> = (() => {
+  try {
+    const raw = JSON.parse(process.env.NEXT_PUBLIC_PRODUCT_BARCODES ?? '{}') as Record<string, unknown>
+    return Object.entries(raw).reduce<Record<string, string>>((acc, [key, value]) => {
+      if (typeof key !== 'string') return acc
+      if (typeof value !== 'string') return acc
+      const normalizedKey = key.trim().toLowerCase()
+      const normalizedValue = value.trim()
+      if (normalizedKey && normalizedValue) {
+        acc[normalizedKey] = normalizedValue
+      }
+      return acc
+    }, {})
+  } catch {
+    return {}
+  }
+})()
 
-function generateLotValue(seed: string): string {
-  const lettersFromSeed = seed
-    .replace(/[^A-Za-z]/g, '')
-    .toUpperCase()
-    .slice(0, 2)
-  const prefix =
-    lettersFromSeed.length === 2
-      ? lettersFromSeed
-      : `${pickRandomLetter()}${pickRandomLetter()}`
-  const digits = Math.floor(Math.random() * 10000)
-    .toString()
-    .padStart(4, '0')
-  return `${prefix}${digits}`
+function generateLotValue(): string {
+  const lastUsed = getLastPersistedLot()
+  return incrementLotSequence(lastUsed)
 }
 
 function normalizeLot(value: string): string | null {
   const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  return LOT_PATTERN.test(compact) ? compact : null
+  if (LOT_PATTERN.test(compact)) {
+    return compact
+  }
+  if (LEGACY_LOT_PATTERN.test(compact)) {
+    const prefix = compact.slice(0, LOT_PREFIX_LENGTH)
+    const digits = compact.slice(-LOT_NUMBER_LENGTH)
+    return `${prefix}${digits}`
+  }
+  return null
 }
 
-function pickRandomLetter(): string {
-  const index = Math.floor(Math.random() * LETTERS.length)
-  return LETTERS[index]
+function getLastPersistedLot(): string {
+  if (typeof window === 'undefined') {
+    return LOT_SEQUENCE_DEFAULT
+  }
+  try {
+    const stored = window.localStorage.getItem(LOT_SEQUENCE_STORAGE_KEY)
+    const normalized = stored ? normalizeLot(stored) : null
+    return normalized ?? LOT_SEQUENCE_DEFAULT
+  } catch {
+    return LOT_SEQUENCE_DEFAULT
+  }
+}
+
+function incrementLotSequence(value: string): string {
+  const normalized = normalizeLot(value) ?? LOT_SEQUENCE_DEFAULT
+  let prefix = normalized.slice(0, LOT_PREFIX_LENGTH)
+  let numberPart = Number.parseInt(normalized.slice(LOT_PREFIX_LENGTH), 10)
+  if (!Number.isFinite(numberPart)) {
+    numberPart = 0
+  }
+  numberPart += 1
+  if (numberPart > LOT_MAX_NUMBER) {
+    numberPart = 0
+    prefix = incrementLotPrefix(prefix)
+  }
+  return `${prefix}${numberPart.toString().padStart(LOT_NUMBER_LENGTH, '0')}`
+}
+
+function incrementLotPrefix(prefix: string): string {
+  const characters = prefix.padStart(LOT_PREFIX_LENGTH, LETTERS[0]).slice(-LOT_PREFIX_LENGTH).split('')
+  const firstLetter = 'N'
+  const secondLetter = characters[1] ?? 'A'
+  const secondIndex = LETTERS.indexOf(secondLetter)
+  if (secondIndex === -1 || secondIndex === LETTERS.length - 1) {
+    return `${firstLetter}${LETTERS[0]}`
+  }
+  return `${firstLetter}${LETTERS[secondIndex + 1]}`
+}
+
+function persistLotSequence(value: string): void {
+  if (typeof window === 'undefined') return
+  const normalized = normalizeLot(value)
+  if (!normalized) return
+  try {
+    window.localStorage.setItem(LOT_SEQUENCE_STORAGE_KEY, normalized)
+  } catch {
+    // ignore storage failures silently
+  }
+}
+
+function getDefaultLabelCodeForProduct(productName?: string | null): string {
+  if (!productName) return ''
+  const normalized = productName.trim().toLowerCase()
+  if (!normalized) return ''
+  return PRODUCT_BARCODE_MAP[normalized] ?? DEFAULT_BARCODE_VALUE
+}
+
+function parseIsoDate(value?: string | null): Date | null {
+  if (!value) return null
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+  const [, year, month, day] = match
+  const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+  return parsed
+}
+
+function addDaysUtc(date: Date, days: number): Date {
+  const result = new Date(date.getTime())
+  result.setUTCDate(result.getUTCDate() + days)
+  return result
+}
+
+function buildCodigoRFromDate(value?: string | null): string {
+  const parsed = parseIsoDate(value)
+  if (!parsed) return ''
+  const offset = parsed.getUTCDay() === 6 ? 5 : 4
+  const deliveryDate = addDaysUtc(parsed, offset)
+  const day = deliveryDate.getUTCDate()
+  return `R-${day}`
+}
+
+function getTodayIsoDate(): string {
+  const now = new Date()
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+  return local.toISOString().split('T')[0]
 }
 
 const TURNOS_FETCH_LIMIT = 32
@@ -1751,14 +1861,19 @@ function LabelsDashboard({
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
-  const [manualLote, setManualLote] = useState(() => generateLotValue('ALBARAN'))
-  const [manualFechaCarga, setManualFechaCarga] = useState('')
+  const [manualLote, setManualLote] = useState(() => generateLotValue())
+  const [manualFechaCarga, setManualFechaCarga] = useState(() => getTodayIsoDate())
   const [manualCodigoR, setManualCodigoR] = useState('')
   const [manualWeight, setManualWeight] = useState(DEFAULT_WEIGHT)
+  const [codigoRManuallyEdited, setCodigoRManuallyEdited] = useState(false)
   const [labelType, setLabelType] = useState<LabelType>(DEFAULT_LABEL_TYPE)
-  const [productName, setProductName] = useState(
-    () => LABEL_TYPE_PRODUCTS[DEFAULT_LABEL_TYPE][0] ?? DEFAULT_PRODUCT,
+  const [productName, setProductName] = useState(INITIAL_PRODUCT_NAME)
+  const [manualCodigoCoc, setManualCodigoCoc] = useState(() => COMPANY_DEFAULT_CODIGO_COC)
+  const [codigoCocManuallyEdited, setCodigoCocManuallyEdited] = useState(false)
+  const [manualLabelCode, setManualLabelCode] = useState(() =>
+    getDefaultLabelCodeForProduct(INITIAL_PRODUCT_NAME),
   )
+  const [labelCodeManuallyEdited, setLabelCodeManuallyEdited] = useState(false)
   const [activeStep, setActiveStep] = useState(1)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -1778,9 +1893,27 @@ function LabelsDashboard({
         setManualFechaCarga(parsed.fechaCarga)
       } else if (typeof parsed?.fechaEnvasado === 'string') {
         setManualFechaCarga(parsed.fechaEnvasado)
+      } else {
+        setManualFechaCarga(getTodayIsoDate())
       }
-      if (typeof parsed?.codigoR === 'string') {
+      if (typeof parsed?.codigoR === 'string' && parsed.codigoR.trim().length > 0) {
         setManualCodigoR(parsed.codigoR)
+        setCodigoRManuallyEdited(true)
+      }
+      if (typeof parsed?.codigoCoc === 'string' && parsed.codigoCoc.trim().length > 0) {
+        setManualCodigoCoc(parsed.codigoCoc.toUpperCase())
+        setCodigoCocManuallyEdited(true)
+      } else if (COMPANY_DEFAULT_CODIGO_COC) {
+        setManualCodigoCoc(COMPANY_DEFAULT_CODIGO_COC)
+      }
+      if (typeof parsed?.labelCode === 'string' && parsed.labelCode.trim().length > 0) {
+        setManualLabelCode(parsed.labelCode.trim())
+        setLabelCodeManuallyEdited(true)
+      } else {
+        const fallbackLabelCode = getDefaultLabelCodeForProduct(INITIAL_PRODUCT_NAME)
+        if (fallbackLabelCode) {
+          setManualLabelCode(fallbackLabelCode)
+        }
       }
       if (typeof parsed?.weight === 'string' && parsed.weight.trim().length > 0) {
         setManualWeight(parsed.weight)
@@ -1824,6 +1957,21 @@ function LabelsDashboard({
   }, [labelType])
 
   useEffect(() => {
+    if (labelCodeManuallyEdited) return
+    const fallback = getDefaultLabelCodeForProduct(productName)
+    if (fallback) {
+      setManualLabelCode(fallback)
+    }
+  }, [labelCodeManuallyEdited, productName])
+
+  useEffect(() => {
+    if (codigoCocManuallyEdited) return
+    if (COMPANY_DEFAULT_CODIGO_COC) {
+      setManualCodigoCoc(COMPANY_DEFAULT_CODIGO_COC)
+    }
+  }, [codigoCocManuallyEdited])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return
     const payload: ProductSelection = {
       labelType,
@@ -1837,6 +1985,22 @@ function LabelsDashboard({
     }
   }, [labelType, productName])
 
+  const derivedCodigoR = useMemo(
+    () => buildCodigoRFromDate(manualFechaCarga || getTodayIsoDate()),
+    [manualFechaCarga],
+  )
+  const derivedLabelCode = useMemo(
+    () => getDefaultLabelCodeForProduct(productName),
+    [productName],
+  )
+  const derivedCodigoCoc = COMPANY_DEFAULT_CODIGO_COC
+
+  useEffect(() => {
+    if (!codigoRManuallyEdited) {
+      setManualCodigoR(derivedCodigoR)
+    }
+  }, [codigoRManuallyEdited, derivedCodigoR])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const payload: LabelUploadMeta = {
@@ -1844,6 +2008,8 @@ function LabelsDashboard({
       fechaEnvasado: manualFechaCarga,
       fechaCarga: manualFechaCarga,
       codigoR: manualCodigoR,
+      codigoCoc: manualCodigoCoc,
+      labelCode: manualLabelCode,
       weight: manualWeight,
     }
     try {
@@ -1851,17 +2017,14 @@ function LabelsDashboard({
     } catch {
       // ignore storage quota issues
     }
-  }, [manualCodigoR, manualFechaCarga, manualLote, manualWeight])
+  }, [manualCodigoCoc, manualCodigoR, manualFechaCarga, manualLabelCode, manualLote, manualWeight])
 
   const stepsInfo = useMemo(
     () => [
       { id: 1, title: 'Subir pedido', completed: true },
       { id: 2, title: 'Producto', completed: productName.trim().length > 0 },
-      { id: 3, title: 'Peso', completed: manualWeight.trim().length > 0 },
-      { id: 4, title: 'Fecha', completed: manualFechaCarga.trim().length > 0 },
-      { id: 5, title: 'Código R', completed: manualCodigoR.trim().length > 0 },
     ],
-    [manualCodigoR, manualFechaCarga, manualWeight, productName],
+    [productName],
   )
 
   const summaryStep = stepsInfo.length + 1
@@ -1869,7 +2032,8 @@ function LabelsDashboard({
   const canSubmit =
     manualLote.trim().length > 0 &&
     manualFechaCarga.trim().length > 0 &&
-    manualCodigoR.trim().length > 0 &&
+    manualCodigoCoc.trim().length > 0 &&
+    manualLabelCode.trim().length > 0 &&
     manualWeight.trim().length > 0 &&
     productName.trim().length > 0
 
@@ -1879,14 +2043,20 @@ function LabelsDashboard({
   const resetForm = useCallback(() => {
     setFile(null)
     setLocalError(null)
-    setManualLote(generateLotValue('ALBARAN'))
-    setManualFechaCarga('')
+    setManualLote(generateLotValue())
+    setManualFechaCarga(getTodayIsoDate())
     setManualCodigoR('')
+    setCodigoRManuallyEdited(false)
+    setManualCodigoCoc(COMPANY_DEFAULT_CODIGO_COC)
+    setCodigoCocManuallyEdited(false)
+    const fallbackLabelCode = getDefaultLabelCodeForProduct(productName)
+    setManualLabelCode(fallbackLabelCode)
+    setLabelCodeManuallyEdited(false)
     setManualWeight(DEFAULT_WEIGHT)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-  }, [])
+  }, [productName])
 
   useEffect(() => {
     if (successMessage && !uploading) {
@@ -1901,12 +2071,46 @@ function LabelsDashboard({
       setFile(nextFile)
       if (nextFile) {
         setLocalError(null)
-        const generatedLot = generateLotValue(nextFile.name ?? 'ALBARAN')
+        const generatedLot = generateLotValue()
         setManualLote(generatedLot)
       }
     },
     [setManualLote, setLocalError],
   )
+
+  const handleFechaChange = useCallback((value: string) => {
+    setLocalError(null)
+    setManualFechaCarga(value)
+    setCodigoRManuallyEdited(false)
+  }, [])
+
+  const handleCodigoRInputChange = useCallback((value: string) => {
+    setLocalError(null)
+    setCodigoRManuallyEdited(true)
+    setManualCodigoR(value)
+  }, [])
+
+  const handleCodigoCocChange = useCallback((value: string) => {
+    setLocalError(null)
+    setCodigoCocManuallyEdited(true)
+    setManualCodigoCoc(value.toUpperCase())
+  }, [])
+
+  const handleLabelCodeChange = useCallback((value: string) => {
+    setLocalError(null)
+    setLabelCodeManuallyEdited(true)
+    setManualLabelCode(value)
+  }, [])
+
+  const handleLoteChange = useCallback((value: string) => {
+    setLocalError(null)
+    setManualLote(value.toUpperCase())
+  }, [])
+
+  const handleWeightChange = useCallback((value: string) => {
+    setLocalError(null)
+    setManualWeight(value)
+  }, [])
 
   const buildManualUploadFile = useCallback(() => {
     const manualNotes = [
@@ -1915,13 +2119,24 @@ function LabelsDashboard({
       `Producto: ${productName.trim() || 'Sin producto'}`,
       `Peso: ${manualWeight.trim() || DEFAULT_WEIGHT}`,
       `Fecha: ${manualFechaCarga.trim() || 'Sin fecha'}`,
+      `Código de barras: ${manualLabelCode.trim() || 'Sin dato'}`,
+      `Código COC: ${manualCodigoCoc.trim() || 'Sin dato'}`,
       `Código R: ${manualCodigoR.trim() || 'Sin dato'}`,
       `Lote: ${manualLote.trim() || 'Sin lote'}`,
     ].join('\n')
     return new File([manualNotes], `${MANUAL_ORDER_FILE_PREFIX}${Date.now().toString(36)}.txt`, {
       type: 'text/plain',
     })
-  }, [labelType, manualCodigoR, manualFechaCarga, manualLote, manualWeight, productName])
+  }, [
+    labelType,
+    manualCodigoCoc,
+    manualCodigoR,
+    manualFechaCarga,
+    manualLabelCode,
+    manualLote,
+    manualWeight,
+    productName,
+  ])
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -1931,7 +2146,7 @@ function LabelsDashboard({
 
       const meta: LabelUploadMeta = {}
 
-      const normalizedLot = normalizeLot(manualLote) ?? generateLotValue(uploadFile.name ?? 'ALBARAN')
+      const normalizedLot = normalizeLot(manualLote) ?? generateLotValue()
       meta.lote = normalizedLot
       if (!normalizeLot(manualLote)) {
         setManualLote(normalizedLot)
@@ -1944,13 +2159,22 @@ function LabelsDashboard({
       if (manualCodigoR.trim().length > 0) {
         meta.codigoR = manualCodigoR.trim()
       }
+      if (manualCodigoCoc.trim().length > 0) {
+        meta.codigoCoc = manualCodigoCoc.trim()
+      }
+      if (manualLabelCode.trim().length > 0) {
+        meta.labelCode = manualLabelCode.trim()
+      }
       meta.weight = manualWeight.trim().length > 0 ? manualWeight.trim() : DEFAULT_WEIGHT
 
       await onUpload(uploadFile, meta)
+      persistLotSequence(normalizedLot)
     },
     [
       file,
+      manualCodigoCoc,
       manualCodigoR,
+      manualLabelCode,
       manualFechaCarga,
       manualLote,
       manualWeight,
@@ -1969,26 +2193,11 @@ function LabelsDashboard({
           return productName.trim().length > 0
             ? null
             : 'Selecciona el producto que vas a etiquetar antes de continuar.'
-        case 3:
-          return manualWeight.trim().length > 0
-            ? null
-            : 'Indica el peso que debe aparecer en la etiqueta.'
-        case 4:
-          return manualFechaCarga.trim().length > 0
-            ? null
-            : 'Selecciona la fecha que debe aparecer antes de seguir.'
-        case 5:
-          return manualCodigoR.trim().length > 0 ? null : 'Introduce el código R para continuar.'
         default:
           return null
       }
     },
-    [
-      manualCodigoR,
-      manualFechaCarga,
-      manualWeight,
-      productName,
-    ],
+    [productName],
   )
 
   const handleContinue = useCallback(() => {
@@ -2067,56 +2276,6 @@ function LabelsDashboard({
   }, [onReloadUploads])
 
 
-  const renderTextStep = (
-    stepNumber: number,
-    title: string,
-    description: string,
-    value: string,
-    onChange: (value: string) => void,
-    placeholder: string,
-    type: 'text' | 'date' = 'text',
-    nextLabel?: string,
-  ) => {
-    const continueLabel = nextLabel ?? (stepNumber === stepsInfo.length ? 'Ir al resumen' : 'Continuar')
-    return (
-      <div className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5">
-        <p className="text-sm font-semibold text-gray-900">{`Paso ${stepNumber}. ${title}`}</p>
-        <p className="mt-1 text-sm text-gray-600">{description}</p>
-        <div className="mt-4">
-          <input
-            type={type}
-            value={value}
-            onChange={(event) => {
-              setLocalError(null)
-              onChange(event.target.value)
-            }}
-            placeholder={type === 'date' ? undefined : placeholder}
-            disabled={uploading}
-            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-          />
-        </div>
-        <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
-            disabled={uploading}
-          >
-            Volver
-          </button>
-          <button
-            type="button"
-            onClick={handleContinue}
-            className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-            disabled={uploading}
-          >
-            {continueLabel}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   const renderActiveStep = () => {
     if (activeStep === summaryStep) {
       const resumenValueParts: string[] = []
@@ -2128,17 +2287,93 @@ function LabelsDashboard({
       if (manualLote.trim().length > 0) {
         resumenValueParts.push(`Lote ${manualLote.trim()}`)
       }
+      if (manualWeight.trim().length > 0) {
+        resumenValueParts.push(manualWeight.trim())
+      }
+      if (manualFechaCarga.trim().length > 0) {
+        resumenValueParts.push(`Fecha ${formatDate(manualFechaCarga.trim())}`)
+      }
+      if (manualCodigoCoc.trim().length > 0) {
+        resumenValueParts.push(`COC ${manualCodigoCoc.trim()}`)
+      }
+      if (manualCodigoR.trim().length > 0) {
+        resumenValueParts.push(manualCodigoR.trim())
+      }
+      if (manualLabelCode.trim().length > 0) {
+        resumenValueParts.push(`EAN ${manualLabelCode.trim()}`)
+      }
       const resumenValue =
         resumenValueParts.length > 0
           ? resumenValueParts.join(' · ')
           : 'Selecciona el producto en el paso anterior para completar este resumen.'
 
-      const summaryItems = [
+      const summaryStaticItems = [
         { label: 'Subir pedido', value: file ? file.name : 'Sin pedido adjunto' },
-        { label: 'Peso', value: manualWeight.trim() || DEFAULT_WEIGHT },
-        { label: 'Fecha', value: manualFechaCarga.trim() || 'Sin fecha seleccionada' },
-        { label: 'Código R', value: manualCodigoR.trim() || 'Sin dato' },
+        { label: 'Tipo de etiqueta', value: getLabelTypeLabel(labelType) },
+        { label: 'Producto', value: productName.trim() || 'Sin producto seleccionado' },
         { label: 'Resumen', value: resumenValue },
+      ]
+
+      const summaryEditableFields: Array<{
+        name: string
+        label: string
+        type: 'text' | 'date'
+        value: string
+        placeholder?: string
+        helper?: string
+        onChange: (value: string) => void
+      }> = [
+        {
+          name: 'fecha',
+          label: 'Fecha envasado / carga',
+          type: 'date',
+          value: manualFechaCarga,
+          helper: 'Marca la fecha que aparece en el pedido.',
+          onChange: handleFechaChange,
+        },
+        {
+          name: 'lote',
+          label: 'Lote',
+          type: 'text',
+          value: manualLote,
+          placeholder: LOT_SEQUENCE_DEFAULT,
+          onChange: handleLoteChange,
+        },
+        {
+          name: 'peso',
+          label: 'Peso',
+          type: 'text',
+          value: manualWeight,
+          placeholder: 'Ej. 40gr',
+          onChange: handleWeightChange,
+        },
+        {
+          name: 'codigoCoc',
+          label: 'Código COC',
+          type: 'text',
+          value: manualCodigoCoc,
+          placeholder: '4063061581198',
+          helper: 'Código fijo proporcionado por la empresa.',
+          onChange: handleCodigoCocChange,
+        },
+        {
+          name: 'labelCode',
+          label: 'Código de barras',
+          type: 'text',
+          value: manualLabelCode,
+          placeholder: derivedLabelCode || '8437018336005',
+          helper: 'Asignado al producto por la central.',
+          onChange: handleLabelCodeChange,
+        },
+        {
+          name: 'codigoR',
+          label: 'Código R',
+          type: 'text',
+          value: manualCodigoR,
+          placeholder: derivedCodigoR || 'R-15',
+          helper: 'Se genera automáticamente sumando 4 días (5 si la fecha cae en sábado).',
+          onChange: handleCodigoRInputChange,
+        },
       ]
 
       return (
@@ -2153,13 +2388,74 @@ function LabelsDashboard({
             </p>
           </div>
           <dl className="grid gap-3 sm:grid-cols-2">
-            {summaryItems.map((item) => (
+            {summaryStaticItems.map((item) => (
               <div key={item.label} className="rounded-xl border border-gray-200 bg-white px-3 py-3">
                 <dt className="text-xs uppercase tracking-wide text-gray-500">{item.label}</dt>
                 <dd className="mt-1 text-sm text-gray-900 break-words">{item.value}</dd>
               </div>
             ))}
           </dl>
+          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-4">
+            <p className="text-sm font-semibold text-gray-900">Datos editables</p>
+            <p className="mt-1 text-xs text-gray-600">
+              Ajusta cualquier campo antes de generar la etiqueta. Guardamos tus últimos valores para el siguiente pedido.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              {summaryEditableFields.map((field) => (
+                <label key={field.name} className="text-sm font-medium text-gray-700">
+                  {field.label}
+                  <input
+                    type={field.type}
+                    value={field.value}
+                    onChange={(event) => field.onChange(event.target.value)}
+                    placeholder={field.placeholder}
+                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                    disabled={uploading}
+                  />
+                  {field.helper && <span className="mt-1 block text-xs text-gray-500">{field.helper}</span>}
+                  {field.name === 'codigoR' && derivedCodigoR && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCodigoRManuallyEdited(false)
+                        setManualCodigoR(derivedCodigoR)
+                      }}
+                      className="mt-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900"
+                      disabled={uploading}
+                    >
+                      Usar valor sugerido ({derivedCodigoR})
+                    </button>
+                  )}
+                  {field.name === 'codigoCoc' && derivedCodigoCoc && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCodigoCocManuallyEdited(false)
+                        setManualCodigoCoc(derivedCodigoCoc)
+                      }}
+                      className="mt-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900"
+                      disabled={uploading}
+                    >
+                      Usar valor fijo ({derivedCodigoCoc})
+                    </button>
+                  )}
+                  {field.name === 'labelCode' && derivedLabelCode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLabelCodeManuallyEdited(false)
+                        setManualLabelCode(derivedLabelCode)
+                      }}
+                      className="mt-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900"
+                      disabled={uploading}
+                    >
+                      Usar código asignado ({derivedLabelCode})
+                    </button>
+                  )}
+                </label>
+              ))}
+            </div>
+          </div>
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
@@ -2196,18 +2492,10 @@ function LabelsDashboard({
       case 1:
         return (
           <div className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5 space-y-5">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">Paso 1. Subir pedido (opcional)</p>
-              <p className="mt-1 text-sm text-gray-600">
-                Estamos en la primera fase de pruebas. Selecciona el tipo de etiqueta y, si quieres, adjunta el pedido,
-                pero no es necesario para continuar.
-              </p>
-            </div>
+            
             <div>
               <p className="text-sm font-semibold text-gray-900">Tipo de etiqueta</p>
-              <p className="mt-1 text-sm text-gray-600">
-                Elige si corresponde a Mercadona, Aldi o una etiqueta blanca. Usaremos esta selección para el resto de pasos.
-              </p>
+              
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {(Object.keys(LABEL_TYPE_OPTIONS) as LabelType[]).map((optionKey) => {
                   const option = LABEL_TYPE_OPTIONS[optionKey]
@@ -2235,10 +2523,7 @@ function LabelsDashboard({
               </div>
             </div>
             <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-4">
-              <p className="text-sm font-semibold text-gray-900">Archivo (opcional)</p>
-              <p className="mt-1 text-sm text-gray-600">
-                Puedes dejar este campo vacío: generaremos un pedido manual con los datos que introduzcas.
-              </p>
+              
               <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <input
                   ref={fileInputRef}
@@ -2271,7 +2556,7 @@ function LabelsDashboard({
         const availableProducts = LABEL_TYPE_PRODUCTS[labelType]
         return (
           <div className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5">
-            <p className="text-sm font-semibold text-gray-900">Paso 2. Producto</p>
+            <p className="text-sm font-semibold text-gray-900">Producto</p>
             <p className="mt-1 text-sm text-gray-600">
               {labelType === 'mercadona'
                 ? 'Para Mercadona solo trabajamos con Albahaca.'
@@ -2333,36 +2618,6 @@ function LabelsDashboard({
           </div>
         )
       }
-      case 3:
-        return renderTextStep(
-          3,
-          'Peso',
-          'Escribe el peso exacto que debe aparecer en la etiqueta (por ejemplo 40gr, 250 g, 0.5 kg).',
-          manualWeight,
-          setManualWeight,
-          'Ej. 40gr',
-        )
-      case 4:
-        return renderTextStep(
-          4,
-          'Fecha',
-          'Selecciona la fecha que debe aparecer en la etiqueta tal y como figura en el pedido.',
-          manualFechaCarga,
-          setManualFechaCarga,
-          '',
-          'date',
-        )
-      case 5:
-        return renderTextStep(
-          5,
-          'Código R',
-          'Introduce el código R asociado a este lote.',
-          manualCodigoR,
-          setManualCodigoR,
-          'Ej. R-123456',
-          'text',
-          'Ir al resumen',
-        )
       default:
         return null
     }
@@ -2385,7 +2640,7 @@ function LabelsDashboard({
             className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
             disabled={uploading}
           >
-            Ver historial completo
+            Etiquetas Generadas
           </button>
         </header>
 
@@ -2461,16 +2716,13 @@ function LabelsDashboard({
       {historyDisabled ? (
         <section className="rounded-3xl border border-gray-200 bg-white p-6 sm:p-7 shadow-sm">
           <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+            <div className="flex flex-wrap items-center gap-3">
               <h4 className="text-lg font-semibold text-gray-900">Archivos subidos</h4>
-              <p className="text-sm text-gray-600">
-                Mostramos los archivos disponibles en tu historial.
-                {uploadsFolder !== null && (
-                  <span className="block text-xs text-gray-500 mt-1">
-                    Carpeta {uploadsFolder.length === 0 ? 'principal' : uploadsFolder}
-                  </span>
-                )}
-              </p>
+              {uploadsFolder !== null && (
+                <span className="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-500">
+                  {uploadsFolder.length === 0 ? 'Carpeta principal' : uploadsFolder}
+                </span>
+              )}
             </div>
             <button
               type="button"
@@ -2487,7 +2739,7 @@ function LabelsDashboard({
 
           {lotSearchResult && (
             <div
-              className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${
+              className={`mt-5 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm ${
                 lotSearchResult.status === 'found'
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                   : lotSearchResult.status === 'searching'
@@ -2496,29 +2748,14 @@ function LabelsDashboard({
               }`}
             >
               {lotSearchResult.status === 'searching' ? (
-                <div className="flex items-center gap-2">
+                <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Buscando el lote {lotSearchResult.lot} en tus pedidos…</span>
-                </div>
+                  <span>Buscamos el lote {lotSearchResult.lot}…</span>
+                </>
               ) : lotSearchResult.status === 'found' && lotSearchResult.file ? (
                 <>
-                  <p className="text-sm font-semibold">
-                    Lote {lotSearchResult.lot} localizado en {lotSearchResult.file.name}
-                  </p>
-                  <p className="mt-1 text-sm">
-                    Abre el pedido original o la etiqueta generada con los botones inferiores.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {lotSearchResult.file.publicUrl && (
-                      <a
-                        href={lotSearchResult.file.publicUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
-                      >
-                        Abrir pedido original
-                      </a>
-                    )}
+                  <p className="font-semibold">Lote {lotSearchResult.lot} listo en {lotSearchResult.file.name}</p>
+                  <div className="flex flex-wrap gap-2">
                     {(lotSearchResult.file.automation?.labelWebViewLink ||
                       lotSearchResult.file.automation?.labelWebContentLink) && (
                       <a
@@ -2531,18 +2768,13 @@ function LabelsDashboard({
                         rel="noreferrer"
                         className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 transition hover:bg-gray-100"
                       >
-                        Ver PDF etiqueta
+                        Etiqueta
                       </a>
                     )}
                   </div>
                 </>
               ) : (
-                <>
-                  <p className="text-sm font-semibold">No encontramos el lote {lotSearchResult.lot}</p>
-                  <p className="mt-1 text-sm">
-                    Asegúrate de que ya se haya subido ese pedido o intenta con otro identificador.
-                  </p>
-                </>
+                <p className="font-semibold">No encontramos el lote {lotSearchResult.lot}</p>
               )}
             </div>
           )}
@@ -2564,221 +2796,145 @@ function LabelsDashboard({
               </p>
             ) : uploads.length === 0 ? (
               <p className="text-sm text-gray-600">
-                Aún no subes ninguna imagen. Sube tu primer albarán para verlo listado aquí.
+                Sube tu primer albarán para verlo listado aquí.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-[#FAF9F6] text-gray-500 uppercase tracking-wide text-xs">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Archivo</th>
-                      <th className="px-4 py-3 text-left">Tamaño</th>
-                      <th className="px-4 py-3 text-left">Subido</th>
-                      <th className="px-4 py-3 text-left">Actualizado</th>
-                      <th className="px-4 py-3 text-left">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-gray-700">
-                    {uploads.map((file) => {
-                      const isDeleting = uploadsDeletingId === file.id
-                      const automation = file.automation ?? null
-                      const automationStatusLabel =
-                        automation?.status === 'completed'
-                          ? 'Automatización completada'
-                          : automation?.status === 'error'
-                          ? 'Automatización con errores'
-                          : null
-                      const extractedFields = automation?.fields ?? null
-                      const isHighlighted = highlightedUploadId === file.id
-                      return (
-                        <tr
-                          key={file.id}
-                          className={`transition ${
-                            isHighlighted ? 'bg-emerald-50/80 ring-1 ring-emerald-200' : 'hover:bg-[#FAF9F6]'
-                          }`}
-                        >
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <FileText className="h-4 w-4 text-gray-400" />
-                              <div>
-                                <p className="font-medium text-gray-900 truncate max-w-[220px]">
-                                  {file.name}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-0.5 break-all">{file.path}</p>
-                                {isHighlighted && (
-                                  <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                                    Coincide con la búsqueda
-                                  </span>
-                                )}
-                                {file.destination && (
-                                  <p className="text-xs text-gray-500 mt-0.5">
-                                    Destino: {file.destination}
-                                  </p>
-                                )}
-                                {file.notes && (
-                                  <p className="text-xs text-gray-500 mt-0.5">
-                                    Notas: {file.notes}
-                                  </p>
-                                )}
-                                {file.generatedFromFileId && (
-                                  <p className="text-xs text-gray-400 mt-0.5">
-                                    Origen: {formatShortId(file.generatedFromFileId)}
-                                  </p>
-                                )}
-                                {automation && (
-                                  <div className="mt-2 space-y-1">
-                                    {automationStatusLabel && (
-                                      <p
-                                        className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ${
-                                          automation.status === 'completed'
-                                            ? 'bg-emerald-50 text-emerald-700'
-                                            : 'bg-amber-50 text-amber-700'
-                                        }`}
-                                      >
-                                        {automationStatusLabel}
-                                        {typeof automation.confidence === 'number' && (
-                                          <span className="text-[10px] uppercase tracking-wide">
-                                            Confianza {Math.round(automation.confidence * 100)}%
-                                          </span>
-                                        )}
-                                      </p>
-                                    )}
-                                    <div className="text-xs text-gray-500 space-y-0.5">
-                                      {automation.templateKey && (
-                                        <p>Plantilla detectada: {automation.templateKey}</p>
-                                      )}
-                                      {extractedFields &&
-                                        (extractedFields.fechaEnvasado ||
-                                          extractedFields.lote ||
-                                          extractedFields.codigoCoc ||
-                                          extractedFields.codigoR) && (
-                                          <p className="flex flex-wrap gap-2">
-                                            {extractedFields.fechaEnvasado && (
-                                              <span className="inline-flex items-center rounded-full bg-gray-200/70 px-2 py-0.5">
-                                                Envasado {extractedFields.fechaEnvasado}
-                                              </span>
-                                            )}
-                                            {extractedFields.lote && (
-                                              <span className="inline-flex items-center rounded-full bg-gray-200/70 px-2 py-0.5">
-                                                Lote {extractedFields.lote}
-                                              </span>
-                                            )}
-                                            {extractedFields.codigoCoc && (
-                                              <span className="inline-flex items-center rounded-full bg-gray-200/70 px-2 py-0.5">
-                                                COC {extractedFields.codigoCoc}
-                                              </span>
-                                            )}
-                                            {extractedFields.codigoR && (
-                                              <span className="inline-flex items-center rounded-full bg-gray-200/70 px-2 py-0.5">
-                                                R {extractedFields.codigoR}
-                                              </span>
-                                            )}
-                                          </p>
-                                        )}
-                                      {automation.error && (
-                                        <p className="text-red-600">
-                                          Error: {automation.error}
-                                        </p>
-                                      )}
-                                      {automation.notes && (
-                                        <p className="italic">Notas: {automation.notes}</p>
-                                      )}
-                                      {(automation.labelWebViewLink ||
-                                        automation.labelWebContentLink) && (
-                                        <p className="pt-0.5">
-                                          <a
-                                            href={
-                                              automation.labelWebViewLink ??
-                                              automation.labelWebContentLink ??
-                                              '#'
-                                            }
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="inline-flex items-center gap-1 text-gray-700 hover:text-gray-900 underline"
-                                          >
-                                            Ver etiqueta generada
-                                            {automation.labelFileName
-                                              ? ` (${automation.labelFileName})`
-                                              : ''}
-                                          </a>
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {file.size != null ? formatBytes(file.size) : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {formatDateTime(file.createdAt ?? file.updatedAt ?? undefined)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {file.updatedAt ? formatDateTime(file.updatedAt) : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {(file.publicUrl || automation?.labelWebViewLink || automation?.labelWebContentLink) ? (
-                                <details className="relative group">
-                                  <summary className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 cursor-pointer list-none">
-                                    Abrir
-                                    <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-                                  </summary>
-                                  <div className="absolute right-0 z-20 mt-2 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                                    {file.publicUrl ? (
-                                      <a
-                                        href={file.publicUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                      >
-                                        Pedido original
-                                        <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
-                                      </a>
-                                    ) : null}
-                                    {automation?.labelWebViewLink || automation?.labelWebContentLink ? (
-                                      <a
-                                        href={automation.labelWebViewLink ?? automation.labelWebContentLink ?? '#'}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                      >
-                                        PDF etiqueta
-                                        <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
-                                      </a>
-                                    ) : null}
-                                  </div>
-                                </details>
-                              ) : (
-                                <span className="text-gray-400">Sin enlace</span>
-                              )}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteUpload(file)}
-                          disabled={isDeleting}
-                          className={`inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium transition ${
-                                  isDeleting
-                                    ? 'cursor-not-allowed text-gray-400 bg-gray-100'
-                                    : 'text-gray-700 hover:bg-gray-100'
-                                }`}
+              <ul className="space-y-3">
+                {uploads.map((file) => {
+                  const isDeleting = uploadsDeletingId === file.id
+                  const automation = file.automation ?? null
+                  const extractedFields = automation?.fields ?? null
+                  const isHighlighted = highlightedUploadId === file.id
+                  const uploadedAt = file.createdAt ?? file.updatedAt ?? null
+                  const metaParts: string[] = []
+                  if (file.size != null) metaParts.push(formatBytes(file.size))
+                  if (uploadedAt) metaParts.push(formatDateTime(uploadedAt))
+                  const metaLine = metaParts.join(' · ')
+                  const automationStatusLabel =
+                    automation?.status === 'completed'
+                      ? 'Listo'
+                      : automation?.status === 'error'
+                      ? 'Revisar'
+                      : null
+                  const automationStatusTone =
+                    automation?.status === 'completed'
+                      ? 'success'
+                      : automation?.status === 'error'
+                      ? 'error'
+                      : 'info'
+                  const automationLink = automation?.labelWebViewLink ?? automation?.labelWebContentLink
+                  const secondaryParts: string[] = []
+                  if (file.destination) secondaryParts.push(`Destino ${file.destination}`)
+                  if (file.notes) secondaryParts.push(file.notes)
+                  if (file.generatedFromFileId) {
+                    secondaryParts.push(`Origen ${formatShortId(file.generatedFromFileId)}`)
+                  }
+                  return (
+                    <li
+                      key={file.id}
+                      className={`rounded-2xl border px-4 py-3 text-sm text-gray-700 transition ${
+                        isHighlighted ? 'border-emerald-300 bg-emerald-50/70' : 'hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <FileText className="h-4 w-4 text-gray-400" />
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-gray-900">{file.name}</p>
+                            {metaLine && <p className="text-xs text-gray-500">{metaLine}</p>}
+                            {file.path && <p className="text-xs text-gray-400 truncate">{file.path}</p>}
+                          </div>
+                        </div>
+                        <div className="ml-auto flex flex-wrap items-center gap-3">
+                          {automationStatusLabel && (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+                                automationStatusTone === 'success'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : automationStatusTone === 'error'
+                                  ? 'bg-red-50 text-red-700'
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}
+                            >
+                              {automationStatusLabel}
+                            </span>
+                          )}
+                          {isHighlighted && (
+                            <span className="inline-flex items-center rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                              Coincide
+                            </span>
+                          )}
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
+                            {automationLink ? (
+                              <a
+                                href={automationLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded-xl border border-gray-300 px-3 py-1.5 text-gray-900 transition hover:bg-gray-100"
                               >
-                                {isDeleting ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                )}
-                                {isDeleting ? 'Eliminando…' : 'Eliminar'}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                                Ver etiqueta
+                              </a>
+                            ) : (
+                              <span className="text-gray-400">Sin enlace</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUpload(file)}
+                              disabled={isDeleting}
+                              className={`inline-flex items-center gap-1 rounded-xl border border-gray-300 px-3 py-1.5 transition ${
+                                isDeleting ? 'cursor-not-allowed bg-gray-100 text-gray-400' : 'text-gray-700 hover:bg-gray-100'
+                              }`}
+                            >
+                              {isDeleting ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                              {isDeleting ? 'Eliminando…' : 'Eliminar'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      {(secondaryParts.length > 0 ||
+                        extractedFields?.fechaEnvasado ||
+                        extractedFields?.lote ||
+                        extractedFields?.codigoCoc ||
+                        extractedFields?.codigoR) && (
+                        <div className="mt-2 space-y-1 text-xs text-gray-500">
+                          {secondaryParts.length > 0 && <p>{secondaryParts.join(' · ')}</p>}
+                          {(extractedFields?.fechaEnvasado ||
+                            extractedFields?.lote ||
+                            extractedFields?.codigoCoc ||
+                            extractedFields?.codigoR) && (
+                            <p className="flex flex-wrap gap-2">
+                              {extractedFields?.fechaEnvasado && (
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5">
+                                  Envasado {extractedFields.fechaEnvasado}
+                                </span>
+                              )}
+                              {extractedFields?.lote && (
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5">Lote {extractedFields.lote}</span>
+                              )}
+                              {extractedFields?.codigoCoc && (
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5">COC {extractedFields.codigoCoc}</span>
+                              )}
+                              {extractedFields?.codigoR && (
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5">R {extractedFields.codigoR}</span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {automation?.error && (
+                        <p className="mt-2 text-xs text-red-600">Error: {automation.error}</p>
+                      )}
+                      {automation?.notes && (
+                        <p className="mt-1 text-xs italic text-gray-500">Notas: {automation.notes}</p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
             )}
           </div>
         </section>

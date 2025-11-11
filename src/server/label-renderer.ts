@@ -34,19 +34,19 @@ const DEFAULT_TEMPLATE_CANDIDATES = [
   path.join('public', 'Etiqueta.pdf'),
   path.join('public', 'Etiqueta.png'),
 ]
-const DEFAULT_FONT_SIZE = 56
+const DEFAULT_FONT_SIZE = 55
 const DEFAULT_FONT_COLOR = rgb(0, 0, 0)
-const DEFAULT_FONT_NAME = StandardFonts.HelveticaBold
+const DEFAULT_FONT_NAME = StandardFonts.Helvetica
 const LABEL_FONT_ENV_KEY = 'LABEL_FONT_PATH'
 const DEFAULT_FONT_CANDIDATES = [
-  path.join('public', 'fonts', 'Arial-Bold.ttf'),
-  path.join('public', 'Arial-Bold.ttf'),
-  path.join('public', 'fonts', 'arialbd.ttf'),
-  '/Library/Fonts/Arial Bold.ttf',
-  '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
-  'C:\\Windows\\Fonts\\arialbd.ttf',
-  '/usr/share/fonts/truetype/msttcorefonts/Arial_Bold.ttf',
-  '/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf',
+  path.join('public', 'fonts', 'Arial.ttf'),
+  path.join('public', 'Arial.ttf'),
+  path.join('public', 'fonts', 'arial.ttf'),
+  '/Library/Fonts/Arial.ttf',
+  '/System/Library/Fonts/Supplemental/Arial.ttf',
+  'C:\\Windows\\Fonts\\arial.ttf',
+  '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf',
+  '/usr/share/fonts/truetype/msttcorefonts/arial.ttf',
 ]
 let cachedFontBytes: Uint8Array | null = null
 let customFontLoadAttempted = false
@@ -63,19 +63,26 @@ const BASE_HEIGHT = 768
 
 type LayoutKey = Exclude<keyof LabelRenderFields, 'labelCode' | 'weight'>
 
+const TEXT_OFFSETS: Partial<Record<LayoutKey, { dx?: number; dy?: number }>> = {
+  fechaEnvasado: { dx: 18, dy: -8 },
+  lote: { dx: 42, dy: -25 },
+  codigoR: { dx: -15, dy: -70 },
+}
+
 const TEXT_LAYOUT: Record<LayoutKey, LayoutEntry> = {
-  fechaEnvasado: { baseX: 325, baseY: 415, align: 'left', fontSize: 36 },
-  lote: { baseX: 215, baseY: 490, align: 'left', fontSize: 36 },
-  codigoCoc: { baseX: 205, baseY: 630, align: 'left', fontSize: 36 },
-  codigoR: { baseX: 1020, baseY: 505, align: 'left', fontSize: 28 },
+  fechaEnvasado: { baseX: 325, baseY: 415, align: 'left', fontSize: 34 },
+  lote: { baseX: 215, baseY: 490, align: 'left', fontSize: 34 },
+  codigoCoc: { baseX: 205, baseY: 630, align: 'left', fontSize: 34 },
+  codigoR: { baseX: 1020, baseY: 505, align: 'left', fontSize: 27 },
 }
 
 const WEIGHT_LAYOUT: LayoutEntry = {
   baseX: 235,
   baseY: 570,
   align: 'left',
-  fontSize: 38,
+  fontSize: 37,
 }
+const WEIGHT_OFFSET = { dx: 26, dy: -35 }
 
 let cachedTemplateBuffer: Buffer | null = null
 let cachedTemplatePath: string | null = null
@@ -154,10 +161,9 @@ export async function renderLabelPdf({
     const layout = TEXT_LAYOUT[key]
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
     const textWidth = measureTextWidth(value, fontSize, labelFont)
-    const offsetX = key === 'codigoR' ? -20 : 20
-    const offsetY = key === 'codigoR' ? 40 : 30
-    const baseX = layout.baseX + offsetX
-    const baseY = layout.baseY - offsetY
+    const offset = TEXT_OFFSETS[key] ?? { dx: 0, dy: 0 }
+    const baseX = layout.baseX + (offset.dx ?? 0)
+    const baseY = layout.baseY + (offset.dy ?? 0)
 
     const x = resolvePosition(baseX * scaleX, layout.align, textWidth)
     const y = pageHeight - baseY * scaleY
@@ -178,10 +184,10 @@ export async function renderLabelPdf({
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
     const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '40gr'
     const textWidth = measureTextWidth(weightText, fontSize, labelFont)
-    const offsetBaseX = layout.baseX + 20
-    const offsetBaseY = layout.baseY - 30
-    const x = resolvePosition(offsetBaseX * scaleX, layout.align, textWidth)
-    const y = pageHeight - offsetBaseY * scaleY
+    const baseX = layout.baseX + (WEIGHT_OFFSET.dx ?? 0)
+    const baseY = layout.baseY + (WEIGHT_OFFSET.dy ?? 0)
+    const x = resolvePosition(baseX * scaleX, layout.align, textWidth)
+    const y = pageHeight - baseY * scaleY
 
     page.drawText(weightText, {
       x,
