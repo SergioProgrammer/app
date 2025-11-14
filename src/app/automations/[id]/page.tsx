@@ -12,6 +12,8 @@ import {
   Menu,
 } from 'lucide-react'
 
+const ALLOWED_EMAILS_TABLE = process.env.NEXT_PUBLIC_ALLOWED_EMAILS_TABLE ?? 'allowed_emails'
+
 export default function AutomatizacionPage() {
   const supabase = createClient()
   const params = useParams()
@@ -89,17 +91,17 @@ export default function AutomatizacionPage() {
 
     // Obtener la cuenta Gmail vinculada
     const { data: gmailRow, error: gmailError } = await supabase
-      .from('gmail_accounts')
-      .select('gmail_address')
+      .from(ALLOWED_EMAILS_TABLE)
+      .select('gmail_address, email')
       .eq('user_id', user.id)
       .single()
 
-    if (gmailError || !gmailRow?.gmail_address) {
+    const gmailAddress = gmailRow?.gmail_address ?? gmailRow?.email ?? null
+
+    if (gmailError || !gmailAddress) {
       alert('⚠️ No se encontró una cuenta Gmail vinculada. Conéctala antes de continuar.')
       return
     }
-
-    const gmailAddress = gmailRow.gmail_address
 
     // Llamar a tu API de creación de workflows en n8n
     await fetch('/api/n8n/create', {

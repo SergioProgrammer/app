@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 
+const ALLOWED_EMAILS_TABLE = process.env.NEXT_PUBLIC_ALLOWED_EMAILS_TABLE ?? 'allowed_emails'
+
 export default function GoogleCallbackPage() {
   const [status, setStatus] = useState('Procesando...')
 
@@ -37,9 +39,10 @@ export default function GoogleCallbackPage() {
         } = await supabase.auth.getUser()
 
         if (user) {
-          await supabase.from('gmail_accounts').upsert({
+          await supabase.from(ALLOWED_EMAILS_TABLE).upsert({
             user_id: user.id,
             gmail_address: data.email,
+            email: data.email,
             access_token: data.access_token,
             refresh_token: data.refresh_token,
           })

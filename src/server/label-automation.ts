@@ -1,8 +1,4 @@
-import {
-  updateDriveFileMetadata,
-  uploadFileToDrive,
-} from './google-drive'
-import { renderLabelPdf, type LabelRenderFields } from './label-renderer'
+import { renderLabelPdf, type LabelRenderFields, type LabelRenderResult } from './label-renderer'
 
 export interface ManualLabelFields {
   lote?: string | null
@@ -29,22 +25,14 @@ export interface LabelAutomationMetadata {
 }
 
 export interface ProcessLabelAutomationParams {
-  fileId: string
   fileName: string
-  existingDescription?: string | null
-  destination?: string | null
-  notes?: string | null
-  folderId?: string | null
   templatePath?: string | null
   manualFields?: ManualLabelFields
 }
 
-interface DescriptionPayload {
-  destination?: string | null
-  notes?: string | null
-  manualFields?: ManualLabelFields
-  automation?: LabelAutomationMetadata
-  [key: string]: unknown
+export interface ProcessLabelAutomationResult {
+  automation: LabelAutomationMetadata
+  label: LabelRenderResult | null
 }
 
 const DEFAULT_WEIGHT_TEXT = '40gr'
@@ -53,17 +41,11 @@ const LEGACY_LOT_PATTERN = /^[A-Z]{2}\d{4}$/
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 export async function processLabelAutomation({
-  fileId,
   fileName,
-  existingDescription,
-  destination,
-  notes,
-  folderId,
   templatePath,
   manualFields,
-}: ProcessLabelAutomationParams): Promise<LabelAutomationMetadata> {
-  const descriptionPayload = mergeDescriptionPayload(existingDescription, destination, notes, manualFields)
-  const normalizedManualFields = descriptionPayload.manualFields ?? {}
+}: ProcessLabelAutomationParams): Promise<ProcessLabelAutomationResult> {
+  const normalizedManualFields = normalizeManualFields(manualFields)
 
   const preparedFields = prepareLabelFields(normalizedManualFields, fileName)
   const combinedFields: ManualLabelFields = {
@@ -71,64 +53,25 @@ export async function processLabelAutomation({
     ...preparedFields,
   }
 
-  descriptionPayload.manualFields = combinedFields
-
-  if (!folderId) {
-    const automation: LabelAutomationMetadata = {
-      status: 'error',
-      processedAt: new Date().toISOString(),
-      fields: combinedFields,
-      error: 'No se generó la etiqueta porque falta la carpeta de destino en Google Drive.',
-    }
-
-    await updateDriveFileMetadata(fileId, {
-      description: JSON.stringify({
-        ...descriptionPayload,
-        automation,
-      }),
-    })
-
-    return automation
-  }
-
   try {
-    const { buffer: labelBuffer, fileName: labelFileName, mimeType: labelMimeType } =
-      await renderLabelPdf({
-        fields: preparedFields,
-        fileName,
-        templatePath: templatePath ?? process.env.LABEL_TEMPLATE_PATH ?? undefined,
-      })
-
-    const generated = await uploadFileToDrive({
-      folderId,
-      fileName: labelFileName,
-      mimeType: labelMimeType,
-      buffer: labelBuffer,
-      description: JSON.stringify({
-        generatedFromFileId: fileId,
-        generatedAt: new Date().toISOString(),
-      }),
+    const label = await renderLabelPdf({
+      fields: preparedFields,
+      fileName,
+      templatePath: templatePath ?? process.env.LABEL_TEMPLATE_PATH ?? undefined,
     })
 
     const automation: LabelAutomationMetadata = {
       status: 'completed',
       processedAt: new Date().toISOString(),
       fields: combinedFields,
-      notes: `Etiqueta generada a partir de valores manuales${labelFileName ? ` (${labelFileName})` : ''}.`,
-      labelFileId: generated.id ?? null,
-      labelFileName: generated.name ?? null,
-      labelWebViewLink: generated.webViewLink ?? null,
-      labelWebContentLink: generated.webContentLink ?? null,
+      notes: `Etiqueta generada a partir de valores manuales${label.fileName ? ` (${label.fileName})` : ''}.`,
+      labelFileName: label.fileName,
+      labelFileId: null,
+      labelWebContentLink: null,
+      labelWebViewLink: null,
     }
 
-    await updateDriveFileMetadata(fileId, {
-      description: JSON.stringify({
-        ...descriptionPayload,
-        automation,
-      }),
-    })
-
-    return automation
+    return { automation, label }
   } catch (error) {
     const automation: LabelAutomationMetadata = {
       status: 'error',
@@ -140,55 +83,20 @@ export async function processLabelAutomation({
           : 'Ocurrió un error desconocido generando la etiqueta.',
     }
 
-    await updateDriveFileMetadata(fileId, {
-      description: JSON.stringify({
-        ...descriptionPayload,
-        automation,
-      }),
-    })
-
-    return automation
+    return { automation, label: null }
   }
 }
 
-function mergeDescriptionPayload(
-  existingDescription: string | null | undefined,
-  destination: string | null | undefined,
-  notes: string | null | undefined,
-  manualFields: ManualLabelFields | undefined,
-): DescriptionPayload {
-  let payload: DescriptionPayload = {}
-
-  if (existingDescription && existingDescription.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(existingDescription)
-      if (parsed && typeof parsed === 'object') {
-        payload = parsed as DescriptionPayload
-      }
-    } catch {
-      payload = {}
-    }
+function normalizeManualFields(manualFields: ManualLabelFields | undefined): ManualLabelFields {
+  return {
+    lote: normalizeField(manualFields?.lote),
+    fechaCarga: normalizeField(manualFields?.fechaCarga),
+    fechaEnvasado: normalizeField(manualFields?.fechaEnvasado),
+    labelCode: normalizeField(manualFields?.labelCode),
+    codigoCoc: normalizeField(manualFields?.codigoCoc),
+    codigoR: normalizeField(manualFields?.codigoR),
+    weight: normalizeField(manualFields?.weight),
   }
-
-  if (destination) {
-    payload.destination = destination
-  }
-
-  if (notes) {
-    payload.notes = notes
-  }
-
-  payload.manualFields = {
-    lote: normalizeField(manualFields?.lote ?? payload.manualFields?.lote),
-    fechaCarga: normalizeField(manualFields?.fechaCarga ?? payload.manualFields?.fechaCarga),
-    fechaEnvasado: normalizeField(manualFields?.fechaEnvasado ?? payload.manualFields?.fechaEnvasado),
-    labelCode: normalizeField(manualFields?.labelCode ?? payload.manualFields?.labelCode),
-    codigoCoc: normalizeField(manualFields?.codigoCoc ?? payload.manualFields?.codigoCoc),
-    codigoR: normalizeField(manualFields?.codigoR ?? payload.manualFields?.codigoR),
-    weight: normalizeField(manualFields?.weight ?? payload.manualFields?.weight),
-  }
-
-  return payload
 }
 
 function normalizeField(value?: string | null): string | null {

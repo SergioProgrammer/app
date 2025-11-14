@@ -600,8 +600,8 @@ const etiquetasPlan: PanelPlanConfig = {
   resources: [],
   dataset: {
     type: 'labels',
-    table: 'albaranes_pedidos',
-    insertTable: 'albaranes_pedidos',
+    table: 'albaranes',
+    insertTable: 'albaranes',
     userIdColumn: 'user_id',
     storageFolder: '1AV26_7Mzke1eKIn3dN-rqdaBc9ND9NpG',
     historyDisabled: true,

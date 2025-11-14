@@ -173,6 +173,9 @@ const MANUAL_ORDER_FILE_PREFIX = 'pedido-manual-'
 const INITIAL_PRODUCT_NAME = LABEL_TYPE_PRODUCTS[DEFAULT_LABEL_TYPE][0] ?? DEFAULT_PRODUCT
 const COMPANY_DEFAULT_CODIGO_COC = (process.env.NEXT_PUBLIC_COMPANY_COC ?? '4063061581198').toUpperCase()
 const DEFAULT_BARCODE_VALUE = (process.env.NEXT_PUBLIC_DEFAULT_BARCODE ?? '8437018336005').trim()
+const SUPABASE_PUBLIC_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+const SUPABASE_ETIQUETAS_BUCKET =
+  process.env.NEXT_PUBLIC_SUPABASE_ETIQUETAS_BUCKET ?? 'etiquetas_final'
 const PRODUCT_BARCODE_MAP: Record<string, string> = (() => {
   try {
     const raw = JSON.parse(process.env.NEXT_PUBLIC_PRODUCT_BARCODES ?? '{}') as Record<string, unknown>
@@ -2822,7 +2825,7 @@ function LabelsDashboard({
                       : automation?.status === 'error'
                       ? 'error'
                       : 'info'
-                  const automationLink = automation?.labelWebViewLink ?? automation?.labelWebContentLink
+                  const automationLink = resolveAutomationLink(file)
                   const secondaryParts: string[] = []
                   if (file.destination) secondaryParts.push(`Destino ${file.destination}`)
                   if (file.notes) secondaryParts.push(file.notes)
@@ -3709,6 +3712,40 @@ function mapRowToLabelRecord(row: Record<string, unknown>): LabelRecord {
     storagePath,
     raw: row,
   }
+}
+
+function resolveAutomationLink(file: UploadedFileRecord): string | null {
+  if (!file) return null
+  const directLink = file.automation?.labelWebViewLink ?? file.automation?.labelWebContentLink
+  if (directLink) {
+    return directLink
+  }
+  if (!SUPABASE_PUBLIC_URL) {
+    return null
+  }
+  const labelPath = buildLabelStoragePath(file)
+  if (!labelPath) {
+    return null
+  }
+  const encodedPath = labelPath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+  const bucket = encodeURIComponent(SUPABASE_ETIQUETAS_BUCKET)
+  return `${SUPABASE_PUBLIC_URL}/storage/v1/object/public/${bucket}/${encodedPath}`
+}
+
+function buildLabelStoragePath(file: UploadedFileRecord): string | null {
+  if (!file?.name) return null
+  const baseName = file.name.replace(/\.[^.]+$/, '')
+  if (!baseName) return null
+
+  const folder =
+    file.path && file.path.includes('/')
+      ? file.path.slice(0, file.path.lastIndexOf('/'))
+      : ''
+  const labelFileName = `${baseName}-etiqueta.pdf`
+  return folder ? `${folder}/${labelFileName}` : labelFileName
 }
 
 function formatDateTime(value?: string): string {
