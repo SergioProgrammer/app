@@ -2061,21 +2061,22 @@ function LabelsDashboard({
     setWeightManuallyEdited(false)
   }, [labelType, productName])
 
-useEffect(() => {
-  if (weightManuallyEdited || labelType !== 'lidl') {
-    return
-  }
-  const normalized = productName.trim().toLowerCase()
-  let desiredWeight = DEFAULT_WEIGHT
-  if (normalized === 'eneldo') {
-    desiredWeight = '30g'
-  } else if (normalized === 'albahaca') {
-    desiredWeight = '60gr'
-  }
-  if (manualWeight !== desiredWeight) {
-    setManualWeight(desiredWeight)
-  }
-}, [labelType, manualWeight, productName, weightManuallyEdited])
+  useEffect(() => {
+    if (weightManuallyEdited) {
+      return
+    }
+    const normalized = productName.trim().toLowerCase()
+    const isLidl = labelType === 'lidl'
+    let desiredWeight = DEFAULT_WEIGHT
+    if (normalized === 'albahaca') {
+      desiredWeight = '60gr'
+    } else if (isLidl && normalized === 'eneldo') {
+      desiredWeight = '30g'
+    }
+    if (manualWeight !== desiredWeight) {
+      setManualWeight(desiredWeight)
+    }
+  }, [labelType, manualWeight, productName, weightManuallyEdited])
 
   useEffect(() => {
     if (labelCodeManuallyEdited) return
@@ -2438,6 +2439,7 @@ useEffect(() => {
     if (activeStep === summaryStep) {
       const normalizedProductName = productName.trim().toLowerCase()
       const isLidlLotOnly = labelType === 'lidl'
+      const isLidlAlbahaca = isLidlLotOnly && normalizedProductName === 'albahaca'
       const resumenValueParts: string[] = []
       if (!isLidlLotOnly) {
         if (productName.trim().length > 0) {
@@ -2471,7 +2473,7 @@ useEffect(() => {
         if (manualWeight.trim().length > 0) {
           resumenValueParts.push(`Peso ${manualWeight.trim()}`)
         }
-        if (manualFechaCarga.trim().length > 0) {
+        if (isLidlAlbahaca && manualFechaCarga.trim().length > 0) {
           resumenValueParts.push(`Fecha ${formatDate(manualFechaCarga.trim())}`)
         }
       }
@@ -2520,7 +2522,15 @@ useEffect(() => {
               : normalizedProductName === 'albahaca'
               ? 'Valor por defecto 60gr.'
               : undefined
-          return [
+          const lidlFields: Array<{
+            name: string
+            label: string
+            type: 'text' | 'date'
+            value: string
+            placeholder?: string
+            helper?: string
+            onChange: (value: string) => void
+          }> = [
             {
               name: 'lote',
               label: 'Lote',
@@ -2538,15 +2548,18 @@ useEffect(() => {
               helper: lidlWeightHelper,
               onChange: handleWeightChange,
             },
-            {
+          ]
+          if (isLidlAlbahaca) {
+            lidlFields.push({
               name: 'fecha',
               label: 'Fecha envasado / carga',
               type: 'date',
               value: manualFechaCarga,
               helper: 'Verifica la fecha importada automáticamente.',
               onChange: handleFechaChange,
-            },
-          ]
+            })
+          }
+          return lidlFields
         }
         return [
           {

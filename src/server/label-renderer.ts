@@ -64,6 +64,10 @@ interface LayoutEntry {
 
 const BASE_WIDTH = 1262
 const BASE_HEIGHT = 768
+const LABEL_WIDTH_MM = 67
+const LABEL_HEIGHT_MM = 41
+const PX_PER_MM_X = BASE_WIDTH / LABEL_WIDTH_MM
+const PX_PER_MM_Y = BASE_HEIGHT / LABEL_HEIGHT_MM
 
 type TemplateLayoutField = 'fechaEnvasado' | 'lote' | 'codigoCoc' | 'codigoR'
 
@@ -193,7 +197,6 @@ export async function renderLabelPdf({
     }
   }
 
-  const scaleX = pageWidth / BASE_WIDTH
   const scaleY = pageHeight / BASE_HEIGHT
 
   const pageProtoKeys = Object.getOwnPropertyNames(Object.getPrototypeOf(page))
@@ -206,6 +209,7 @@ export async function renderLabelPdf({
   const lidlCebollinoOnlyLot = shouldRenderOnlyLot(fields)
   const normalizedProductKey = normalizeSimpleKey(fields.productName)
   const isLidlLabel = (fields.labelType ?? '').toLowerCase() === 'lidl'
+  const isMercadona = (fields.labelType ?? '').toLowerCase() === 'mercadona'
   const isLidlAlbahaca = isLidlLabel && normalizedProductKey === 'albahaca'
 
   ;(Object.keys(TEXT_LAYOUT) as TemplateLayoutField[]).forEach((key: TemplateLayoutField) => {
@@ -229,6 +233,9 @@ export async function renderLabelPdf({
       preserveFormat: isDateField,
       formatAsDate: isDateField,
     })
+    if (key === 'codigoR' && !value && isMercadona) {
+      value = buildCodigoRFromDate(fields.fechaEnvasado)
+    }
     if (key === 'codigoR' && value) {
       value = value.replace(/^[Rr]\s*-?\s*/, '').trim()
     }
@@ -238,11 +245,11 @@ export async function renderLabelPdf({
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
     const textWidth = measureTextWidth(value, fontSize, labelFont)
     const offset = TEXT_OFFSETS[key] ?? { dx: 0, dy: 0 }
-    const baseX = layout.baseX + (offset.dx ?? 0)
-    const baseY = layout.baseY + (offset.dy ?? 0)
+    const baseXmm = pxToMmX(layout.baseX + (offset.dx ?? 0))
+    const baseYmm = pxToMmY(layout.baseY + (offset.dy ?? 0))
 
-    const x = resolvePosition(baseX * scaleX, layout.align, textWidth)
-    const y = pageHeight - baseY * scaleY
+    const x = resolvePosition(mmToPageX(baseXmm, pageWidth), layout.align, textWidth)
+    const y = mmToPageYFromTop(baseYmm, pageHeight)
 
     if (typeof page.drawText === 'function') {
       page.drawText(value, {
@@ -260,10 +267,10 @@ export async function renderLabelPdf({
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
     const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '40gr'
     const textWidth = measureTextWidth(weightText, fontSize, labelFont)
-    const baseX = layout.baseX + (WEIGHT_OFFSET.dx ?? 0)
-    const baseY = layout.baseY + (WEIGHT_OFFSET.dy ?? 0)
-    const x = resolvePosition(baseX * scaleX, layout.align, textWidth)
-    const y = pageHeight - baseY * scaleY
+    const baseXmm = pxToMmX(layout.baseX + (WEIGHT_OFFSET.dx ?? 0))
+    const baseYmm = pxToMmY(layout.baseY + (WEIGHT_OFFSET.dy ?? 0))
+    const x = resolvePosition(mmToPageX(baseXmm, pageWidth), layout.align, textWidth)
+    const y = mmToPageYFromTop(baseYmm, pageHeight)
 
     page.drawText(weightText, {
       x,
@@ -279,6 +286,7 @@ export async function renderLabelPdf({
     if (lotText) {
       const normalizedProduct = normalizedProductKey
       const isCilantro = normalizedProduct === 'cilantro'
+      const isCebollino = normalizedProduct === 'cebollino'
       const isEneldo = normalizedProduct === 'eneldo'
       const isHierbahuerto = normalizedProduct === 'hierbahuerto'
       const isPerejil = normalizedProduct === 'perejil'
@@ -286,8 +294,8 @@ export async function renderLabelPdf({
       const desiredCenterX = pageWidth * 0.75
 
       if (isLidlAlbahaca) {
-        const lineY = pageHeight * 0.7 - 70 * scaleY
-        const spacing = 90 * scaleX
+        const lineY = pageHeight * 0.7 - mmToPageYDelta(pxToMmY(60), pageHeight)
+        const spacing = mmToPageXDelta(pxToMmX(80), pageWidth)
         const formattedDate = normalizeFieldValue(fields.fechaEnvasado, {
           formatAsDate: true,
         })
@@ -297,12 +305,16 @@ export async function renderLabelPdf({
         const lotWidth = measureTextWidth(lotText, lotFontSize, labelFont)
         const totalSpacing = formattedDate ? spacing : 0
         const combinedWidth = dateWidth + lotWidth + totalSpacing
-        const startX = Math.max(60 * scaleX, desiredCenterX - combinedWidth / 2 - 40 * scaleX)
+        const startX = Math.max(
+          mmToPageX(pxToMmX(60), pageWidth),
+          desiredCenterX - combinedWidth / 2 - mmToPageXDelta(pxToMmX(40), pageWidth),
+        )
         let cursorX = startX
 
+        const dateOffset = mmToPageXDelta(pxToMmX(30), pageWidth)
         if (formattedDate) {
           page.drawText(formattedDate, {
-            x: cursorX,
+            x: cursorX - dateOffset,
             y: lineY,
             size: dateFontSize,
             color: DEFAULT_FONT_COLOR,
@@ -320,10 +332,13 @@ export async function renderLabelPdf({
         })
 
         const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '60gr'
-        const weightFontSize = 70 * scaleY
+        const weightFontSize = 36 * scaleY
         const weightWidth = measureTextWidth(weightText, weightFontSize, labelFont)
-        const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2)
-        const weightY = lineY - 70 * scaleY
+        const weightX = Math.max(
+          mmToPageX(pxToMmX(60), pageWidth),
+          desiredCenterX - weightWidth / 2 + mmToPageXDelta(pxToMmX(95), pageWidth),
+        )
+        const weightY = lineY - mmToPageYDelta(pxToMmY(95), pageHeight)
         page.drawText(weightText, {
           x: weightX,
           y: weightY,
@@ -335,18 +350,34 @@ export async function renderLabelPdf({
         const baseFontSize = 44 * scaleY
         const textWidth = measureTextWidth(lotText, baseFontSize, labelFont)
         const lotOffset = isEneldo ? 30 : isHierbahuerto ? 20 : isPerejil ? 15 : isRomero ? 12 : 10
-        const x = Math.max(60 * scaleX, desiredCenterX - textWidth / 2 + lotOffset)
-        const y = isCilantro
-          ? pageHeight / 2 - 40 * scaleY
-          : isEneldo
-          ? pageHeight / 2 - 25 * scaleY
+        const shouldShiftLotLeft =
+          isEneldo || isCebollino || isCilantro || isHierbahuerto || isPerejil || isRomero
+        const lotShift = isEneldo
+          ? 80
           : isHierbahuerto
-          ? pageHeight / 2 - 40 * scaleY
+          ? 70
           : isPerejil
-          ? pageHeight / 2 - 20 * scaleY
+          ? 70
+          : shouldShiftLotLeft
+          ? 40
+          : 0
+        const lotOffsetMm = pxToMmX(lotOffset)
+        const lotShiftMm = pxToMmX(lotShift)
+        const x = Math.max(
+          mmToPageX(pxToMmX(60), pageWidth),
+          desiredCenterX - textWidth / 2 + mmToPageXDelta(lotOffsetMm, pageWidth) - mmToPageXDelta(lotShiftMm, pageWidth),
+        )
+        const y = isCilantro
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(40), pageHeight)
+          : isEneldo
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(25), pageHeight)
+          : isHierbahuerto
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(40), pageHeight)
+          : isPerejil
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(20), pageHeight)
           : isRomero
-          ? pageHeight / 2 - 25 * scaleY
-          : pageHeight / 2 - 5 * scaleY
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(25), pageHeight)
+          : pageHeight / 2 - mmToPageYDelta(pxToMmY(5), pageHeight)
         page.drawText(lotText, {
           x,
           y,
@@ -360,16 +391,34 @@ export async function renderLabelPdf({
           const weightFontSize = (isEneldo ? 110 : 90) * scaleY
           const weightWidth = measureTextWidth(weightText, weightFontSize, labelFont)
           const weightOffset = isEneldo ? 30 : isPerejil ? 15 : isHierbahuerto ? 20 : isRomero ? 12 : 20
-          const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2 + weightOffset)
-          const weightY = isEneldo
-            ? y + 80 * scaleY
-            : isPerejil
-            ? y + 35 * scaleY
+          const shouldShiftWeightLeft = isEneldo || isHierbahuerto || isPerejil || isRomero
+          const weightShift = isEneldo
+            ? 80
             : isHierbahuerto
-            ? y + 55 * scaleY
+            ? 50
+            : isPerejil
+            ? 70
+            : shouldShiftWeightLeft
+            ? 40
+            : 0
+          const weightOffsetMm = pxToMmX(weightOffset)
+          const weightShiftMm = pxToMmX(weightShift)
+          const weightX = Math.max(
+            mmToPageX(pxToMmX(60), pageWidth),
+            desiredCenterX -
+              weightWidth / 2 +
+              mmToPageXDelta(weightOffsetMm, pageWidth) -
+              mmToPageXDelta(weightShiftMm, pageWidth),
+          )
+          const weightY = isEneldo
+            ? y + mmToPageYDelta(pxToMmY(80), pageHeight)
+            : isPerejil
+            ? y + mmToPageYDelta(pxToMmY(55), pageHeight)
+            : isHierbahuerto
+            ? y + mmToPageYDelta(pxToMmY(55), pageHeight)
             : isRomero
-            ? y + 65 * scaleY
-            : y + 55 * scaleY
+            ? y + mmToPageYDelta(pxToMmY(65), pageHeight)
+            : y + mmToPageYDelta(pxToMmY(55), pageHeight)
           page.drawText(weightText, {
             x: weightX,
             y: weightY,
@@ -581,6 +630,57 @@ function normalizeSimpleKey(value?: string | null): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '')
+}
+
+function pxToMmX(px: number): number {
+  return px / PX_PER_MM_X
+}
+
+function pxToMmY(px: number): number {
+  return px / PX_PER_MM_Y
+}
+
+function mmToPageX(mm: number, pageWidth: number): number {
+  return (mm / LABEL_WIDTH_MM) * pageWidth
+}
+
+function mmToPageYFromTop(mm: number, pageHeight: number): number {
+  return pageHeight - (mm / LABEL_HEIGHT_MM) * pageHeight
+}
+
+function mmToPageXDelta(mm: number, pageWidth: number): number {
+  return (mm / LABEL_WIDTH_MM) * pageWidth
+}
+
+function mmToPageYDelta(mm: number, pageHeight: number): number {
+  return (mm / LABEL_HEIGHT_MM) * pageHeight
+}
+
+function parseIsoDate(value?: string | null): Date | null {
+  if (!value) return null
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+  const [, year, month, day] = match
+  const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+  return parsed
+}
+
+function addDaysUtc(date: Date, days: number): Date {
+  const result = new Date(date.getTime())
+  result.setUTCDate(result.getUTCDate() + days)
+  return result
+}
+
+function buildCodigoRFromDate(value?: string | null): string {
+  const parsed = parseIsoDate(value)
+  if (!parsed) return ''
+  const offset = parsed.getUTCDay() === 6 ? 5 : 4
+  const deliveryDate = addDaysUtc(parsed, offset)
+  const day = deliveryDate.getUTCDate()
+  return `R-${day}`
 }
 
 function shouldRenderOnlyLot(fields: LabelRenderFields): boolean {
