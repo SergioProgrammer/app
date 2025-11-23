@@ -276,11 +276,20 @@ export async function renderLabelPdf({
       const normalizedProduct = normalizeSimpleKey(fields.productName)
       const isCilantro = normalizedProduct === 'cilantro'
       const isEneldo = normalizedProduct === 'eneldo'
+      const isHierbahuerto = normalizedProduct === 'hierbahuerto'
+      const isPerejil = normalizedProduct === 'perejil'
       const desiredCenterX = pageWidth * 0.65
-      const x = Math.max(60 * scaleX, desiredCenterX - textWidth / 2 + (isEneldo ? 10 : 10))
+      const lotOffset = isEneldo ? 30 : isHierbahuerto ? 20 : isPerejil ? 15 : 10
+      const x = Math.max(60 * scaleX, desiredCenterX - textWidth / 2 + lotOffset)
       const y = isCilantro
         ? pageHeight / 2 - 40 * scaleY
-        : pageHeight / 2 - 20 * scaleY
+        : isEneldo
+        ? pageHeight / 2 - 25 * scaleY
+        : isHierbahuerto
+        ? pageHeight / 2 - 40 * scaleY
+        : isPerejil
+        ? pageHeight / 2 - 20 * scaleY
+        : pageHeight / 2 - 5 * scaleY
       page.drawText(lotText, {
         x,
         y,
@@ -288,12 +297,14 @@ export async function renderLabelPdf({
         color: DEFAULT_FONT_COLOR,
         font: labelFont,
       })
-      if (isEneldo) {
-        const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '30g'
-        const weightFontSize = 94 * scaleY
+      if (isEneldo || isHierbahuerto || isPerejil) {
+        const defaultWeight = isEneldo ? '30g' : '40g'
+        const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? defaultWeight
+        const weightFontSize = (isEneldo ? 110 : 90) * scaleY
         const weightWidth = measureTextWidth(weightText, weightFontSize, labelFont)
-        const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2 + 10)
-        const weightY = y + 50 * scaleY
+        const weightOffset = isEneldo ? 30 : isPerejil ? 15 : 20
+        const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2 + weightOffset)
+        const weightY = isEneldo ? y + 80 * scaleY : isPerejil ? y + 35 * scaleY : y + 55 * scaleY
         page.drawText(weightText, {
           x: weightX,
           y: weightY,
@@ -512,7 +523,11 @@ function shouldRenderOnlyLot(fields: LabelRenderFields): boolean {
   }
   const normalizedProduct = normalizeSimpleKey(fields.productName)
   return (
-    normalizedProduct === 'cebollino' || normalizedProduct === 'cilantro' || normalizedProduct === 'eneldo'
+    normalizedProduct === 'cebollino' ||
+    normalizedProduct === 'cilantro' ||
+    normalizedProduct === 'eneldo' ||
+    normalizedProduct === 'hierbahuerto' ||
+    normalizedProduct === 'perejil'
   )
 }
 

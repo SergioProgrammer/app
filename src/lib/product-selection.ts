@@ -1,4 +1,11 @@
-export type LabelType = 'mercadona' | 'aldi' | 'blanca-grande' | 'blanca-pequena'
+export type LabelType =
+  | 'mercadona'
+  | 'aldi'
+  | 'lidl'
+  | 'hiperdino'
+  | 'kanali'
+  | 'blanca-grande'
+  | 'blanca-pequena'
 
 export interface ProductSelection {
   labelType: LabelType
@@ -27,6 +34,20 @@ export const LABEL_TYPE_OPTIONS: Record<
     label: 'Etiqueta Aldi',
     description: 'Selecciona este formato para pedidos de Aldi.',
   },
+  lidl: {
+    label: 'Etiqueta Lidl',
+    description: 'Formato mixto que genera 3 etiquetas por pedido.',
+    helper: 'Incluye etiqueta principal + 2 etiquetas blancas.',
+  },
+  hiperdino: {
+    label: 'Etiqueta Hiperdino',
+    description: 'Formato específico para la cadena Hiperdino.',
+    helper: 'Incluye personalización de peso y lote.',
+  },
+  kanali: {
+    label: 'Etiqueta Kanali',
+    description: 'Diseño dedicado para Kanali.',
+  },
   'blanca-grande': {
     label: 'Etiqueta blanca grande',
     description: 'Formato genérico de mayor tamaño.',
@@ -40,6 +61,9 @@ export const LABEL_TYPE_OPTIONS: Record<
 export const LABEL_TYPE_PRODUCTS: Record<LabelType, string[]> = {
   mercadona: ['Albahaca'],
   aldi: ['Albahaca', 'Cebolla', 'Sandía', 'Hierbas aromáticas'],
+  lidl: ['Cebollino', 'Cilantro', 'Eneldo', 'Hierbahuerto', 'Perejil', 'Romero', 'Albahaca'],
+  hiperdino: ['Albahaca', 'Hierbas aromáticas'],
+  kanali: ['Albahaca', 'Hierbas aromáticas'],
   'blanca-grande': ['Albahaca', 'Cebolla', 'Sandía', 'Hierbas aromáticas'],
   'blanca-pequena': ['Albahaca', 'Cebolla', 'Sandía', 'Hierbas aromáticas'],
 }
@@ -49,6 +73,15 @@ export function normalizeLabelType(value?: string | null): LabelType {
   const normalized = value.toLowerCase()
   if (normalized.includes('aldi')) {
     return 'aldi'
+  }
+  if (normalized.includes('lidl')) {
+    return 'lidl'
+  }
+  if (normalized.includes('hiper')) {
+    return 'hiperdino'
+  }
+  if (normalized.includes('kanali')) {
+    return 'kanali'
   }
   if (normalized.includes('blanca') && normalized.includes('peque')) {
     return 'blanca-pequena'
@@ -65,10 +98,18 @@ export function getLabelTypeLabel(value: LabelType): string {
 
 export function normalizeProductForLabelType(labelType: LabelType, value?: string | null): string {
   const options = LABEL_TYPE_PRODUCTS[labelType]
-  if (!value) {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  const allowFreeText = labelType === 'blanca-grande' || labelType === 'blanca-pequena'
+  if (allowFreeText) {
+    if (trimmed.length > 0) {
+      return trimmed
+    }
     return options[0] ?? DEFAULT_PRODUCT
   }
-  const lowerValue = value.toLowerCase()
+  if (trimmed.length === 0) {
+    return options[0] ?? DEFAULT_PRODUCT
+  }
+  const lowerValue = trimmed.toLowerCase()
   const match = options.find((option) => option.toLowerCase() === lowerValue)
   return match ?? (options[0] ?? DEFAULT_PRODUCT)
 }

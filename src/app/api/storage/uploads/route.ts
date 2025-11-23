@@ -75,6 +75,9 @@ export async function POST(request: NextRequest) {
     const manualCodigoCoc = formData.get('manualCodigoCoc')
     const manualCodigoR = formData.get('manualCodigoR')
     const manualWeight = formData.get('manualWeight')
+    const manualLabelType = formData.get('labelType')
+    const manualProductName = formData.get('productName')
+    const manualVariety = formData.get('variety')
     const userEmailValue = formData.get('userEmail')
     const fechaEnvasadoValue = getOptionalString(manualFechaEnvasado)
     const fechaCargaValue = getOptionalString(manualFechaCarga)
@@ -87,6 +90,9 @@ export async function POST(request: NextRequest) {
     }
 
     const manualFields: ManualLabelFields = {
+      labelType: getOptionalString(manualLabelType),
+      productName: getOptionalString(manualProductName),
+      variety: getOptionalString(manualVariety),
       lote: getOptionalString(manualLote),
       fechaCarga: fechaCargaValue ?? fechaEnvasadoValue ?? detectedFechaCarga,
       fechaEnvasado: fechaEnvasadoValue,
@@ -115,25 +121,41 @@ export async function POST(request: NextRequest) {
       })
       automation = automationResult.automation
 
-      if (automationResult.label && automationResult.automation.status === 'completed') {
+      const generatedLabels = automationResult.labels ?? []
+      if (generatedLabels.length > 0 && automationResult.automation.status === 'completed') {
         try {
-          const labelPath = buildStoragePath(folderPath, automationResult.label.fileName)
-          const labelMetadata = {
-            generatedFromFileId: targetPath,
-            generatedAt: new Date().toISOString(),
+          const uploadedDescriptors: Array<Awaited<ReturnType<typeof uploadFileToBucket>>> = []
+          const baseFileName = sanitizedFileName.replace(/\.[^/.]+$/u, '')
+          for (const labelResult of generatedLabels) {
+            if (!labelResult?.fileName) continue
+            const effectiveFileName = `${baseFileName}-etiqueta.pdf`
+            const labelPath = buildStoragePath(folderPath, effectiveFileName)
+            const labelMetadata = {
+              generatedFromFileId: targetPath,
+              generatedAt: new Date().toISOString(),
+              sourceFile: sanitizedFileName,
+              variant: effectiveFileName,
+            }
+            const descriptor = await uploadFileToBucket({
+              bucket: ETIQUETAS_BUCKET,
+              path: labelPath,
+              buffer: labelResult.buffer,
+              contentType: labelResult.mimeType,
+              metadata: { description: JSON.stringify(labelMetadata) },
+            })
+            uploadedDescriptors.push(descriptor)
           }
-          const labelDescriptor = await uploadFileToBucket({
-            bucket: ETIQUETAS_BUCKET,
-            path: labelPath,
-            buffer: automationResult.label.buffer,
-            contentType: automationResult.label.mimeType,
-            metadata: { description: JSON.stringify(labelMetadata) },
-          })
 
-          automationResult.automation.labelFileId = labelDescriptor.id
-          automationResult.automation.labelFileName = labelDescriptor.name
-          automationResult.automation.labelWebViewLink = labelDescriptor.webViewLink ?? null
-          automationResult.automation.labelWebContentLink = labelDescriptor.webContentLink ?? null
+          const [primaryDescriptor] = uploadedDescriptors
+          if (primaryDescriptor) {
+            automationResult.automation.labelFileId = primaryDescriptor.id
+            automationResult.automation.labelFileName = primaryDescriptor.name
+            automationResult.automation.labelFilePath = primaryDescriptor.path
+            automationResult.automation.labelWebViewLink =
+              primaryDescriptor.webViewLink ?? null
+            automationResult.automation.labelWebContentLink =
+              primaryDescriptor.webContentLink ?? null
+          }
         } catch (error) {
           automationResult.automation.status = 'error'
           automationResult.automation.error =

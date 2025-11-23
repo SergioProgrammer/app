@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import {
   useCallback,
   useEffect,
@@ -187,6 +188,13 @@ const DEFAULT_BARCODE_VALUE = (process.env.NEXT_PUBLIC_DEFAULT_BARCODE ?? '84370
 const SUPABASE_PUBLIC_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const SUPABASE_ETIQUETAS_BUCKET =
   process.env.NEXT_PUBLIC_SUPABASE_ETIQUETAS_BUCKET ?? 'etiquetas_final'
+const LABEL_TYPE_LOGOS: Partial<Record<LabelType, string>> = {
+  mercadona: '/logos/mercadona.jpg',
+  aldi: '/logos/aldi.png',
+  lidl: '/logos/lidl.svg',
+  hiperdino: '/logos/hiperdino.png',
+  kanali: '/logos/kanali.png',
+}
 const PRODUCT_BARCODE_MAP: Record<string, string> = (() => {
   try {
     const raw = JSON.parse(process.env.NEXT_PUBLIC_PRODUCT_BARCODES ?? '{}') as Record<string, unknown>
@@ -2503,7 +2511,7 @@ function LabelsDashboard({
               label: 'Peso',
               type: 'text',
               value: manualWeight,
-              placeholder: normalizedProductName === 'eneldo' ? '30g' : 'Ej. 40gr',
+              placeholder: normalizedProductName === 'eneldo' ? '30g' : '40g',
               helper: normalizedProductName === 'eneldo' ? 'Valor fijo por defecto 30g.' : undefined,
               onChange: handleWeightChange,
             },
@@ -2697,6 +2705,7 @@ function LabelsDashboard({
                 {(Object.keys(LABEL_TYPE_OPTIONS) as LabelType[]).map((optionKey) => {
                   const option = LABEL_TYPE_OPTIONS[optionKey]
                   const isActive = labelType === optionKey
+                  const logo = LABEL_TYPE_LOGOS[optionKey]
                   return (
                     <button
                       key={optionKey}
@@ -2709,11 +2718,26 @@ function LabelsDashboard({
                       }`}
                       disabled={uploading}
                     >
-                      <p className="text-sm font-semibold">{option.label}</p>
-                      <p className="mt-1 text-xs text-gray-500">{option.description}</p>
-                      {option.helper && (
-                        <p className="mt-2 text-xs font-medium text-emerald-700">{option.helper}</p>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {logo && (
+                          <span className="relative h-10 w-10 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                            <Image
+                              src={logo}
+                              alt={option.label}
+                              fill
+                              className="object-contain p-1"
+                              sizes="40px"
+                            />
+                          </span>
+                        )}
+                        <div>
+                          <p className="text-sm font-semibold">{option.label}</p>
+                          <p className="mt-1 text-xs text-gray-500">{option.description}</p>
+                          {option.helper && (
+                            <p className="mt-2 text-xs font-medium text-emerald-700">{option.helper}</p>
+                          )}
+                        </div>
+                      </div>
                     </button>
                   )
                 })}

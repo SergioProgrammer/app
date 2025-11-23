@@ -119,7 +119,22 @@ export async function listFilesFromBucket(bucket: string, folder?: string | null
     return right - left
   })
 
-  return sortableEntries.map((entry) => mapStorageObject(bucket, folderPrefix, entry))
+  const descriptors = await Promise.all(
+    sortableEntries.map(async (entry) => {
+      const relativePath = folderPrefix ? `${folderPrefix}/${entry.name}` : entry.name
+      try {
+        const descriptor = await getFileDescriptor(bucket, relativePath)
+        if (descriptor) {
+          return descriptor
+        }
+      } catch {
+        // ignore and fallback
+      }
+      return mapStorageObject(bucket, folderPrefix ?? '', entry)
+    }),
+  )
+
+  return descriptors
 }
 
 export async function deleteFileFromBucket(bucket: string, path: string) {

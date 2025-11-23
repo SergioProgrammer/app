@@ -13,7 +13,15 @@ import {
   getLabelTypeLabel,
 } from '@/lib/product-selection'
 
-const labelTypeOrder: LabelType[] = ['mercadona', 'aldi', 'blanca-grande', 'blanca-pequena']
+const labelTypeOrder: LabelType[] = [
+  'mercadona',
+  'aldi',
+  'lidl',
+  'hiperdino',
+  'kanali',
+  'blanca-grande',
+  'blanca-pequena',
+]
 
 export default function ProductoPage() {
   const [labelType, setLabelType] = useState<LabelType>(DEFAULT_LABEL_TYPE)

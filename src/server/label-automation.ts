@@ -1,6 +1,17 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import {
+  DEFAULT_LABEL_TYPE,
+  normalizeLabelType,
+  normalizeProductForLabelType,
+  type LabelType,
+} from '@/lib/product-selection'
 import { renderLabelPdf, type LabelRenderFields, type LabelRenderResult } from './label-renderer'
 
 export interface ManualLabelFields {
+  labelType?: LabelType | string | null
+  productName?: string | null
+  variety?: string | null
   lote?: string | null
   fechaEnvasado?: string | null
   fechaCarga?: string | null
@@ -20,6 +31,7 @@ export interface LabelAutomationMetadata {
   error?: string | null
   labelFileId?: string | null
   labelFileName?: string | null
+  labelFilePath?: string | null
   labelWebViewLink?: string | null
   labelWebContentLink?: string | null
 }
@@ -32,7 +44,7 @@ export interface ProcessLabelAutomationParams {
 
 export interface ProcessLabelAutomationResult {
   automation: LabelAutomationMetadata
-  label: LabelRenderResult | null
+  labels: LabelRenderResult[]
 }
 
 const DEFAULT_WEIGHT_TEXT = '40gr'
@@ -53,25 +65,42 @@ export async function processLabelAutomation({
     ...preparedFields,
   }
 
+  const resolvedTemplatePath = templatePath ?? process.env.LABEL_TEMPLATE_PATH ?? undefined
+  const lidlTemplatePath =
+    preparedFields.labelType === 'lidl'
+      ? resolveLidlTemplatePath(preparedFields.productName) ?? resolvedTemplatePath
+      : undefined
+  let labels: LabelRenderResult[] = []
+
   try {
     const label = await renderLabelPdf({
       fields: preparedFields,
       fileName,
-      templatePath: templatePath ?? process.env.LABEL_TEMPLATE_PATH ?? undefined,
+      templatePath: preparedFields.labelType === 'lidl' ? lidlTemplatePath : resolvedTemplatePath,
+      options: {
+        hideCodigoR: preparedFields.labelType === 'lidl',
+        variantSuffix: preparedFields.labelType === 'lidl' ? 'lidl-principal' : undefined,
+      },
     })
+    labels = [label]
 
     const automation: LabelAutomationMetadata = {
       status: 'completed',
       processedAt: new Date().toISOString(),
       fields: combinedFields,
-      notes: `Etiqueta generada a partir de valores manuales${label.fileName ? ` (${label.fileName})` : ''}.`,
-      labelFileName: label.fileName,
+      notes:
+        labels.length > 1
+          ? `Se generaron ${labels.length} etiquetas a partir de valores manuales.`
+          : `Etiqueta generada a partir de valores manuales${
+              labels[0]?.fileName ? ` (${labels[0].fileName})` : ''
+            }.`,
+      labelFileName: labels[0]?.fileName ?? null,
       labelFileId: null,
       labelWebContentLink: null,
       labelWebViewLink: null,
     }
 
-    return { automation, label }
+    return { automation, labels }
   } catch (error) {
     const automation: LabelAutomationMetadata = {
       status: 'error',
@@ -83,12 +112,16 @@ export async function processLabelAutomation({
           : 'Ocurrió un error desconocido generando la etiqueta.',
     }
 
-    return { automation, label: null }
+    return { automation, labels: [] }
   }
 }
 
 function normalizeManualFields(manualFields: ManualLabelFields | undefined): ManualLabelFields {
+  const normalizedLabelType = normalizeLabelType(manualFields?.labelType ?? DEFAULT_LABEL_TYPE)
   return {
+    labelType: normalizedLabelType,
+    productName: normalizeField(manualFields?.productName),
+    variety: normalizeField(manualFields?.variety),
     lote: normalizeField(manualFields?.lote),
     fechaCarga: normalizeField(manualFields?.fechaCarga),
     fechaEnvasado: normalizeField(manualFields?.fechaEnvasado),
@@ -106,7 +139,12 @@ function normalizeField(value?: string | null): string | null {
 }
 
 function prepareLabelFields(fields: ManualLabelFields, fileName: string): LabelRenderFields {
+  const resolvedLabelType = normalizeLabelType(fields.labelType ?? DEFAULT_LABEL_TYPE)
+  const resolvedProduct = normalizeProductForLabelType(resolvedLabelType, fields.productName)
   return {
+    labelType: resolvedLabelType,
+    productName: resolvedProduct,
+    variety: normalizeField(fields.variety),
     fechaEnvasado: normalizeField(fields.fechaCarga ?? fields.fechaEnvasado),
     lote: resolveLot(fields.lote, fileName),
     labelCode: normalizeField(fields.labelCode),
@@ -159,4 +197,27 @@ function pickRandomLetter(): string {
 function resolveWeight(value: string | null | undefined): string {
   const normalized = normalizeField(value)
   return normalized ?? DEFAULT_WEIGHT_TEXT
+}
+
+
+function resolveLidlTemplatePath(productName?: string | null): string | undefined {
+  if (!productName) return undefined
+  const normalizedKey = normalizeTemplateKey(productName)
+  const baseDir = path.join(process.cwd(), 'public')
+  const suffixes = ['-lidl.pdf', '-lidl-template.pdf', 'lidl.pdf', 'lidl-template.pdf', 'lidl_etiqueta.pdf', 'lidlpdf.pdf']
+  for (const suffix of suffixes) {
+    const candidate = path.join(baseDir, `${normalizedKey}${suffix}`)
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+  return undefined
+}
+
+function normalizeTemplateKey(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
 }
