@@ -204,9 +204,15 @@ export async function renderLabelPdf({
 
   const hideCodigoR = options?.hideCodigoR ?? false
   const lidlCebollinoOnlyLot = shouldRenderOnlyLot(fields)
+  const normalizedProductKey = normalizeSimpleKey(fields.productName)
+  const isLidlLabel = (fields.labelType ?? '').toLowerCase() === 'lidl'
+  const isLidlAlbahaca = isLidlLabel && normalizedProductKey === 'albahaca'
 
   ;(Object.keys(TEXT_LAYOUT) as TemplateLayoutField[]).forEach((key: TemplateLayoutField) => {
     if (fields.labelType === 'lidl' && key === 'lote') {
+      return
+    }
+    if (isLidlAlbahaca && key === 'fechaEnvasado') {
       return
     }
     if (key === 'codigoCoc') {
@@ -249,7 +255,7 @@ export async function renderLabelPdf({
     }
   })
 
-  if (typeof page.drawText === 'function' && !lidlCebollinoOnlyLot) {
+  if (typeof page.drawText === 'function' && !lidlCebollinoOnlyLot && !isLidlAlbahaca) {
     const layout = WEIGHT_LAYOUT
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
     const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '40gr'
@@ -271,40 +277,54 @@ export async function renderLabelPdf({
   if (fields.labelType === 'lidl' && typeof page.drawText === 'function') {
     const lotText = normalizeFieldValue(fields.lote, { preserveFormat: true })
     if (lotText) {
-      const fontSize = 44 * scaleY
-      const textWidth = measureTextWidth(lotText, fontSize, labelFont)
-      const normalizedProduct = normalizeSimpleKey(fields.productName)
+      const normalizedProduct = normalizedProductKey
       const isCilantro = normalizedProduct === 'cilantro'
       const isEneldo = normalizedProduct === 'eneldo'
       const isHierbahuerto = normalizedProduct === 'hierbahuerto'
       const isPerejil = normalizedProduct === 'perejil'
-      const desiredCenterX = pageWidth * 0.65
-      const lotOffset = isEneldo ? 30 : isHierbahuerto ? 20 : isPerejil ? 15 : 10
-      const x = Math.max(60 * scaleX, desiredCenterX - textWidth / 2 + lotOffset)
-      const y = isCilantro
-        ? pageHeight / 2 - 40 * scaleY
-        : isEneldo
-        ? pageHeight / 2 - 25 * scaleY
-        : isHierbahuerto
-        ? pageHeight / 2 - 40 * scaleY
-        : isPerejil
-        ? pageHeight / 2 - 20 * scaleY
-        : pageHeight / 2 - 5 * scaleY
-      page.drawText(lotText, {
-        x,
-        y,
-        size: fontSize,
-        color: DEFAULT_FONT_COLOR,
-        font: labelFont,
-      })
-      if (isEneldo || isHierbahuerto || isPerejil) {
-        const defaultWeight = isEneldo ? '30g' : '40g'
-        const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? defaultWeight
-        const weightFontSize = (isEneldo ? 110 : 90) * scaleY
+      const isRomero = normalizedProduct === 'romero'
+      const desiredCenterX = pageWidth * 0.75
+
+      if (isLidlAlbahaca) {
+        const lineY = pageHeight * 0.7 - 60 * scaleY
+        const spacing = 80 * scaleX
+        const formattedDate = normalizeFieldValue(fields.fechaEnvasado, {
+          formatAsDate: true,
+        })
+        const dateFontSize = 28 * scaleY
+        const lotFontSize = 28 * scaleY
+        const dateWidth = formattedDate ? measureTextWidth(formattedDate, dateFontSize, labelFont) : 0
+        const lotWidth = measureTextWidth(lotText, lotFontSize, labelFont)
+        const totalSpacing = formattedDate ? spacing : 0
+        const combinedWidth = dateWidth + lotWidth + totalSpacing
+        const startX = Math.max(60 * scaleX, desiredCenterX - combinedWidth / 2 - 40 * scaleX)
+        let cursorX = startX
+
+        const dateOffset = 30 * scaleX
+        if (formattedDate) {
+          page.drawText(formattedDate, {
+            x: cursorX - dateOffset,
+            y: lineY,
+            size: dateFontSize,
+            color: DEFAULT_FONT_COLOR,
+            font: labelFont,
+          })
+          cursorX += dateWidth + spacing
+        }
+
+        page.drawText(lotText, {
+          x: cursorX,
+          y: lineY,
+          size: lotFontSize,
+          color: DEFAULT_FONT_COLOR,
+          font: labelFont,
+        })
+
+        const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '60gr'
+        const weightFontSize = 36 * scaleY
         const weightWidth = measureTextWidth(weightText, weightFontSize, labelFont)
-        const weightOffset = isEneldo ? 30 : isPerejil ? 15 : 20
-        const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2 + weightOffset)
-        const weightY = isEneldo ? y + 80 * scaleY : isPerejil ? y + 35 * scaleY : y + 55 * scaleY
+        const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2 + 95 * scaleX)
+        const weightY = lineY - 95 * scaleY
         page.drawText(weightText, {
           x: weightX,
           y: weightY,
@@ -312,6 +332,53 @@ export async function renderLabelPdf({
           color: DEFAULT_FONT_COLOR,
           font: labelFont,
         })
+      } else {
+        const baseFontSize = 44 * scaleY
+        const textWidth = measureTextWidth(lotText, baseFontSize, labelFont)
+        const lotOffset = isEneldo ? 30 : isHierbahuerto ? 20 : isPerejil ? 15 : isRomero ? 12 : 10
+        const x = Math.max(60 * scaleX, desiredCenterX - textWidth / 2 + lotOffset)
+        const y = isCilantro
+          ? pageHeight / 2 - 40 * scaleY
+          : isEneldo
+          ? pageHeight / 2 - 25 * scaleY
+          : isHierbahuerto
+          ? pageHeight / 2 - 40 * scaleY
+          : isPerejil
+          ? pageHeight / 2 - 20 * scaleY
+          : isRomero
+          ? pageHeight / 2 - 25 * scaleY
+          : pageHeight / 2 - 5 * scaleY
+        page.drawText(lotText, {
+          x,
+          y,
+          size: baseFontSize,
+          color: DEFAULT_FONT_COLOR,
+          font: labelFont,
+        })
+        if (isEneldo || isHierbahuerto || isPerejil || isRomero) {
+          const defaultWeight = isEneldo ? '30g' : '40g'
+          const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? defaultWeight
+          const weightFontSize = (isEneldo ? 110 : 90) * scaleY
+          const weightWidth = measureTextWidth(weightText, weightFontSize, labelFont)
+          const weightOffset = isEneldo ? 30 : isPerejil ? 15 : isHierbahuerto ? 20 : isRomero ? 12 : 20
+          const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2 + weightOffset)
+          const weightY = isEneldo
+            ? y + 80 * scaleY
+            : isPerejil
+            ? y + 35 * scaleY
+            : isHierbahuerto
+            ? y + 55 * scaleY
+            : isRomero
+            ? y + 65 * scaleY
+            : y + 55 * scaleY
+          page.drawText(weightText, {
+            x: weightX,
+            y: weightY,
+            size: weightFontSize,
+            color: DEFAULT_FONT_COLOR,
+            font: labelFont,
+          })
+        }
       }
     }
   }
@@ -527,7 +594,8 @@ function shouldRenderOnlyLot(fields: LabelRenderFields): boolean {
     normalizedProduct === 'cilantro' ||
     normalizedProduct === 'eneldo' ||
     normalizedProduct === 'hierbahuerto' ||
-    normalizedProduct === 'perejil'
+    normalizedProduct === 'perejil' ||
+    normalizedProduct === 'romero'
   )
 }
 

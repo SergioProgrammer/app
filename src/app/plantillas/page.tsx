@@ -9,6 +9,7 @@ interface TemplateItem {
   src: string
   updatedAt: string
   size: string
+  isPdf: boolean
 }
 
 function formatBytes(bytes: number | null): string {
@@ -35,10 +36,37 @@ function formatDate(date: Date | null): string {
 
 function loadTemplates(): TemplateItem[] {
   const publicDir = path.join(process.cwd(), 'public')
-  const templateFiles = ['Etiqueta.png']
+  const allowedExtensions = new Set(['.pdf', '.png', '.jpg', '.jpeg'])
+  const ignoredDirectories = new Set(['logos'])
+
+  function walk(currentPath: string, relativePath = ''): string[] {
+    return fs
+      .readdirSync(currentPath, { withFileTypes: true })
+      .flatMap((entry) => {
+        const childAbsolutePath = path.join(currentPath, entry.name)
+        const childRelativePath = path.join(relativePath, entry.name)
+
+        if (entry.isDirectory()) {
+          if (ignoredDirectories.has(entry.name)) {
+            return []
+          }
+          return walk(childAbsolutePath, childRelativePath)
+        }
+
+        const extension = path.extname(entry.name).toLowerCase()
+        if (!allowedExtensions.has(extension)) {
+          return []
+        }
+
+        return [childRelativePath]
+      })
+  }
+
+  const templateFiles = walk(publicDir).sort((a, b) => a.localeCompare(b))
 
   return templateFiles.map((fileName) => {
     const absolutePath = path.join(publicDir, fileName)
+    const extension = path.extname(fileName).toLowerCase()
     let stats: fs.Stats | null = null
 
     try {
@@ -49,10 +77,11 @@ function loadTemplates(): TemplateItem[] {
 
     return {
       fileName,
-      displayName: fileName.replace(/\.[^/.]+$/, ''),
-      src: `/${fileName}`,
+      displayName: fileName.replace(/\.[^/.]+$/, '').split(path.sep).join(' / '),
+      src: `/${fileName.replace(/\\/g, '/')}`,
       updatedAt: formatDate(stats ? stats.mtime : null),
       size: formatBytes(stats ? stats.size : null),
+      isPdf: extension === '.pdf',
     }
   })
 }
@@ -91,15 +120,26 @@ export default function PlantillasPage() {
                   className="rounded-3xl bg-white border border-gray-100 p-6 shadow-sm flex flex-col gap-4"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-                      <Image
-                        src={template.src}
-                        alt={`Plantilla ${template.displayName}`}
-                        fill
-                        sizes="64px"
-                        style={{ objectFit: 'contain' }}
-                        priority
-                      />
+                    <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center">
+                      {template.isPdf ? (
+                        <Image
+                          src="/pdf-icon.svg"
+                          alt="Plantilla en PDF"
+                          fill
+                          sizes="64px"
+                          style={{ objectFit: 'contain' }}
+                          priority
+                        />
+                      ) : (
+                        <Image
+                          src={template.src}
+                          alt={`Plantilla ${template.displayName}`}
+                          fill
+                          sizes="64px"
+                          style={{ objectFit: 'contain' }}
+                          priority
+                        />
+                      )}
                     </div>
                     <div>
                       <h2 className="text-lg font-semibold text-gray-900">{template.displayName}</h2>

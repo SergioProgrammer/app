@@ -2061,18 +2061,21 @@ function LabelsDashboard({
     setWeightManuallyEdited(false)
   }, [labelType, productName])
 
-  useEffect(() => {
-    const normalized = productName.trim().toLowerCase()
-    if (labelType === 'lidl' && normalized === 'eneldo') {
-      if (!weightManuallyEdited) {
-        setManualWeight('30g')
-      }
-      return
-    }
-    if (!weightManuallyEdited && labelType === 'lidl' && manualWeight === '30g') {
-      setManualWeight(DEFAULT_WEIGHT)
-    }
-  }, [labelType, manualWeight, productName, weightManuallyEdited])
+useEffect(() => {
+  if (weightManuallyEdited || labelType !== 'lidl') {
+    return
+  }
+  const normalized = productName.trim().toLowerCase()
+  let desiredWeight = DEFAULT_WEIGHT
+  if (normalized === 'eneldo') {
+    desiredWeight = '30g'
+  } else if (normalized === 'albahaca') {
+    desiredWeight = '60gr'
+  }
+  if (manualWeight !== desiredWeight) {
+    setManualWeight(desiredWeight)
+  }
+}, [labelType, manualWeight, productName, weightManuallyEdited])
 
   useEffect(() => {
     if (labelCodeManuallyEdited) return
@@ -2464,6 +2467,14 @@ function LabelsDashboard({
       if (manualLote.trim().length > 0) {
         resumenValueParts.push(`Lote ${manualLote.trim()}`)
       }
+      if (isLidlLotOnly) {
+        if (manualWeight.trim().length > 0) {
+          resumenValueParts.push(`Peso ${manualWeight.trim()}`)
+        }
+        if (manualFechaCarga.trim().length > 0) {
+          resumenValueParts.push(`Fecha ${formatDate(manualFechaCarga.trim())}`)
+        }
+      }
       const resumenValue =
         resumenValueParts.length > 0
           ? resumenValueParts.join(' · ')
@@ -2497,6 +2508,18 @@ function LabelsDashboard({
         onChange: (value: string) => void
       }> = (() => {
         if (isLidlLotOnly) {
+          const lidlWeightPlaceholder =
+            normalizedProductName === 'eneldo'
+              ? '30g'
+              : normalizedProductName === 'albahaca'
+              ? '60gr'
+              : DEFAULT_WEIGHT
+          const lidlWeightHelper =
+            normalizedProductName === 'eneldo'
+              ? 'Valor fijo por defecto 30g.'
+              : normalizedProductName === 'albahaca'
+              ? 'Valor por defecto 60gr.'
+              : undefined
           return [
             {
               name: 'lote',
@@ -2511,9 +2534,17 @@ function LabelsDashboard({
               label: 'Peso',
               type: 'text',
               value: manualWeight,
-              placeholder: normalizedProductName === 'eneldo' ? '30g' : '40g',
-              helper: normalizedProductName === 'eneldo' ? 'Valor fijo por defecto 30g.' : undefined,
+              placeholder: lidlWeightPlaceholder,
+              helper: lidlWeightHelper,
               onChange: handleWeightChange,
+            },
+            {
+              name: 'fecha',
+              label: 'Fecha envasado / carga',
+              type: 'date',
+              value: manualFechaCarga,
+              helper: 'Verifica la fecha importada automáticamente.',
+              onChange: handleFechaChange,
             },
           ]
         }
