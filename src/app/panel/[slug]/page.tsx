@@ -45,6 +45,7 @@ import {
   type LabelType,
   type ProductSelection,
   getLabelTypeLabel,
+  normalizeLabelType,
   parseStoredProductSelection,
 } from '@/lib/product-selection'
 
@@ -104,6 +105,9 @@ interface LabelUploadMeta {
   codigoCoc?: string
   codigoR?: string
   weight?: string
+  labelType?: LabelType
+  productName?: string
+  variety?: string
 }
 
 interface UploadedFileAutomationFields {
@@ -114,6 +118,9 @@ interface UploadedFileAutomationFields {
   codigoCoc?: string | null
   codigoR?: string | null
   weight?: string | null
+  productName?: string | null
+  variety?: string | null
+  labelType?: string | null
 }
 
 interface UploadedFileAutomation {
@@ -127,6 +134,7 @@ interface UploadedFileAutomation {
   error?: string | null
   labelFileId?: string | null
   labelFileName?: string | null
+  labelFilePath?: string | null
   labelWebViewLink?: string | null
   labelWebContentLink?: string | null
   raw?: unknown
@@ -145,6 +153,8 @@ interface UploadedFileRecord {
   mimeType?: string | null
   automation?: UploadedFileAutomation | null
   generatedFromFileId?: string | null
+  labelType?: LabelType | null
+  lotValue?: string | null
 }
 
 interface LotSearchResult {
@@ -159,6 +169,7 @@ type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
 
 const TURNOS_RECENT_LIMIT = 8
 const DEFAULT_WEIGHT = '40gr'
+const DEFAULT_VARIETY = 'RED JASPER'
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const LOT_PREFIX_LENGTH = 2
 const LOT_INITIAL_PREFIX = 'NS'
@@ -411,6 +422,16 @@ export default function PanelPage() {
   const registerUrl = detail.cta?.primaryHref ?? 'https://app-procesia.vercel.app/registro'
   const contactUrl = detail.cta?.secondaryHref ?? '/contacto'
   const sections = detail.sections ?? []
+  const baseFontSizeClass = 'text-[16px] sm:text-[17px]'
+  const rootContainerClass = isLabelsPanel
+    ? `min-h-screen bg-[#FAF9F6] flex flex-col ${baseFontSizeClass}`
+    : `min-h-screen bg-[#FAF9F6] ${baseFontSizeClass}`
+  const headerInnerClass = isLabelsPanel
+    ? 'w-full px-4 sm:px-6 lg:px-10 py-4 flex items-center justify-between'
+    : 'mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between'
+  const mainWrapperClass = isLabelsPanel
+    ? 'w-full px-4 sm:px-6 lg:px-10 py-6'
+    : 'mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6'
 
   const activePlans: ActivePlan[] = useMemo(() => {
     const configPlans = panelConfig.plans ?? []
@@ -831,6 +852,8 @@ const nonLabelPlans = useMemo(
             let notes: string | null = null
             let automation: UploadedFileAutomation | null = null
             let generatedFromFileId: string | null = null
+            let manualLabelType: LabelType | null = null
+            let manualLot: string | null = null
             if (typeof file.description === 'string' && file.description.trim().length > 0) {
               try {
                 const parsed = JSON.parse(file.description)
@@ -840,6 +863,19 @@ const nonLabelPlans = useMemo(
                   }
                   if (typeof parsed.notes === 'string') {
                     notes = parsed.notes
+                  }
+                  if (parsed.manualFields && typeof parsed.manualFields === 'object') {
+                    const manualPayload = parsed.manualFields as Record<string, unknown>
+                    const labelTypeValue = manualPayload.labelType
+                    if (typeof labelTypeValue === 'string') {
+                      manualLabelType = normalizeLabelType(labelTypeValue)
+                    }
+                    const lotValue = manualPayload.lote
+                    if (typeof lotValue === 'string' && lotValue.trim().length > 0) {
+                      manualLot =
+                        normalizeLot(lotValue) ??
+                        lotValue.trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+                    }
                   }
                   if (parsed.automation && typeof parsed.automation === 'object') {
                     const automationPayload = parsed.automation as Record<string, unknown>
@@ -892,6 +928,10 @@ const nonLabelPlans = useMemo(
                           typeof automationPayload.labelFileName === 'string'
                             ? automationPayload.labelFileName
                             : null,
+                        labelFilePath:
+                          typeof automationPayload.labelFilePath === 'string'
+                            ? automationPayload.labelFilePath
+                            : null,
                         labelWebViewLink:
                           typeof automationPayload.labelWebViewLink === 'string'
                             ? automationPayload.labelWebViewLink
@@ -933,6 +973,18 @@ const nonLabelPlans = useMemo(
                             typeof fieldsPayload.weight === 'string'
                               ? fieldsPayload.weight
                               : null,
+                          productName:
+                            typeof fieldsPayload.productName === 'string'
+                              ? fieldsPayload.productName
+                              : null,
+                          variety:
+                            typeof fieldsPayload.variety === 'string'
+                              ? fieldsPayload.variety
+                              : null,
+                          labelType:
+                            typeof fieldsPayload.labelType === 'string'
+                              ? fieldsPayload.labelType
+                              : null,
                         }
                       }
                     }
@@ -961,6 +1013,7 @@ const nonLabelPlans = useMemo(
               publicUrl,
               mimeType,
               generatedFromFileId,
+              lotValue: manualLot,
             }
 
             if (destination || notes) {
@@ -975,8 +1028,23 @@ const nonLabelPlans = useMemo(
                 record.notes = `${record.notes} (Generada automáticamente)`
               }
             }
+            if (manualLabelType) {
+              record.labelType = manualLabelType
+            }
             if (automation) {
               record.automation = automation
+            }
+            if (!record.labelType) {
+              const automationLabelType = automation?.fields?.labelType
+              if (typeof automationLabelType === 'string' && automationLabelType.trim().length > 0) {
+                record.labelType = normalizeLabelType(automationLabelType)
+              }
+            }
+            if (!record.lotValue) {
+              const automationLot = automation?.fields?.lote
+              if (typeof automationLot === 'string' && automationLot.trim().length > 0) {
+                record.lotValue = automationLot.trim().toUpperCase()
+              }
             }
 
             return record
@@ -1321,6 +1389,15 @@ const nonLabelPlans = useMemo(
         if (meta?.weight) {
           formData.append('manualWeight', meta.weight)
         }
+        if (meta?.labelType) {
+          formData.append('labelType', meta.labelType)
+        }
+        if (meta?.productName) {
+          formData.append('productName', meta.productName)
+        }
+        if (meta?.variety) {
+          formData.append('variety', meta.variety)
+        }
         if (userEmail.length > 0) {
           formData.append('userEmail', userEmail)
         }
@@ -1346,6 +1423,7 @@ const nonLabelPlans = useMemo(
                   weight?: string | null
                 }
                 labelFileName?: string | null
+                labelFilePath?: string | null
                 labelWebViewLink?: string | null
                 labelWebContentLink?: string | null
               }
@@ -1483,10 +1561,10 @@ const nonLabelPlans = useMemo(
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6]">
+    <div className={rootContainerClass}>
       {/* Topbar */}
       <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/50 bg-white/70 border-b">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+        <div className={headerInnerClass}>
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-black flex items-center justify-center text-[#FAF9F6]">
               <Sprout className="h-5 w-5" />
@@ -1509,7 +1587,7 @@ const nonLabelPlans = useMemo(
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+      <main className={mainWrapperClass}>
         <div className="space-y-12 sm:space-y-16">
           {!isLabelsPanel && (
             <section className="relative py-10 sm:py-14">
@@ -1868,6 +1946,8 @@ function LabelsDashboard({
   const [manualFechaCarga, setManualFechaCarga] = useState(() => getTodayIsoDate())
   const [manualCodigoR, setManualCodigoR] = useState('')
   const [manualWeight, setManualWeight] = useState(DEFAULT_WEIGHT)
+  const [weightManuallyEdited, setWeightManuallyEdited] = useState(false)
+  const [manualVariety, setManualVariety] = useState(DEFAULT_VARIETY)
   const [codigoRManuallyEdited, setCodigoRManuallyEdited] = useState(false)
   const [labelType, setLabelType] = useState<LabelType>(DEFAULT_LABEL_TYPE)
   const [productName, setProductName] = useState(INITIAL_PRODUCT_NAME)
@@ -1921,6 +2001,9 @@ function LabelsDashboard({
       if (typeof parsed?.weight === 'string' && parsed.weight.trim().length > 0) {
         setManualWeight(parsed.weight)
       }
+      if (typeof parsed?.variety === 'string' && parsed.variety.trim().length > 0) {
+        setManualVariety(parsed.variety)
+      }
     } catch {
       // ignore malformed storage values
     }
@@ -1950,14 +2033,38 @@ function LabelsDashboard({
   }, [])
 
   useEffect(() => {
+    const allowFreeText = labelType === 'blanca-grande' || labelType === 'blanca-pequena'
     setProductName((current) => {
       const options = LABEL_TYPE_PRODUCTS[labelType]
+      if (allowFreeText) {
+        if (current && current.trim().length > 0) {
+          return current
+        }
+        return options[0] ?? DEFAULT_PRODUCT
+      }
       if (options.includes(current)) {
         return current
       }
       return options[0] ?? DEFAULT_PRODUCT
     })
   }, [labelType])
+
+  useEffect(() => {
+    setWeightManuallyEdited(false)
+  }, [labelType, productName])
+
+  useEffect(() => {
+    const normalized = productName.trim().toLowerCase()
+    if (labelType === 'lidl' && normalized === 'eneldo') {
+      if (!weightManuallyEdited) {
+        setManualWeight('30g')
+      }
+      return
+    }
+    if (!weightManuallyEdited && labelType === 'lidl' && manualWeight === '30g') {
+      setManualWeight(DEFAULT_WEIGHT)
+    }
+  }, [labelType, manualWeight, productName, weightManuallyEdited])
 
   useEffect(() => {
     if (labelCodeManuallyEdited) return
@@ -2014,13 +2121,22 @@ function LabelsDashboard({
       codigoCoc: manualCodigoCoc,
       labelCode: manualLabelCode,
       weight: manualWeight,
+      variety: manualVariety,
     }
     try {
       window.localStorage.setItem('labels:manual-fields', JSON.stringify(payload))
     } catch {
       // ignore storage quota issues
     }
-  }, [manualCodigoCoc, manualCodigoR, manualFechaCarga, manualLabelCode, manualLote, manualWeight])
+  }, [
+    manualCodigoCoc,
+    manualCodigoR,
+    manualFechaCarga,
+    manualLabelCode,
+    manualLote,
+    manualWeight,
+    manualVariety,
+  ])
 
   const stepsInfo = useMemo(
     () => [
@@ -2056,6 +2172,8 @@ function LabelsDashboard({
     setManualLabelCode(fallbackLabelCode)
     setLabelCodeManuallyEdited(false)
     setManualWeight(DEFAULT_WEIGHT)
+    setWeightManuallyEdited(false)
+    setManualVariety(DEFAULT_VARIETY)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -2113,6 +2231,12 @@ function LabelsDashboard({
   const handleWeightChange = useCallback((value: string) => {
     setLocalError(null)
     setManualWeight(value)
+    setWeightManuallyEdited(true)
+  }, [])
+
+  const handleVarietyChange = useCallback((value: string) => {
+    setLocalError(null)
+    setManualVariety(value)
   }, [])
 
   const buildManualUploadFile = useCallback(() => {
@@ -2120,6 +2244,7 @@ function LabelsDashboard({
       'Pedido creado sin archivo adjunto.',
       `Tipo de etiqueta: ${getLabelTypeLabel(labelType)}`,
       `Producto: ${productName.trim() || 'Sin producto'}`,
+      `Variedad: ${manualVariety.trim() || 'Sin variedad'}`,
       `Peso: ${manualWeight.trim() || DEFAULT_WEIGHT}`,
       `Fecha: ${manualFechaCarga.trim() || 'Sin fecha'}`,
       `Código de barras: ${manualLabelCode.trim() || 'Sin dato'}`,
@@ -2127,9 +2252,19 @@ function LabelsDashboard({
       `Código R: ${manualCodigoR.trim() || 'Sin dato'}`,
       `Lote: ${manualLote.trim() || 'Sin lote'}`,
     ].join('\n')
-    return new File([manualNotes], `${MANUAL_ORDER_FILE_PREFIX}${Date.now().toString(36)}.txt`, {
-      type: 'text/plain',
-    })
+    const normalizedLotForFile =
+      normalizeLot(manualLote) ?? manualLote.trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+    const fallbackLotId =
+      normalizedLotForFile && normalizedLotForFile.length > 0
+        ? normalizedLotForFile
+        : Date.now().toString(36)
+    return new File(
+      [manualNotes],
+      `${MANUAL_ORDER_FILE_PREFIX}${fallbackLotId}.txt`,
+      {
+        type: 'text/plain',
+      },
+    )
   }, [
     labelType,
     manualCodigoCoc,
@@ -2137,6 +2272,7 @@ function LabelsDashboard({
     manualFechaCarga,
     manualLabelCode,
     manualLote,
+    manualVariety,
     manualWeight,
     productName,
   ])
@@ -2169,18 +2305,26 @@ function LabelsDashboard({
         meta.labelCode = manualLabelCode.trim()
       }
       meta.weight = manualWeight.trim().length > 0 ? manualWeight.trim() : DEFAULT_WEIGHT
+      meta.labelType = labelType
+      meta.productName = productName.trim()
+      if (manualVariety.trim().length > 0) {
+        meta.variety = manualVariety.trim()
+      }
 
       await onUpload(uploadFile, meta)
       persistLotSequence(normalizedLot)
     },
     [
       file,
+      labelType,
       manualCodigoCoc,
       manualCodigoR,
       manualLabelCode,
       manualFechaCarga,
       manualLote,
+      manualVariety,
       manualWeight,
+      productName,
       buildManualUploadFile,
       onUpload,
     ],
@@ -2281,29 +2425,36 @@ function LabelsDashboard({
 
   const renderActiveStep = () => {
     if (activeStep === summaryStep) {
+      const normalizedProductName = productName.trim().toLowerCase()
+      const isLidlLotOnly = labelType === 'lidl'
       const resumenValueParts: string[] = []
-      if (productName.trim().length > 0) {
-        resumenValueParts.push(`${productName.trim()} · ${getLabelTypeLabel(labelType)}`)
-      } else {
-        resumenValueParts.push(getLabelTypeLabel(labelType))
+      if (!isLidlLotOnly) {
+        if (productName.trim().length > 0) {
+          resumenValueParts.push(`${productName.trim()} · ${getLabelTypeLabel(labelType)}`)
+        } else {
+          resumenValueParts.push(getLabelTypeLabel(labelType))
+        }
+        if (manualVariety.trim().length > 0) {
+          resumenValueParts.push(`Variedad ${manualVariety.trim()}`)
+        }
+        if (manualWeight.trim().length > 0) {
+          resumenValueParts.push(manualWeight.trim())
+        }
+        if (manualFechaCarga.trim().length > 0) {
+          resumenValueParts.push(`Fecha ${formatDate(manualFechaCarga.trim())}`)
+        }
+        if (manualCodigoCoc.trim().length > 0) {
+          resumenValueParts.push(`COC ${manualCodigoCoc.trim()}`)
+        }
+        if (manualCodigoR.trim().length > 0) {
+          resumenValueParts.push(manualCodigoR.trim())
+        }
+        if (manualLabelCode.trim().length > 0) {
+          resumenValueParts.push(`EAN ${manualLabelCode.trim()}`)
+        }
       }
       if (manualLote.trim().length > 0) {
         resumenValueParts.push(`Lote ${manualLote.trim()}`)
-      }
-      if (manualWeight.trim().length > 0) {
-        resumenValueParts.push(manualWeight.trim())
-      }
-      if (manualFechaCarga.trim().length > 0) {
-        resumenValueParts.push(`Fecha ${formatDate(manualFechaCarga.trim())}`)
-      }
-      if (manualCodigoCoc.trim().length > 0) {
-        resumenValueParts.push(`COC ${manualCodigoCoc.trim()}`)
-      }
-      if (manualCodigoR.trim().length > 0) {
-        resumenValueParts.push(manualCodigoR.trim())
-      }
-      if (manualLabelCode.trim().length > 0) {
-        resumenValueParts.push(`EAN ${manualLabelCode.trim()}`)
       }
       const resumenValue =
         resumenValueParts.length > 0
@@ -2312,10 +2463,21 @@ function LabelsDashboard({
 
       const summaryStaticItems = [
         { label: 'Subir pedido', value: file ? file.name : 'Sin pedido adjunto' },
-        { label: 'Tipo de etiqueta', value: getLabelTypeLabel(labelType) },
-        { label: 'Producto', value: productName.trim() || 'Sin producto seleccionado' },
+        ...(isLidlLotOnly
+          ? []
+          : [
+              { label: 'Tipo de etiqueta', value: getLabelTypeLabel(labelType) },
+              { label: 'Producto', value: productName.trim() || 'Sin producto seleccionado' },
+              { label: 'Variedad', value: manualVariety.trim() || 'Sin variedad' },
+            ]),
         { label: 'Resumen', value: resumenValue },
       ]
+      if (labelType === 'lidl') {
+        summaryStaticItems.push({
+          label: 'Salida',
+          value: '3 etiquetas: principal + 2 blancas (peso y detalle)',
+        })
+      }
 
       const summaryEditableFields: Array<{
         name: string
@@ -2325,59 +2487,91 @@ function LabelsDashboard({
         placeholder?: string
         helper?: string
         onChange: (value: string) => void
-      }> = [
-        {
-          name: 'fecha',
-          label: 'Fecha envasado / carga',
-          type: 'date',
-          value: manualFechaCarga,
-          helper: 'Marca la fecha que aparece en el pedido.',
-          onChange: handleFechaChange,
-        },
-        {
-          name: 'lote',
-          label: 'Lote',
-          type: 'text',
-          value: manualLote,
-          placeholder: LOT_SEQUENCE_DEFAULT,
-          onChange: handleLoteChange,
-        },
-        {
-          name: 'peso',
-          label: 'Peso',
-          type: 'text',
-          value: manualWeight,
-          placeholder: 'Ej. 40gr',
-          onChange: handleWeightChange,
-        },
-        {
-          name: 'codigoCoc',
-          label: 'Código COC',
-          type: 'text',
-          value: manualCodigoCoc,
-          placeholder: '4063061581198',
-          helper: 'Código fijo proporcionado por la empresa.',
-          onChange: handleCodigoCocChange,
-        },
-        {
-          name: 'labelCode',
-          label: 'Código de barras',
-          type: 'text',
-          value: manualLabelCode,
-          placeholder: derivedLabelCode || '8437018336005',
-          helper: 'Asignado al producto por la central.',
-          onChange: handleLabelCodeChange,
-        },
-        {
-          name: 'codigoR',
-          label: 'Código R',
-          type: 'text',
-          value: manualCodigoR,
-          placeholder: derivedCodigoR || 'R-15',
-          helper: 'Se genera automáticamente sumando 4 días (5 si la fecha cae en sábado).',
-          onChange: handleCodigoRInputChange,
-        },
-      ]
+      }> = (() => {
+        if (isLidlLotOnly) {
+          return [
+            {
+              name: 'lote',
+              label: 'Lote',
+              type: 'text',
+              value: manualLote,
+              placeholder: LOT_SEQUENCE_DEFAULT,
+              onChange: handleLoteChange,
+            },
+            {
+              name: 'peso',
+              label: 'Peso',
+              type: 'text',
+              value: manualWeight,
+              placeholder: normalizedProductName === 'eneldo' ? '30g' : 'Ej. 40gr',
+              helper: normalizedProductName === 'eneldo' ? 'Valor fijo por defecto 30g.' : undefined,
+              onChange: handleWeightChange,
+            },
+          ]
+        }
+        return [
+          {
+            name: 'variety',
+            label: 'Variedad',
+            type: 'text',
+            value: manualVariety,
+            placeholder: DEFAULT_VARIETY,
+            helper: 'Texto que irá debajo del producto en las etiquetas blancas.',
+            onChange: handleVarietyChange,
+          },
+          {
+            name: 'fecha',
+            label: 'Fecha envasado / carga',
+            type: 'date',
+            value: manualFechaCarga,
+            helper: 'Marca la fecha que aparece en el pedido.',
+            onChange: handleFechaChange,
+          },
+          {
+            name: 'lote',
+            label: 'Lote',
+            type: 'text',
+            value: manualLote,
+            placeholder: LOT_SEQUENCE_DEFAULT,
+            onChange: handleLoteChange,
+          },
+          {
+            name: 'peso',
+            label: 'Peso',
+            type: 'text',
+            value: manualWeight,
+            placeholder: 'Ej. 40gr',
+            onChange: handleWeightChange,
+          },
+          {
+            name: 'codigoCoc',
+            label: 'Código COC',
+            type: 'text',
+            value: manualCodigoCoc,
+            placeholder: '4063061581198',
+            helper: 'Código fijo proporcionado por la empresa.',
+            onChange: handleCodigoCocChange,
+          },
+          {
+            name: 'labelCode',
+            label: 'Código de barras',
+            type: 'text',
+            value: manualLabelCode,
+            placeholder: derivedLabelCode || '8437018336005',
+            helper: 'Asignado al producto por la central.',
+            onChange: handleLabelCodeChange,
+          },
+          {
+            name: 'codigoR',
+            label: 'Código R',
+            type: 'text',
+            value: manualCodigoR,
+            placeholder: derivedCodigoR || 'R-15',
+            helper: 'Se genera automáticamente sumando 4 días (5 si la fecha cae en sábado).',
+            onChange: handleCodigoRInputChange,
+          },
+        ]
+      })()
 
       return (
         <form
@@ -2557,45 +2751,67 @@ function LabelsDashboard({
         )
       case 2: {
         const availableProducts = LABEL_TYPE_PRODUCTS[labelType]
+        const isWhiteLabelType = labelType === 'blanca-grande' || labelType === 'blanca-pequena'
         return (
           <div className="rounded-2xl border border-gray-200 bg-[#FAF9F6] p-5">
             <p className="text-sm font-semibold text-gray-900">Producto</p>
             <p className="mt-1 text-sm text-gray-600">
-              {labelType === 'mercadona'
+              {isWhiteLabelType
+                ? 'Escribe el texto exacto que debe aparecer como encabezado.'
+                : labelType === 'mercadona'
                 ? 'Para Mercadona solo trabajamos con Albahaca.'
                 : 'Selecciona el producto que debe aparecer en la etiqueta.'}
             </p>
-            <div
-              className={`mt-4 grid gap-3 ${
-                availableProducts.length > 1 ? 'sm:grid-cols-2' : 'sm:grid-cols-1'
-              }`}
-            >
-              {availableProducts.map((option) => {
-                const isActive = productName === option
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => {
-                      setLocalError(null)
-                      setProductName(option)
-                    }}
-                    className={`rounded-2xl border px-4 py-3 text-left transition ${
-                      isActive
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                    }`}
-                    disabled={uploading}
-                  >
-                    <p className="text-sm font-semibold">{option}</p>
-                    {labelType !== 'mercadona' && (
-                      <p className="mt-1 text-xs text-gray-500">{`Disponible para ${getLabelTypeLabel(labelType).toLowerCase()}.`}</p>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            {labelType === 'mercadona' && (
+            {isWhiteLabelType ? (
+              <div className="mt-4 space-y-2">
+                <input
+                  type="text"
+                  value={productName}
+                  onChange={(event) => {
+                    setLocalError(null)
+                    setProductName(event.target.value)
+                  }}
+                  placeholder="Ej. Sandía Blanca 10x300gr"
+                  className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                  disabled={uploading}
+                />
+                <p className="text-xs text-gray-500">
+                  Este texto se imprimirá tal cual en la primera línea de la etiqueta.
+                </p>
+              </div>
+            ) : (
+              <div
+                className={`mt-4 grid gap-3 ${
+                  availableProducts.length > 1 ? 'sm:grid-cols-2' : 'sm:grid-cols-1'
+                }`}
+              >
+                {availableProducts.map((option) => {
+                  const isActive = productName === option
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => {
+                        setLocalError(null)
+                        setProductName(option)
+                      }}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${
+                        isActive
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                      }`}
+                      disabled={uploading}
+                    >
+                      <p className="text-sm font-semibold">{option}</p>
+                      {labelType !== 'mercadona' && (
+                        <p className="mt-1 text-xs text-gray-500">{`Disponible para ${getLabelTypeLabel(labelType).toLowerCase()}.`}</p>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {labelType === 'mercadona' && !isWhiteLabelType && (
               <p className="mt-3 text-xs text-emerald-700">
                 Mercadona utiliza etiqueta fija de Albahaca. No necesitas elegir nada más en este paso.
               </p>
@@ -2759,20 +2975,17 @@ function LabelsDashboard({
                 <>
                   <p className="font-semibold">Lote {lotSearchResult.lot} listo en {lotSearchResult.file.name}</p>
                   <div className="flex flex-wrap gap-2">
-                    {(lotSearchResult.file.automation?.labelWebViewLink ||
-                      lotSearchResult.file.automation?.labelWebContentLink) && (
+                    {resolveAutomationLink(lotSearchResult.file) ? (
                       <a
-                        href={
-                          lotSearchResult.file.automation?.labelWebViewLink ??
-                          lotSearchResult.file.automation?.labelWebContentLink ??
-                          '#'
-                        }
+                        href={resolveAutomationLink(lotSearchResult.file) ?? '#'}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 transition hover:bg-gray-100"
                       >
                         Etiqueta
                       </a>
+                    ) : (
+                      <span className="text-xs text-gray-500">Sin enlace disponible</span>
                     )}
                   </div>
                 </>
@@ -2819,18 +3032,19 @@ function LabelsDashboard({
                       : automation?.status === 'error'
                       ? 'Revisar'
                       : null
-                  const automationStatusTone =
-                    automation?.status === 'completed'
-                      ? 'success'
-                      : automation?.status === 'error'
-                      ? 'error'
-                      : 'info'
-                  const automationLink = resolveAutomationLink(file)
-                  const secondaryParts: string[] = []
-                  if (file.destination) secondaryParts.push(`Destino ${file.destination}`)
-                  if (file.notes) secondaryParts.push(file.notes)
-                  if (file.generatedFromFileId) {
-                    secondaryParts.push(`Origen ${formatShortId(file.generatedFromFileId)}`)
+                const automationStatusTone =
+                  automation?.status === 'completed'
+                    ? 'success'
+                    : automation?.status === 'error'
+                    ? 'error'
+                    : 'info'
+                const automationLink = resolveAutomationLink(file)
+                const displayLabelName = getDisplayLabelName(file)
+                const secondaryParts: string[] = []
+                if (file.destination) secondaryParts.push(`Destino ${file.destination}`)
+                if (file.notes) secondaryParts.push(file.notes)
+                if (file.generatedFromFileId) {
+                  secondaryParts.push(`Origen ${formatShortId(file.generatedFromFileId)}`)
                   }
                   return (
                     <li
@@ -2843,7 +3057,7 @@ function LabelsDashboard({
                         <div className="flex min-w-0 items-center gap-2">
                           <FileText className="h-4 w-4 text-gray-400" />
                           <div className="min-w-0">
-                            <p className="truncate font-semibold text-gray-900">{file.name}</p>
+                            <p className="truncate font-semibold text-gray-900">{displayLabelName}</p>
                             {metaLine && <p className="text-xs text-gray-500">{metaLine}</p>}
                             {file.path && <p className="text-xs text-gray-400 truncate">{file.path}</p>}
                           </div>
@@ -3686,7 +3900,7 @@ function mapRowToLabelRecord(row: Record<string, unknown>): LabelRecord {
   }
 
   const fileName =
-    getValue('file_name', 'filename', 'nombre_archivo', 'fileName', 'archivo') ??
+    getValue('file_name', 'filename','archivo') ??
     'Documento sin nombre.pdf'
   const status = getValue('status', 'estado')
   const destination = getValue('destination', 'destino', 'warehouse', 'almacen')
@@ -3727,7 +3941,43 @@ function resolveAutomationLink(file: UploadedFileRecord): string | null {
   if (!labelPath) {
     return null
   }
-  const encodedPath = labelPath
+  return buildPublicLabelUrl(labelPath)
+}
+
+function buildLabelStoragePath(file: UploadedFileRecord): string | null {
+  if (!file) return null
+  const automationFilePath = file.automation?.labelFilePath ?? null
+  if (automationFilePath) {
+    return automationFilePath
+  }
+  const automationFileName = file.automation?.labelFileName ?? null
+  const folder =
+    file.path && file.path.includes('/')
+      ? file.path.slice(0, file.path.lastIndexOf('/'))
+      : ''
+  if (automationFileName) {
+    return folder ? `${folder}/${automationFileName}` : automationFileName
+  }
+  const lotFromAutomation = file.lotValue ?? file.automation?.fields?.lote ?? null
+  const sanitizedLot =
+    typeof lotFromAutomation === 'string' && lotFromAutomation.trim().length > 0
+      ? lotFromAutomation.trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+      : null
+  if (sanitizedLot) {
+    const labelFileName = `etiqueta-${sanitizedLot}.pdf`
+    return folder ? `${folder}/${labelFileName}` : labelFileName
+  }
+  if (!file.name) return null
+  const baseName = file.name.replace(/\.[^.]+$/, '')
+  if (!baseName) return null
+  const fallbackLabelFileName = `${baseName}-etiqueta.pdf`
+  return folder ? `${folder}/${fallbackLabelFileName}` : fallbackLabelFileName
+}
+
+function buildPublicLabelUrl(path: string | null | undefined): string | null {
+  if (!path) return null
+  if (!SUPABASE_PUBLIC_URL) return null
+  const encodedPath = path
     .split('/')
     .map((segment) => encodeURIComponent(segment))
     .join('/')
@@ -3735,17 +3985,15 @@ function resolveAutomationLink(file: UploadedFileRecord): string | null {
   return `${SUPABASE_PUBLIC_URL}/storage/v1/object/public/${bucket}/${encodedPath}`
 }
 
-function buildLabelStoragePath(file: UploadedFileRecord): string | null {
-  if (!file?.name) return null
-  const baseName = file.name.replace(/\.[^.]+$/, '')
-  if (!baseName) return null
-
-  const folder =
-    file.path && file.path.includes('/')
-      ? file.path.slice(0, file.path.lastIndexOf('/'))
-      : ''
-  const labelFileName = `${baseName}-etiqueta.pdf`
-  return folder ? `${folder}/${labelFileName}` : labelFileName
+function getDisplayLabelName(file: UploadedFileRecord): string {
+  const automationName = file.automation?.labelFileName
+  if (automationName && automationName.trim().length > 0) {
+    return automationName.trim()
+  }
+  if (file.lotValue && file.lotValue.trim().length > 0) {
+    return `etiqueta-${file.lotValue.trim()}.pdf`
+  }
+  return file.name
 }
 
 function formatDateTime(value?: string): string {

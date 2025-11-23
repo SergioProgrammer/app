@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import fontkit from '@pdf-lib/fontkit'
+import type { LabelType } from '@/lib/product-selection'
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
@@ -22,6 +23,9 @@ export interface LabelRenderFields {
   codigoCoc?: string | null
   codigoR?: string | null
   weight?: string | null
+  labelType?: LabelType | null
+  productName?: string | null
+  variety?: string | null
 }
 
 export interface LabelRenderResult {
@@ -61,15 +65,15 @@ interface LayoutEntry {
 const BASE_WIDTH = 1262
 const BASE_HEIGHT = 768
 
-type LayoutKey = Exclude<keyof LabelRenderFields, 'labelCode' | 'weight'>
+type TemplateLayoutField = 'fechaEnvasado' | 'lote' | 'codigoCoc' | 'codigoR'
 
-const TEXT_OFFSETS: Partial<Record<LayoutKey, { dx?: number; dy?: number }>> = {
+const TEXT_OFFSETS: Partial<Record<TemplateLayoutField, { dx?: number; dy?: number }>> = {
   fechaEnvasado: { dx: 18, dy: -8 },
   lote: { dx: 42, dy: -25 },
   codigoR: { dx: -15, dy: -70 },
 }
 
-const TEXT_LAYOUT: Record<LayoutKey, LayoutEntry> = {
+const TEXT_LAYOUT: Record<TemplateLayoutField, LayoutEntry> = {
   fechaEnvasado: { baseX: 325, baseY: 415, align: 'left', fontSize: 34 },
   lote: { baseX: 215, baseY: 490, align: 'left', fontSize: 34 },
   codigoCoc: { baseX: 205, baseY: 630, align: 'left', fontSize: 34 },
@@ -84,6 +88,52 @@ const WEIGHT_LAYOUT: LayoutEntry = {
 }
 const WEIGHT_OFFSET = { dx: 26, dy: -35 }
 
+type WhiteLabelVariant = Extract<LabelType, 'blanca-grande' | 'blanca-pequena'>
+
+interface WhiteLabelConfig {
+  width: number
+  height: number
+  margin: number
+  lineSpacing: number
+  titleSize: number
+  bodySize: number
+  smallSize: number
+}
+
+interface WhiteLabelLine {
+  text: string
+  size?: number
+  spacing?: number
+}
+
+const WHITE_LABEL_CONFIGS: Record<WhiteLabelVariant, WhiteLabelConfig> = {
+  'blanca-grande': {
+    width: 720,
+    height: 360,
+    margin: 40,
+    lineSpacing: 32,
+    titleSize: 30,
+    bodySize: 20,
+    smallSize: 17,
+  },
+  'blanca-pequena': {
+    width: 480,
+    height: 260,
+    margin: 28,
+    lineSpacing: 24,
+    titleSize: 22,
+    bodySize: 15,
+    smallSize: 13,
+  },
+}
+
+const WHITE_LABEL_COMPANY_NAME = 'Montaña Roja Herbs Sat 536/05 OPFH 1168'
+const WHITE_LABEL_COMPANY_ADDRESS = 'C/La Constitución 53, Arico Viejo'
+const WHITE_LABEL_ORIGIN_LINE = 'Origen: España (Canarias) · CoC: 4063061581198'
+const WHITE_LABEL_SMALL_PRODUCER_LINE = 'Producido en España/Islas Canarias por'
+const WHITE_LABEL_SMALL_PRODUCER_NAME = 'MONTAÑA ROJA HERBS OPFH 1186'
+const WHITE_LABEL_SMALL_ADDRESS = 'C/Castillo 68, piso 6, Santa Cruz de Tenerife'
+
 let cachedTemplateBuffer: Buffer | null = null
 let cachedTemplatePath: string | null = null
 
@@ -91,11 +141,19 @@ export async function renderLabelPdf({
   fields,
   fileName,
   templatePath,
+  options,
 }: {
   fields: LabelRenderFields
   fileName: string
   templatePath?: string
+  options?: { hideCodigoR?: boolean; variantSuffix?: string }
 }): Promise<LabelRenderResult> {
+  if (isWhiteLabelVariant(fields.labelType)) {
+    return renderWhiteLabelDocument(fields, fileName, fields.labelType, {
+      variantSuffix: options?.variantSuffix,
+    })
+  }
+
   const { buffer: templateBuffer, resolvedPath } = await loadTemplate(templatePath)
   const templateExtension = path.extname(resolvedPath).toLowerCase()
   const pdfDoc = await PDFDocument.create()
@@ -144,8 +202,20 @@ export async function renderLabelPdf({
     console.log('[label-renderer] page prototype keys:', pageProtoKeys)
   }
 
-  (Object.keys(TEXT_LAYOUT) as LayoutKey[]).forEach((key: LayoutKey) => {
+  const hideCodigoR = options?.hideCodigoR ?? false
+  const lidlCebollinoOnlyLot = shouldRenderOnlyLot(fields)
+
+  ;(Object.keys(TEXT_LAYOUT) as TemplateLayoutField[]).forEach((key: TemplateLayoutField) => {
+    if (fields.labelType === 'lidl' && key === 'lote') {
+      return
+    }
     if (key === 'codigoCoc') {
+      return
+    }
+    if (hideCodigoR && key === 'codigoR') {
+      return
+    }
+    if (lidlCebollinoOnlyLot && key !== 'lote') {
       return
     }
     const isDateField = key === 'fechaEnvasado'
@@ -179,7 +249,7 @@ export async function renderLabelPdf({
     }
   })
 
-  if (typeof page.drawText === 'function') {
+  if (typeof page.drawText === 'function' && !lidlCebollinoOnlyLot) {
     const layout = WEIGHT_LAYOUT
     const fontSize = (layout.fontSize ?? DEFAULT_FONT_SIZE) * scaleY
     const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '40gr'
@@ -198,12 +268,252 @@ export async function renderLabelPdf({
     })
   }
 
+  if (fields.labelType === 'lidl' && typeof page.drawText === 'function') {
+    const lotText = normalizeFieldValue(fields.lote, { preserveFormat: true })
+    if (lotText) {
+      const fontSize = 44 * scaleY
+      const textWidth = measureTextWidth(lotText, fontSize, labelFont)
+      const normalizedProduct = normalizeSimpleKey(fields.productName)
+      const isCilantro = normalizedProduct === 'cilantro'
+      const isEneldo = normalizedProduct === 'eneldo'
+      const desiredCenterX = pageWidth * 0.65
+      const x = Math.max(60 * scaleX, desiredCenterX - textWidth / 2 + (isEneldo ? 10 : 10))
+      const y = isCilantro
+        ? pageHeight / 2 - 40 * scaleY
+        : pageHeight / 2 - 20 * scaleY
+      page.drawText(lotText, {
+        x,
+        y,
+        size: fontSize,
+        color: DEFAULT_FONT_COLOR,
+        font: labelFont,
+      })
+      if (isEneldo) {
+        const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '30g'
+        const weightFontSize = 94 * scaleY
+        const weightWidth = measureTextWidth(weightText, weightFontSize, labelFont)
+        const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2 + 10)
+        const weightY = y + 50 * scaleY
+        page.drawText(weightText, {
+          x: weightX,
+          y: weightY,
+          size: weightFontSize,
+          color: DEFAULT_FONT_COLOR,
+          font: labelFont,
+        })
+      }
+    }
+  }
+
   const pdfBytes = await pdfDoc.save()
   return {
     buffer: Buffer.from(pdfBytes),
-    fileName: buildLabelFileName(fileName),
+    fileName: buildLabelFileName(fileName, options?.variantSuffix),
     mimeType: 'application/pdf',
   }
+}
+
+async function renderWhiteLabelDocument(
+  fields: LabelRenderFields,
+  fileName: string,
+  variant: WhiteLabelVariant,
+  options?: { lines?: WhiteLabelLine[]; variantSuffix?: string },
+): Promise<LabelRenderResult> {
+  const config = WHITE_LABEL_CONFIGS[variant]
+  const pdfDoc = await PDFDocument.create()
+  const page = pdfDoc.addPage([config.width, config.height])
+  const labelFont = await resolveLabelFont(pdfDoc)
+  const lines = options?.lines ?? buildWhiteLabelLines(variant, fields)
+  let cursorY = config.height - config.margin
+
+  for (const line of lines) {
+    const fontSize = line.size ?? config.bodySize
+    cursorY -= fontSize
+    const y = Math.max(cursorY, config.margin / 2)
+    page.drawText(line.text, {
+      x: config.margin,
+      y,
+      size: fontSize,
+      color: DEFAULT_FONT_COLOR,
+      font: labelFont,
+    })
+    cursorY -= line.spacing ?? config.lineSpacing
+  }
+
+  const pdfBytes = await pdfDoc.save()
+  return {
+    buffer: Buffer.from(pdfBytes),
+    fileName: buildLabelFileName(fileName, options?.variantSuffix),
+    mimeType: 'application/pdf',
+  }
+}
+
+export async function renderLidlLabelSet({
+  fields,
+  fileName,
+  templatePath,
+}: {
+  fields: LabelRenderFields
+  fileName: string
+  templatePath?: string
+}): Promise<LabelRenderResult[]> {
+  const baseLabel = await renderLabelPdf({
+    fields,
+    fileName,
+    templatePath,
+    options: { hideCodigoR: true, variantSuffix: 'lidl-principal' },
+  })
+  const summaryLines = buildLidlSummaryLines(fields)
+  const summaryLabel = await renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
+    lines: summaryLines,
+    variantSuffix: 'lidl-peso',
+  })
+  const detailedLines = buildLidlDetailLines(fields)
+  const detailedLabel = await renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
+    lines: detailedLines,
+    variantSuffix: 'lidl-info',
+  })
+  return [baseLabel, summaryLabel, detailedLabel]
+}
+
+function buildWhiteLabelLines(
+  variant: WhiteLabelVariant,
+  fields: LabelRenderFields,
+): WhiteLabelLine[] {
+  const product = formatProductText(fields.productName)
+  const variety = formatVarietyText(fields.variety)
+  const date = formatWhiteLabelDate(fields.fechaEnvasado)
+  const lot = formatLotText(fields.lote)
+  const config = WHITE_LABEL_CONFIGS[variant]
+
+  if (variant === 'blanca-grande') {
+    return [
+      { text: product, size: config.titleSize },
+      { text: `Categoría 1 · Variedad: ${variety} · Sin/SEM` },
+      { text: 'Calibre 3' },
+      { text: `Envasado: ${date} · Lote: ${lot}` },
+      { text: WHITE_LABEL_COMPANY_NAME },
+      { text: WHITE_LABEL_COMPANY_ADDRESS },
+      { text: WHITE_LABEL_ORIGIN_LINE },
+    ]
+  }
+
+  return [
+    { text: product, size: config.titleSize },
+    { text: `Variedad: ${variety}` },
+    { text: `Envasado: ${date}` },
+    { text: `Lote: ${lot}` },
+    { text: WHITE_LABEL_SMALL_PRODUCER_LINE, size: config.smallSize },
+    { text: WHITE_LABEL_SMALL_PRODUCER_NAME },
+    { text: WHITE_LABEL_SMALL_ADDRESS, size: config.smallSize },
+    { text: 'Origen: España (Canarias)', size: config.smallSize },
+  ]
+}
+
+function isWhiteLabelVariant(value?: LabelType | null): value is WhiteLabelVariant {
+  return value === 'blanca-grande' || value === 'blanca-pequena'
+}
+
+function formatProductText(value?: string | null): string {
+  const trimmed = value?.trim()
+  if (trimmed && trimmed.length > 0) {
+    return trimmed.toUpperCase()
+  }
+  return 'PRODUCTO SIN NOMBRE'
+}
+
+function formatVarietyText(value?: string | null): string {
+  const trimmed = value?.trim()
+  if (trimmed && trimmed.length > 0) {
+    return trimmed.toUpperCase()
+  }
+  return 'SIN VARIEDAD'
+}
+
+function formatWhiteLabelDate(value?: string | null): string {
+  if (!value) return 'Sin fecha'
+  const trimmed = value.trim()
+  if (!trimmed) return 'Sin fecha'
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch
+    return `${day}/${month}/${year}`
+  }
+  const localeMatch = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/)
+  if (localeMatch) {
+    const [, day, month, year] = localeMatch
+    const normalizedYear = year.length === 2 ? `20${year}` : year
+    const paddedDay = day.padStart(2, '0')
+    const paddedMonth = month.padStart(2, '0')
+    return `${paddedDay}/${paddedMonth}/${normalizedYear}`
+  }
+  return trimmed
+}
+
+function formatLotText(value?: string | null): string {
+  const trimmed = value?.trim()
+  if (trimmed && trimmed.length > 0) {
+    return trimmed.toUpperCase()
+  }
+  return 'SIN LOTE'
+}
+
+function formatWeightText(value?: string | null): string {
+  const trimmed = value?.trim()
+  if (trimmed && trimmed.length > 0) {
+    return trimmed
+  }
+  return '40gr'
+}
+
+function buildLidlSummaryLines(fields: LabelRenderFields): WhiteLabelLine[] {
+  const config = WHITE_LABEL_CONFIGS['blanca-grande']
+  const product = formatProductText(fields.productName)
+  const weight = formatWeightText(fields.weight)
+  return [
+    { text: product, size: config.titleSize },
+    { text: `Peso unidad: ${weight}` },
+  ]
+}
+
+function buildLidlDetailLines(fields: LabelRenderFields): WhiteLabelLine[] {
+  const product = formatProductText(fields.productName)
+  const weight = formatWeightText(fields.weight)
+  const variety = formatVarietyText(fields.variety)
+  const date = formatWhiteLabelDate(fields.fechaEnvasado)
+  const lot = formatLotText(fields.lote)
+  const coc = (fields.codigoCoc ?? '').trim()
+  const lines: WhiteLabelLine[] = [
+    { text: product, size: WHITE_LABEL_CONFIGS['blanca-grande'].titleSize },
+    { text: `Variedad: ${variety}` },
+    { text: `Peso unidad: ${weight}` },
+    { text: `Envasado: ${date}` },
+    { text: `Lote: ${lot}` },
+  ]
+  if (coc.length > 0) {
+    lines.push({ text: `CoC: ${coc}` })
+  }
+  lines.push({ text: WHITE_LABEL_ORIGIN_LINE })
+  return lines
+}
+
+function normalizeSimpleKey(value?: string | null): string {
+  if (!value) return ''
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+function shouldRenderOnlyLot(fields: LabelRenderFields): boolean {
+  if ((fields.labelType ?? '').toLowerCase() !== 'lidl') {
+    return false
+  }
+  const normalizedProduct = normalizeSimpleKey(fields.productName)
+  return (
+    normalizedProduct === 'cebollino' || normalizedProduct === 'cilantro' || normalizedProduct === 'eneldo'
+  )
 }
 
 async function resolveLabelFont(pdfDoc: PDFDocument): Promise<PDFFont> {
@@ -255,7 +565,7 @@ function getFontSearchPaths(): string[] {
 }
 
 async function loadTemplate(customPath?: string): Promise<{ buffer: Buffer; resolvedPath: string }> {
-  const searchPaths = customPath ? [customPath] : DEFAULT_TEMPLATE_CANDIDATES
+  const searchPaths = customPath ? [customPath, ...DEFAULT_TEMPLATE_CANDIDATES] : DEFAULT_TEMPLATE_CANDIDATES
   for (const candidate of searchPaths) {
     const resolvedPath = path.isAbsolute(candidate)
       ? candidate
@@ -335,9 +645,10 @@ function buildDayMonthYear(day: string, month: string, year: string): string {
   return `${normalizedDay}.${normalizedMonth}.${shortYear}`
 }
 
-function buildLabelFileName(originalFileName: string): string {
+function buildLabelFileName(originalFileName: string, variantSuffix?: string): string {
   const withoutExtension = originalFileName.replace(/\.[^/.]+$/u, '')
   const sanitized =
     withoutExtension.length > 0 ? withoutExtension : `etiqueta-${Date.now().toString(36)}`
-  return `${sanitized}-etiqueta.pdf`
+  const suffix = variantSuffix ? `-${variantSuffix}` : ''
+  return `${sanitized}${suffix}-etiqueta.pdf`
 }
