@@ -286,8 +286,8 @@ export async function renderLabelPdf({
       const desiredCenterX = pageWidth * 0.75
 
       if (isLidlAlbahaca) {
-        const lineY = pageHeight * 0.7 - 60 * scaleY
-        const spacing = 80 * scaleX
+        const lineY = pageHeight * 0.7 - 70 * scaleY
+        const spacing = 90 * scaleX
         const formattedDate = normalizeFieldValue(fields.fechaEnvasado, {
           formatAsDate: true,
         })
@@ -300,10 +300,9 @@ export async function renderLabelPdf({
         const startX = Math.max(60 * scaleX, desiredCenterX - combinedWidth / 2 - 40 * scaleX)
         let cursorX = startX
 
-        const dateOffset = 30 * scaleX
         if (formattedDate) {
           page.drawText(formattedDate, {
-            x: cursorX - dateOffset,
+            x: cursorX,
             y: lineY,
             size: dateFontSize,
             color: DEFAULT_FONT_COLOR,
@@ -321,10 +320,10 @@ export async function renderLabelPdf({
         })
 
         const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? '60gr'
-        const weightFontSize = 36 * scaleY
+        const weightFontSize = 70 * scaleY
         const weightWidth = measureTextWidth(weightText, weightFontSize, labelFont)
-        const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2 + 95 * scaleX)
-        const weightY = lineY - 95 * scaleY
+        const weightX = Math.max(60 * scaleX, desiredCenterX - weightWidth / 2)
+        const weightY = lineY - 70 * scaleY
         page.drawText(weightText, {
           x: weightX,
           y: weightY,
