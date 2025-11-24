@@ -188,6 +188,10 @@ const DEFAULT_BARCODE_VALUE = (process.env.NEXT_PUBLIC_DEFAULT_BARCODE ?? '84370
 const SUPABASE_PUBLIC_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const SUPABASE_ETIQUETAS_BUCKET =
   process.env.NEXT_PUBLIC_SUPABASE_ETIQUETAS_BUCKET ?? 'etiquetas_final'
+const SUPABASE_LIDL_WEIGHT_BUCKET =
+  process.env.NEXT_PUBLIC_SUPABASE_LIDL_WEIGHT_BUCKET ?? 'grande_final'
+const SUPABASE_LIDL_DETAIL_BUCKET =
+  process.env.NEXT_PUBLIC_SUPABASE_LIDL_DETAIL_BUCKET ?? 'grande2_final'
 const LABEL_TYPE_LOGOS: Partial<Record<LabelType, string>> = {
   mercadona: '/logos/mercadona.jpg',
   aldi: '/logos/aldi.png',
@@ -1450,19 +1454,10 @@ const nonLabelPlans = useMemo(
           typeof body.automationError === 'string' && body.automationError.trim().length > 0
             ? body.automationError.trim()
             : null
-        const automationFields = body.automation?.fields ?? null
         const automationLabelName =
           typeof body.automation?.labelFileName === 'string' &&
           body.automation.labelFileName.trim().length > 0
             ? body.automation.labelFileName.trim()
-            : null
-        const automationLabelLink =
-          typeof body.automation?.labelWebViewLink === 'string' &&
-          body.automation.labelWebViewLink.trim().length > 0
-            ? body.automation.labelWebViewLink.trim()
-            : typeof body.automation?.labelWebContentLink === 'string' &&
-              body.automation.labelWebContentLink.trim().length > 0
-            ? body.automation.labelWebContentLink.trim()
             : null
 
         if (automationError) {
@@ -1470,43 +1465,13 @@ const nonLabelPlans = useMemo(
             `Archivo "${fileName}" subido, pero la automatización falló: ${automationError}`,
           )
         } else {
-                const extractedParts = automationFields
-                  ? [
-                      automationFields.fechaEnvasado
-                        ? `Envasado: ${automationFields.fechaEnvasado}`
-                        : null,
-                automationFields.fechaCarga ? `Fecha de envasado: ${automationFields.fechaCarga}` : null,
-                      automationFields.lote ? `Lote: ${automationFields.lote}` : null,
-                      automationFields.weight ? `Peso: ${automationFields.weight}` : null,
-                automationFields.labelCode
-                  ? `Código de barras: ${automationFields.labelCode}`
-                  : null,
-                automationFields.codigoCoc ? `COC: ${automationFields.codigoCoc}` : null,
-                automationFields.codigoR ? `R: ${automationFields.codigoR}` : null,
-              ].filter((part): part is string => typeof part === 'string' && part.length > 0)
-            : []
-
-          const extractedMessage = automationFields
-            ? extractedParts.length > 0
-              ? `Datos extraídos → ${extractedParts.join(' · ')}.`
-              : 'No se detectaron datos en la etiqueta.'
-            : null
-
-          if (automationLabelName || automationLabelLink) {
-            const segments = [
-              `Archivo "${fileName}" subido.`,
-              extractedMessage,
-              `Etiqueta PDF generada: ${automationLabelName ?? 'consulta el historial'}.`,
-            ].filter((segment): segment is string => typeof segment === 'string' && segment.length > 0)
-
-            setLabelUploadMessage(segments.join(' '))
-          } else if (extractedMessage) {
-            setLabelUploadMessage(`Archivo "${fileName}" subido. ${extractedMessage}`)
-          } else {
-            setLabelUploadMessage(`Archivo "${fileName}" subido correctamente.`)
-          }
+          const successLabelName =
+            automationLabelName && automationLabelName.length > 0
+              ? automationLabelName
+              : fileName
+          setLabelUploadMessage(`ETIQUETA GENERADA CON ÉXITO - "${successLabelName}"`)
         }
-        setUploadedFilesMessage(`Archivo añadido al historial: ${fileName}`)
+        setUploadedFilesMessage(null)
         await loadUploadedFiles({ silent: true })
       } catch (error) {
         setLabelUploadError((error as Error).message)
@@ -1950,6 +1915,7 @@ function LabelsDashboard({
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [deletingAllUploads, setDeletingAllUploads] = useState(false)
   const [manualLote, setManualLote] = useState(() => generateLotValue())
   const [manualFechaCarga, setManualFechaCarga] = useState(() => getTodayIsoDate())
   const [manualCodigoR, setManualCodigoR] = useState('')
@@ -2429,6 +2395,28 @@ function LabelsDashboard({
     },
     [onDeleteUpload],
   )
+
+  const handleDeleteAllUploads = useCallback(async () => {
+    if (uploads.length === 0 || deletingAllUploads) return
+    const confirmed = window.confirm(
+      '¿Seguro que quieres eliminar todos los archivos listados? Esta acción no se puede deshacer.',
+    )
+    if (!confirmed) return
+    setDeletingAllUploads(true)
+    try {
+      for (const file of uploads) {
+        // sequential to avoid overwhelming backend
+        
+        await onDeleteUpload(file)
+      }
+      await onReloadUploads()
+    } catch (error) {
+      console.error('Error al eliminar todos los archivos:', error)
+      window.alert('Ocurrió un error eliminando algunos archivos. Revisa el historial y vuelve a intentarlo.')
+    } finally {
+      setDeletingAllUploads(false)
+    }
+  }, [deletingAllUploads, onDeleteUpload, onReloadUploads, uploads])
 
   const handleReloadUploads = useCallback(() => {
     void onReloadUploads()
@@ -3011,17 +2999,36 @@ function LabelsDashboard({
                 </span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={handleReloadUploads}
-              disabled={uploadsLoading}
-              className={`inline-flex items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium transition ${
-                uploadsLoading ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <RefreshCw className={`h-4 w-4 ${uploadsLoading ? 'animate-spin' : ''}`} />
-              Actualizar
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleReloadUploads}
+                disabled={uploadsLoading}
+                className={`inline-flex items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium transition ${
+                  uploadsLoading ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <RefreshCw className={`h-4 w-4 ${uploadsLoading ? 'animate-spin' : ''}`} />
+                Actualizar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAllUploads}
+                disabled={uploadsLoading || deletingAllUploads || uploads.length === 0}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                  uploadsLoading || deletingAllUploads || uploads.length === 0
+                    ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'border-red-200 text-red-700 hover:bg-red-50'
+                }`}
+              >
+                {deletingAllUploads ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {deletingAllUploads ? 'Eliminando…' : 'Eliminar todo'}
+              </button>
+            </div>
           </header>
 
           {lotSearchResult && (
@@ -3108,6 +3115,11 @@ function LabelsDashboard({
                     : 'info'
                 const automationLink = resolveAutomationLink(file)
                 const displayLabelName = getDisplayLabelName(file)
+                const fileLabelType = (file.labelType ?? file.automation?.fields?.labelType ?? '').toLowerCase()
+                const cajaUrls = deriveLidlCajaUrls(file)
+                const isLidlLabel =
+                  fileLabelType.includes('lidl') ||
+                  cajaUrls.isLikelyLidl === true
                 const secondaryParts: string[] = []
                 if (file.destination) secondaryParts.push(`Destino ${file.destination}`)
                 if (file.notes) secondaryParts.push(file.notes)
@@ -3161,6 +3173,30 @@ function LabelsDashboard({
                               </a>
                             ) : (
                               <span className="text-gray-400">Sin enlace</span>
+                            )}
+                            {isLidlLabel && (cajaUrls.caja1 || cajaUrls.caja2) && (
+                              <>
+                                {cajaUrls.caja1 && (
+                                  <a
+                                    href={cajaUrls.caja1}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded-xl border border-gray-300 px-3 py-1.5 text-gray-900 transition hover:bg-gray-100"
+                                  >
+                                    Caja 1
+                                  </a>
+                                )}
+                                {cajaUrls.caja2 && (
+                                  <a
+                                    href={cajaUrls.caja2}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded-xl border border-gray-300 px-3 py-1.5 text-gray-900 transition hover:bg-gray-100"
+                                  >
+                                    Caja 2
+                                  </a>
+                                )}
+                              </>
                             )}
                             <button
                               type="button"
@@ -3235,17 +3271,36 @@ function LabelsDashboard({
                 Revisamos el estado devuelto por n8n y las etiquetas generadas para cada albarán.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleRefreshClick}
-              disabled={loading}
-              className={`inline-flex items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium transition ${
-                loading ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Actualizar
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRefreshClick}
+                disabled={loading}
+                className={`inline-flex items-center gap-2 rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium transition ${
+                  loading ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Actualizar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAllUploads}
+                disabled={loading || deletingAllUploads || uploads.length === 0}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                  loading || deletingAllUploads || uploads.length === 0
+                    ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'border-red-200 text-red-700 hover:bg-red-50'
+                }`}
+              >
+                {deletingAllUploads ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {deletingAllUploads ? 'Eliminando…' : 'Eliminar todo'}
+              </button>
+            </div>
           </header>
 
           <div className="mt-5">
@@ -4012,6 +4067,24 @@ function resolveAutomationLink(file: UploadedFileRecord): string | null {
   return buildPublicLabelUrl(labelPath)
 }
 
+function deriveLidlCajaUrls(
+  file: UploadedFileRecord,
+): { caja1?: string; caja2?: string; isLikelyLidl?: boolean } {
+  const labelPath = buildLabelStoragePath(file)
+  if (!labelPath) return {}
+  const lastSlash = labelPath.lastIndexOf('/')
+  const folder = lastSlash >= 0 ? labelPath.slice(0, lastSlash) : ''
+  const fileName = lastSlash >= 0 ? labelPath.slice(lastSlash + 1) : labelPath
+  const baseSeed = fileName.replace(/\.pdf$/i, '').replace(/-etiqueta$/i, '')
+  if (!baseSeed) return {}
+  const caja1Path = folder ? `${folder}/${baseSeed}-caja-etiqueta.pdf` : `${baseSeed}-caja-etiqueta.pdf`
+  const caja2Path = folder ? `${folder}/${baseSeed}-caja2-etiqueta.pdf` : `${baseSeed}-caja2-etiqueta.pdf`
+  const caja1 = buildPublicLabelUrlWithBucket(caja1Path, SUPABASE_LIDL_WEIGHT_BUCKET)
+  const caja2 = buildPublicLabelUrlWithBucket(caja2Path, SUPABASE_LIDL_DETAIL_BUCKET)
+  const isLikelyLidl = /^pedido-manual-[a-z0-9]+$/i.test(baseSeed)
+  return { caja1: caja1 ?? undefined, caja2: caja2 ?? undefined, isLikelyLidl }
+}
+
 function buildLabelStoragePath(file: UploadedFileRecord): string | null {
   if (!file) return null
   const automationFilePath = file.automation?.labelFilePath ?? null
@@ -4043,14 +4116,21 @@ function buildLabelStoragePath(file: UploadedFileRecord): string | null {
 }
 
 function buildPublicLabelUrl(path: string | null | undefined): string | null {
+  return buildPublicLabelUrlWithBucket(path, SUPABASE_ETIQUETAS_BUCKET)
+}
+
+function buildPublicLabelUrlWithBucket(
+  path: string | null | undefined,
+  bucket: string | null | undefined,
+): string | null {
   if (!path) return null
   if (!SUPABASE_PUBLIC_URL) return null
   const encodedPath = path
     .split('/')
     .map((segment) => encodeURIComponent(segment))
     .join('/')
-  const bucket = encodeURIComponent(SUPABASE_ETIQUETAS_BUCKET)
-  return `${SUPABASE_PUBLIC_URL}/storage/v1/object/public/${bucket}/${encodedPath}`
+  const targetBucket = encodeURIComponent(bucket ?? SUPABASE_ETIQUETAS_BUCKET)
+  return `${SUPABASE_PUBLIC_URL}/storage/v1/object/public/${targetBucket}/${encodedPath}`
 }
 
 function getDisplayLabelName(file: UploadedFileRecord): string {

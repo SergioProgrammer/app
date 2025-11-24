@@ -128,7 +128,11 @@ export async function POST(request: NextRequest) {
           const baseFileName = sanitizedFileName.replace(/\.[^/.]+$/u, '')
           for (const labelResult of generatedLabels) {
             if (!labelResult?.fileName) continue
-            const effectiveFileName = `${baseFileName}-etiqueta.pdf`
+            const effectiveFileName =
+              labelResult.fileName && labelResult.fileName.trim().length > 0
+                ? labelResult.fileName
+                : `${baseFileName}-etiqueta.pdf`
+            const targetBucket = labelResult.storageBucket ?? ETIQUETAS_BUCKET
             const labelPath = buildStoragePath(folderPath, effectiveFileName)
             const labelMetadata = {
               generatedFromFileId: targetPath,
@@ -137,7 +141,7 @@ export async function POST(request: NextRequest) {
               variant: effectiveFileName,
             }
             const descriptor = await uploadFileToBucket({
-              bucket: ETIQUETAS_BUCKET,
+              bucket: targetBucket,
               path: labelPath,
               buffer: labelResult.buffer,
               contentType: labelResult.mimeType,

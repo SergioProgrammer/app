@@ -32,6 +32,7 @@ export interface LabelRenderResult {
   buffer: Buffer
   fileName: string
   mimeType: string
+  storageBucket?: string
 }
 
 const DEFAULT_TEMPLATE_CANDIDATES = [
@@ -108,6 +109,7 @@ interface WhiteLabelLine {
   text: string
   size?: number
   spacing?: number
+  align?: 'left' | 'center' | 'right'
 }
 
 const WHITE_LABEL_CONFIGS: Record<WhiteLabelVariant, WhiteLabelConfig> = {
@@ -129,6 +131,16 @@ const WHITE_LABEL_CONFIGS: Record<WhiteLabelVariant, WhiteLabelConfig> = {
     bodySize: 15,
     smallSize: 13,
   },
+}
+
+const LIDL_CENTERED_10X5_CONFIG: WhiteLabelConfig = {
+  width: 720,
+  height: 360,
+  margin: 36,
+  lineSpacing: 28,
+  titleSize: 32,
+  bodySize: 22,
+  smallSize: 18,
 }
 
 const WHITE_LABEL_COMPANY_NAME = 'Montaña Roja Herbs Sat 536/05 OPFH 1168'
@@ -443,9 +455,14 @@ async function renderWhiteLabelDocument(
   fields: LabelRenderFields,
   fileName: string,
   variant: WhiteLabelVariant,
-  options?: { lines?: WhiteLabelLine[]; variantSuffix?: string },
+  options?: {
+    lines?: WhiteLabelLine[]
+    variantSuffix?: string
+    configOverride?: WhiteLabelConfig
+    defaultAlign?: 'left' | 'center' | 'right'
+  },
 ): Promise<LabelRenderResult> {
-  const config = WHITE_LABEL_CONFIGS[variant]
+  const config = options?.configOverride ?? WHITE_LABEL_CONFIGS[variant]
   const pdfDoc = await PDFDocument.create()
   const page = pdfDoc.addPage([config.width, config.height])
   const labelFont = await resolveLabelFont(pdfDoc)
@@ -454,10 +471,20 @@ async function renderWhiteLabelDocument(
 
   for (const line of lines) {
     const fontSize = line.size ?? config.bodySize
+    const align = line.align ?? options?.defaultAlign ?? 'left'
     cursorY -= fontSize
     const y = Math.max(cursorY, config.margin / 2)
+    const textWidth = measureTextWidth(line.text, fontSize, labelFont)
+    const centeredX = Math.max(config.margin, (config.width - textWidth) / 2)
+    const rightAlignedX = Math.max(config.margin, config.width - config.margin - textWidth)
+    const x =
+      align === 'center'
+        ? centeredX
+        : align === 'right'
+        ? rightAlignedX
+        : config.margin
     page.drawText(line.text, {
-      x: config.margin,
+      x,
       y,
       size: fontSize,
       color: DEFAULT_FONT_COLOR,
@@ -487,17 +514,21 @@ export async function renderLidlLabelSet({
     fields,
     fileName,
     templatePath,
-    options: { hideCodigoR: true, variantSuffix: 'lidl-principal' },
+    options: { hideCodigoR: true },
   })
-  const summaryLines = buildLidlSummaryLines(fields)
+  const summaryLines = buildLidl10x5SummaryLines(fields)
   const summaryLabel = await renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
     lines: summaryLines,
-    variantSuffix: 'lidl-peso',
+    variantSuffix: 'lidl-10x5-peso',
+    configOverride: LIDL_CENTERED_10X5_CONFIG,
+    defaultAlign: 'center',
   })
-  const detailedLines = buildLidlDetailLines(fields)
+  const detailedLines = buildLidl10x5DetailLines(fields)
   const detailedLabel = await renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
     lines: detailedLines,
-    variantSuffix: 'lidl-info',
+    variantSuffix: 'lidl-10x5-detalle',
+    configOverride: LIDL_CENTERED_10X5_CONFIG,
+    defaultAlign: 'center',
   })
   return [baseLabel, summaryLabel, detailedLabel]
 }
@@ -621,6 +652,26 @@ function buildLidlDetailLines(fields: LabelRenderFields): WhiteLabelLine[] {
   }
   lines.push({ text: WHITE_LABEL_ORIGIN_LINE })
   return lines
+}
+
+function buildLidl10x5SummaryLines(fields: LabelRenderFields): WhiteLabelLine[] {
+  const product = formatProductText(fields.productName)
+  const weight = formatWeightText(fields.weight)
+  return [
+    { text: `${product} ${weight}`, size: LIDL_CENTERED_10X5_CONFIG.titleSize, align: 'center' },
+  ]
+}
+
+function buildLidl10x5DetailLines(fields: LabelRenderFields): WhiteLabelLine[] {
+  const product = formatProductText(fields.productName)
+  const weight = formatWeightText(fields.weight)
+  const lot = formatLotText(fields.lote)
+  return [
+    { text: 'Origen: España', align: 'center', size: LIDL_CENTERED_10X5_CONFIG.bodySize },
+    { text: product, align: 'center', size: LIDL_CENTERED_10X5_CONFIG.titleSize },
+    { text: `Lote: ${lot}`, align: 'center', size: LIDL_CENTERED_10X5_CONFIG.bodySize },
+    { text: `Peso: ${weight}`, align: 'center', size: LIDL_CENTERED_10X5_CONFIG.bodySize },
+  ]
 }
 
 function normalizeSimpleKey(value?: string | null): string {

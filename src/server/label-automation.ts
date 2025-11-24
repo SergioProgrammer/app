@@ -6,7 +6,7 @@ import {
   normalizeProductForLabelType,
   type LabelType,
 } from '@/lib/product-selection'
-import { renderLabelPdf, type LabelRenderFields, type LabelRenderResult } from './label-renderer'
+import { renderLabelPdf, renderLidlLabelSet, type LabelRenderFields, type LabelRenderResult } from './label-renderer'
 
 export interface ManualLabelFields {
   labelType?: LabelType | string | null
@@ -51,6 +51,8 @@ const DEFAULT_WEIGHT_TEXT = '40gr'
 const LOT_PATTERN = /^[A-Z]{2}\d{5}$/
 const LEGACY_LOT_PATTERN = /^[A-Z]{2}\d{4}$/
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const LIDL_WEIGHT_BUCKET = process.env.SUPABASE_LIDL_WEIGHT_BUCKET ?? 'grande_final'
+const LIDL_DETAIL_BUCKET = process.env.SUPABASE_LIDL_DETAIL_BUCKET ?? 'grande2_final'
 
 export async function processLabelAutomation({
   fileName,
@@ -73,16 +75,48 @@ export async function processLabelAutomation({
   let labels: LabelRenderResult[] = []
 
   try {
-    const label = await renderLabelPdf({
-      fields: preparedFields,
-      fileName,
-      templatePath: preparedFields.labelType === 'lidl' ? lidlTemplatePath : resolvedTemplatePath,
-      options: {
-        hideCodigoR: preparedFields.labelType === 'lidl',
-        variantSuffix: preparedFields.labelType === 'lidl' ? 'lidl-principal' : undefined,
-      },
-    })
-    labels = [label]
+    const useLidlExtras =
+      preparedFields.labelType === 'lidl' && normalizeProductKey(preparedFields.productName) !== 'albahaca'
+    const templateToUse = preparedFields.labelType === 'lidl' ? lidlTemplatePath : resolvedTemplatePath
+    const baseSeed = useLidlExtras
+      ? resolveLidlBaseSeed(preparedFields.lote, fileName)
+      : deriveBaseSeed(fileName)
+
+    if (useLidlExtras) {
+      const lidlFileNames = buildLidlFileNames(preparedFields.lote, baseSeed)
+      const [baseLabel, summaryLabel, detailLabel] = await renderLidlLabelSet({
+        fields: preparedFields,
+        fileName: baseSeed,
+        templatePath: templateToUse,
+      })
+      labels = [
+        { ...baseLabel, fileName: lidlFileNames.product },
+        summaryLabel
+          ? {
+              ...summaryLabel,
+              fileName: lidlFileNames.caja1,
+              storageBucket: LIDL_WEIGHT_BUCKET,
+            }
+          : null,
+        detailLabel
+          ? {
+              ...detailLabel,
+              fileName: lidlFileNames.caja2,
+              storageBucket: LIDL_DETAIL_BUCKET,
+            }
+          : null,
+      ].filter(Boolean) as LabelRenderResult[]
+    } else {
+      const label = await renderLabelPdf({
+        fields: preparedFields,
+        fileName,
+        templatePath: templateToUse,
+        options: {
+          hideCodigoR: preparedFields.labelType === 'lidl',
+        },
+      })
+      labels = [label]
+    }
 
     const automation: LabelAutomationMetadata = {
       status: 'completed',
@@ -197,6 +231,54 @@ function pickRandomLetter(): string {
 function resolveWeight(value: string | null | undefined): string {
   const normalized = normalizeField(value)
   return normalized ?? DEFAULT_WEIGHT_TEXT
+}
+
+function normalizeProductKey(value?: string | null): string {
+  if (!value) return ''
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+function resolveLidlBaseSeed(lot: string | null | undefined, fallbackFileName: string): string {
+  const normalizedLot = normalizeLotFormat(lot) ?? sanitizeLotText(lot)
+  if (normalizedLot) {
+    return `pedido-manual-${normalizedLot}`
+  }
+  return deriveBaseSeed(fallbackFileName)
+}
+
+function buildLidlFileNames(lot: string | null | undefined, fallbackSeed: string): {
+  product: string
+  caja1: string
+  caja2: string
+} {
+  const normalizedLot = normalizeLotFormat(lot) ?? sanitizeLotText(lot)
+  const seed = normalizedLot ? `pedido-manual-${normalizedLot}` : fallbackSeed
+  return {
+    product: `${seed}-etiqueta.pdf`,
+    caja1: `${seed}-caja-etiqueta.pdf`,
+    caja2: `${seed}-caja2-etiqueta.pdf`,
+  }
+}
+
+function deriveBaseSeed(fileName: string): string {
+  const trimmed = fileName.trim()
+  const withoutExtension = trimmed.replace(/\.pdf$/i, '')
+  const withoutEtiqueta = withoutExtension.replace(/-etiqueta$/i, '')
+  const sanitized = withoutEtiqueta
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/[^A-Za-z0-9-_]/g, '')
+  return sanitized.length > 0 ? sanitized : 'etiqueta'
+}
+
+function sanitizeLotText(value?: string | null): string | null {
+  if (!value) return null
+  const cleaned = value.trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  return cleaned.length > 0 ? cleaned : null
 }
 
 
