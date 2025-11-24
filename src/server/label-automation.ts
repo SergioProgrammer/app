@@ -75,8 +75,7 @@ export async function processLabelAutomation({
   let labels: LabelRenderResult[] = []
 
   try {
-    const useLidlExtras =
-      preparedFields.labelType === 'lidl' && normalizeProductKey(preparedFields.productName) !== 'albahaca'
+    const useLidlExtras = preparedFields.labelType === 'lidl'
     const templateToUse = preparedFields.labelType === 'lidl' ? lidlTemplatePath : resolvedTemplatePath
     const baseSeed = useLidlExtras
       ? resolveLidlBaseSeed(preparedFields.lote, fileName)

@@ -138,9 +138,9 @@ const LIDL_CENTERED_10X5_CONFIG: WhiteLabelConfig = {
   height: 360,
   margin: 36,
   lineSpacing: 28,
-  titleSize: 32,
-  bodySize: 22,
-  smallSize: 18,
+  titleSize: 38,
+  bodySize: 26,
+  smallSize: 20,
 }
 
 const WHITE_LABEL_COMPANY_NAME = 'Montaña Roja Herbs Sat 536/05 OPFH 1168'
@@ -523,12 +523,8 @@ export async function renderLidlLabelSet({
     configOverride: LIDL_CENTERED_10X5_CONFIG,
     defaultAlign: 'center',
   })
-  const detailedLines = buildLidl10x5DetailLines(fields)
-  const detailedLabel = await renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
-    lines: detailedLines,
+  const detailedLabel = await renderLidlCajaDetailLabel(fields, fileName, {
     variantSuffix: 'lidl-10x5-detalle',
-    configOverride: LIDL_CENTERED_10X5_CONFIG,
-    defaultAlign: 'center',
   })
   return [baseLabel, summaryLabel, detailedLabel]
 }
@@ -672,6 +668,186 @@ function buildLidl10x5DetailLines(fields: LabelRenderFields): WhiteLabelLine[] {
     { text: `Lote: ${lot}`, align: 'center', size: LIDL_CENTERED_10X5_CONFIG.bodySize },
     { text: `Peso: ${weight}`, align: 'center', size: LIDL_CENTERED_10X5_CONFIG.bodySize },
   ]
+}
+
+async function renderLidlCajaDetailLabel(
+  fields: LabelRenderFields,
+  fileName: string,
+  options?: { variantSuffix?: string },
+): Promise<LabelRenderResult> {
+  const config = LIDL_CENTERED_10X5_CONFIG
+  const pdfDoc = await PDFDocument.create()
+  const page = pdfDoc.addPage([config.width, config.height])
+  const font = await resolveLabelFont(pdfDoc)
+
+  const padding = 20
+  const startY = config.height - padding
+  const fullWidth = config.width - padding * 2
+  const halfWidth = fullWidth / 2
+  const topRowHeight = 64
+  const rowHeight = 46
+
+  const drawBox = ({
+    x,
+    y,
+    w,
+    h,
+    label,
+    value,
+    valueSize,
+  }: {
+    x: number
+    y: number
+    w: number
+    h: number
+    label: string
+    value: string
+    valueSize?: number
+  }) => {
+    page.drawRectangle({ x, y: y - h, width: w, height: h, borderWidth: 1, color: undefined, borderColor: DEFAULT_FONT_COLOR })
+    const labelSize = 10
+    const valSize = valueSize ?? 18
+    const labelY = y - 14
+    const valY = y - h / 2 - valSize / 2 + 4
+    page.drawText(label, { x: x + 6, y: labelY, size: labelSize, font, color: DEFAULT_FONT_COLOR })
+    page.drawText(value, {
+      x: x + 6,
+      y: valY,
+      size: valSize,
+      font,
+      color: DEFAULT_FONT_COLOR,
+      maxWidth: w - 12,
+    })
+  }
+
+  const companyLine = WHITE_LABEL_COMPANY_NAME
+  const product = formatProductText(fields.productName)
+  const variety = formatVarietyText(fields.variety)
+  const lot = formatLotText(fields.lote)
+  const date = formatWhiteLabelDate(fields.fechaEnvasado)
+  const weight = formatWeightText(fields.weight)
+  const ean = normalizeFieldValue(fields.labelCode, { preserveFormat: true }) ?? ''
+  const origin = 'ESPAÑA / CANARIAS'
+  const units = '12 UNIDADES CAJA'
+  const categoria = '-'
+  const agenciaCodigo = '34583'
+
+  let cursorY = startY
+
+  // Línea superior: Producto + Lote
+  drawBox({
+    x: padding,
+    y: cursorY,
+    w: fullWidth,
+    h: topRowHeight,
+    label: 'PRODUCTO / LOTE',
+    value: `${product} · ${lot}`,
+    valueSize: 20,
+  })
+  cursorY -= topRowHeight
+
+  // Agricultor / Origen
+  drawBox({
+    x: padding,
+    y: cursorY,
+    w: halfWidth,
+    h: rowHeight,
+    label: 'AGRICULTOR',
+    value: companyLine,
+    valueSize: 12,
+  })
+  drawBox({
+    x: padding + halfWidth,
+    y: cursorY,
+    w: halfWidth,
+    h: rowHeight,
+    label: 'ORIGEN',
+    value: origin,
+    valueSize: 14,
+  })
+  cursorY -= rowHeight
+
+  // Envasador / Categoría
+  drawBox({
+    x: padding,
+    y: cursorY,
+    w: halfWidth,
+    h: rowHeight,
+    label: 'ENVASADOR',
+    value: companyLine,
+    valueSize: 12,
+  })
+  drawBox({
+    x: padding + halfWidth,
+    y: cursorY,
+    w: halfWidth,
+    h: rowHeight,
+    label: 'CATEGORÍA',
+    value: categoria,
+    valueSize: 18,
+  })
+  cursorY -= rowHeight
+
+  // Proveedor / Variedad
+  drawBox({
+    x: padding,
+    y: cursorY,
+    w: halfWidth,
+    h: rowHeight,
+    label: 'PROVEEDOR',
+    value: companyLine,
+    valueSize: 12,
+  })
+  drawBox({
+    x: padding + halfWidth,
+    y: cursorY,
+    w: halfWidth,
+    h: rowHeight,
+    label: 'VARIEDAD',
+    value: variety,
+    valueSize: 16,
+  })
+  cursorY -= rowHeight
+
+  // Agencia (código, lote Lidl, unidades)
+  drawBox({
+    x: padding,
+    y: cursorY,
+    w: fullWidth,
+    h: rowHeight,
+    label: 'AGENCIA',
+    value: `${agenciaCodigo} · Lote Lidl: ${lot} · ${units}`,
+    valueSize: 14,
+  })
+  cursorY -= rowHeight
+
+  // EAN / Peso / Fecha compactos al final
+  const miniRowHeight = rowHeight
+  drawBox({
+    x: padding,
+    y: cursorY,
+    w: halfWidth,
+    h: miniRowHeight,
+    label: 'EAN',
+    value: ean,
+    valueSize: 16,
+  })
+  drawBox({
+    x: padding + halfWidth,
+    y: cursorY,
+    w: halfWidth,
+    h: miniRowHeight,
+    label: 'PESO / FECHA',
+    value: `${weight} · ${date}`,
+    valueSize: 14,
+  })
+
+  const pdfBytes = await pdfDoc.save()
+  return {
+    buffer: Buffer.from(pdfBytes),
+    fileName: buildLabelFileName(fileName, options?.variantSuffix),
+    mimeType: 'application/pdf',
+  }
 }
 
 function normalizeSimpleKey(value?: string | null): string {
