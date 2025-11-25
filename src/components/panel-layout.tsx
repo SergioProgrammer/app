@@ -74,7 +74,7 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
     setLotError(null)
     setLotQuery('')
     const targetSlug = defaultPanelSlug || 'general'
-    router.push(`/panel/${targetSlug}?lote=${encodeURIComponent(normalized)}#archivos-subidos`)
+    router.push(`/panel/${targetSlug}?lote=${encodeURIComponent(normalized)}#historial-etiquetas`)
     setIsOpen(false)
   }
 

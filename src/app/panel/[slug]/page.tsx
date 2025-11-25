@@ -89,6 +89,7 @@ interface LabelRecord {
   status?: string
   destination?: string
   labelCode?: string
+  lotValue?: string | null
   createdAt?: string
   updatedAt?: string
   pdfUrl?: string
@@ -161,6 +162,7 @@ interface UploadedFileRecord {
 interface LotSearchResult {
   lot: string
   file: UploadedFileRecord | null
+  historyRecord: LabelRecord | null
   status: 'searching' | 'found' | 'not-found'
 }
 
@@ -231,6 +233,22 @@ function normalizeLot(value: string): string | null {
     const prefix = compact.slice(0, LOT_PREFIX_LENGTH)
     const digits = compact.slice(-LOT_NUMBER_LENGTH)
     return `${prefix}${digits}`
+  }
+  return null
+}
+
+function findLotInString(value?: string | null): string | null {
+  if (!value) return null
+  const normalized = normalizeLot(value)
+  if (normalized) return normalized
+  const upper = value.toUpperCase()
+  const inlinePattern = new RegExp(`[A-Z]{${LOT_PREFIX_LENGTH}}\\d{${LOT_NUMBER_LENGTH}}`)
+  const legacyInlinePattern = new RegExp(
+    `[A-Z]{${LOT_PREFIX_LENGTH}}\\d{${LOT_NUMBER_LENGTH + 1}}`,
+  )
+  const match = upper.match(inlinePattern) ?? upper.match(legacyInlinePattern)
+  if (match && match[0]) {
+    return normalizeLot(match[0]) ?? match[0]
   }
   return null
 }
@@ -370,22 +388,37 @@ export default function PanelPage() {
   }, [lotQueryParamRaw])
   const lotSearchResult = useMemo<LotSearchResult | null>(() => {
     if (!normalizedLotQuery) return null
-    if (uploadedFilesLoading) {
-      return { lot: normalizedLotQuery, file: null, status: 'searching' }
+    if (uploadedFilesLoading || labelsLoading) {
+      return { lot: normalizedLotQuery, file: null, historyRecord: null, status: 'searching' }
     }
-    const match = uploadedFiles.find((file) => {
-      const lotField = file.automation?.fields?.lote
-      if (typeof lotField !== 'string') return false
-      return lotField.trim().toUpperCase() === normalizedLotQuery
-    })
+    const historyMatch =
+      labelsData.find((record) => getLotFromLabelRecord(record) === normalizedLotQuery) ?? null
+    const uploadMatch =
+      uploadedFiles.find((file) => getLotFromUploadedFile(file) === normalizedLotQuery) ?? null
+    if (historyMatch) {
+      return {
+        lot: normalizedLotQuery,
+        file: uploadMatch ?? null,
+        historyRecord: historyMatch,
+        status: 'found',
+      }
+    }
+    if (uploadMatch) {
+      return { lot: normalizedLotQuery, file: uploadMatch, historyRecord: null, status: 'found' }
+    }
     return {
       lot: normalizedLotQuery,
-      file: match ?? null,
-      status: match ? 'found' : 'not-found',
+      file: uploadMatch ?? null,
+      historyRecord: historyMatch,
+      status: 'not-found',
     }
-  }, [normalizedLotQuery, uploadedFiles, uploadedFilesLoading])
+  }, [labelsData, labelsLoading, normalizedLotQuery, uploadedFiles, uploadedFilesLoading])
   const highlightedUploadId =
     lotSearchResult?.status === 'found' && lotSearchResult.file ? lotSearchResult.file.id : null
+  const highlightedHistoryId =
+    lotSearchResult?.status === 'found' && lotSearchResult.historyRecord
+      ? lotSearchResult.historyRecord.id
+      : null
   const userEmail = user?.email ?? ''
   const userDisplayName = useMemo(() => {
     const atIndex = userEmail.indexOf('@')
@@ -1647,6 +1680,7 @@ const nonLabelPlans = useMemo(
             uploadsFolder={uploadedFilesFolder}
             lotSearchResult={lotSearchResult}
             highlightedUploadId={highlightedUploadId}
+            highlightedHistoryId={highlightedHistoryId}
             onReloadUploads={() => loadUploadedFiles()}
             onDeleteUpload={handleDeleteUploadedFile}
           />
@@ -1890,6 +1924,7 @@ function LabelsDashboard({
   uploadsFolder,
   lotSearchResult,
   highlightedUploadId,
+  highlightedHistoryId,
   onReloadUploads,
   onDeleteUpload,
 }: {
@@ -1910,6 +1945,7 @@ function LabelsDashboard({
   uploadsFolder: string | null
   lotSearchResult: LotSearchResult | null
   highlightedUploadId: string | null
+  highlightedHistoryId: string | null
   onReloadUploads: () => void | Promise<void>
   onDeleteUpload: (file: UploadedFileRecord) => void | Promise<void>
 }) {
@@ -2898,6 +2934,70 @@ function LabelsDashboard({
     }
   }
 
+  const renderLotSearchBanner = () => {
+    if (!lotSearchResult) return null
+    const { status, lot, file, historyRecord } = lotSearchResult
+    const foundInHistory = status === 'found' && Boolean(historyRecord)
+    const foundInUploads = status === 'found' && !historyRecord && Boolean(file)
+    const baseClass =
+      status === 'found'
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+        : status === 'searching'
+        ? 'border-gray-200 bg-gray-50 text-gray-700'
+        : 'border-amber-200 bg-amber-50 text-amber-900'
+    const historyLink = historyRecord?.labelUrl ?? historyRecord?.pdfUrl ?? null
+    const uploadLink = file ? resolveAutomationLink(file) : null
+
+    return (
+      <div
+        className={`mt-5 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm ${baseClass}`}
+      >
+        {status === 'searching' ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Buscamos el lote {lot}…</span>
+          </>
+        ) : status === 'found' ? (
+          <>
+            <p className="font-semibold">
+              {foundInHistory && historyRecord
+                ? `Lote ${lot} encontrado en el historial (${historyRecord.fileName || 'registro'})`
+                : foundInUploads && file
+                ? `Lote ${lot} listo en ${file.name}`
+                : `Lote ${lot} localizado`}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {foundInHistory && historyLink && (
+                <a
+                  href={historyLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 transition hover:bg-gray-100"
+                >
+                  Ver etiqueta
+                </a>
+              )}
+              {foundInUploads && uploadLink && (
+                <a
+                  href={uploadLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 transition hover:bg-gray-100"
+                >
+                  Etiqueta
+                </a>
+              )}
+              {foundInUploads && !uploadLink && (
+                <span className="text-xs text-gray-500">Sin enlace disponible</span>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="font-semibold">No encontramos el lote {lot}</p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-10">
@@ -3031,44 +3131,7 @@ function LabelsDashboard({
             </div>
           </header>
 
-          {lotSearchResult && (
-            <div
-              className={`mt-5 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm ${
-                lotSearchResult.status === 'found'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                  : lotSearchResult.status === 'searching'
-                  ? 'border-gray-200 bg-gray-50 text-gray-700'
-                  : 'border-amber-200 bg-amber-50 text-amber-900'
-              }`}
-            >
-              {lotSearchResult.status === 'searching' ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Buscamos el lote {lotSearchResult.lot}…</span>
-                </>
-              ) : lotSearchResult.status === 'found' && lotSearchResult.file ? (
-                <>
-                  <p className="font-semibold">Lote {lotSearchResult.lot} listo en {lotSearchResult.file.name}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {resolveAutomationLink(lotSearchResult.file) ? (
-                      <a
-                        href={resolveAutomationLink(lotSearchResult.file) ?? '#'}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 transition hover:bg-gray-100"
-                      >
-                        Etiqueta
-                      </a>
-                    ) : (
-                      <span className="text-xs text-gray-500">Sin enlace disponible</span>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <p className="font-semibold">No encontramos el lote {lotSearchResult.lot}</p>
-              )}
-            </div>
-          )}
+          {renderLotSearchBanner()}
 
           <div className="mt-5">
             {uploadsMessage && !uploadsError && (
@@ -3303,6 +3366,8 @@ function LabelsDashboard({
             </div>
           </header>
 
+          {renderLotSearchBanner()}
+
           <div className="mt-5">
             {historyError ? (
               <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
@@ -3334,8 +3399,12 @@ function LabelsDashboard({
                   <tbody className="divide-y divide-gray-100 text-gray-700">
                     {data.map((record) => {
                       const statusMeta = getLabelStatusMeta(record.status)
+                      const isHighlighted = highlightedHistoryId === record.id
                       return (
-                        <tr key={record.id} className="hover:bg-[#FAF9F6] transition">
+                        <tr
+                          key={record.id}
+                          className={`transition ${isHighlighted ? 'bg-emerald-50/70' : 'hover:bg-[#FAF9F6]'}`}
+                        >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <FileText className="h-4 w-4 text-gray-400" />
@@ -3343,6 +3412,11 @@ function LabelsDashboard({
                                 <p className="font-medium text-gray-900 truncate max-w-[220px]">
                                   {record.fileName || 'Archivo sin nombre'}
                                 </p>
+                                {isHighlighted && (
+                                  <p className="mt-0.5 inline-flex items-center rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                    Coincide con la búsqueda
+                                  </p>
+                                )}
                                 {record.notes && (
                                   <p className="text-xs text-gray-500 mt-0.5">{record.notes}</p>
                                 )}
@@ -4034,6 +4108,14 @@ function mapRowToLabelRecord(row: Record<string, unknown>): LabelRecord {
   const labelUrl = getValue('label_url', 'labelUrl', 'etiqueta_url', 'output_url')
   const notes = getValue('notes', 'nota', 'comentarios', 'observaciones')
   const storagePath = getValue('storage_path', 'storagePath', 'path')
+  const lotValue =
+    findLotInString(
+      getValue('lote', 'lot', 'lote_code', 'lote_numero', 'lot_number', 'lote_id', 'lote_pedido'),
+    ) ??
+    findLotInString(fileName) ??
+    findLotInString(storagePath) ??
+    findLotInString(labelUrl) ??
+    findLotInString(notes)
 
   return {
     id,
@@ -4041,6 +4123,7 @@ function mapRowToLabelRecord(row: Record<string, unknown>): LabelRecord {
     status,
     destination,
     labelCode,
+    lotValue: lotValue ?? null,
     createdAt,
     updatedAt,
     pdfUrl,
@@ -4049,6 +4132,39 @@ function mapRowToLabelRecord(row: Record<string, unknown>): LabelRecord {
     storagePath,
     raw: row,
   }
+}
+
+function getLotFromLabelRecord(record: LabelRecord | null | undefined): string | null {
+  if (!record) return null
+  const sources = [
+    record.lotValue,
+    record.fileName,
+    record.storagePath,
+    record.labelUrl,
+    record.pdfUrl,
+    record.notes,
+  ]
+  for (const source of sources) {
+    const lot = findLotInString(source)
+    if (lot) return lot
+  }
+  return null
+}
+
+function getLotFromUploadedFile(file: UploadedFileRecord | null | undefined): string | null {
+  if (!file) return null
+  const sources = [
+    file.lotValue,
+    file.automation?.fields?.lote,
+    file.name,
+    file.path,
+    file.automation?.labelFileName,
+  ]
+  for (const source of sources) {
+    const lot = findLotInString(source)
+    if (lot) return lot
+  }
+  return null
 }
 
 function resolveAutomationLink(file: UploadedFileRecord): string | null {
