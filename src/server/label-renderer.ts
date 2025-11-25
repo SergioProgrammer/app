@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import fontkit from '@pdf-lib/fontkit'
@@ -39,6 +40,15 @@ const DEFAULT_TEMPLATE_CANDIDATES = [
   path.join('public', 'Etiqueta.pdf'),
   path.join('public', 'Etiqueta.png'),
 ]
+const ALDI_TEMPLATE_CANDIDATES = [
+  path.join('public', 'Etiqueta-Aldi.pdf'),
+  path.join('public', 'etiqueta-aldi.pdf'),
+  path.join('public', 'Etiqueta_Aldi.pdf'),
+]
+const ALDI_TRACE_PREFIX = 'E'
+const ALDI_TRACE_LENGTH = 5
+const MERCADONA_TRACE_PREFIX = 'E'
+const MERCADONA_TRACE_LENGTH = 5
 const DEFAULT_FONT_SIZE = 55
 const DEFAULT_FONT_COLOR = rgb(0, 0, 0)
 const DEFAULT_FONT_NAME = StandardFonts.Helvetica
@@ -164,6 +174,9 @@ export async function renderLabelPdf({
   templatePath?: string
   options?: { hideCodigoR?: boolean; variantSuffix?: string }
 }): Promise<LabelRenderResult> {
+  if (isAldiLabel(fields.labelType)) {
+    return renderAldiLabel({ fields, fileName, templatePath })
+  }
   if (isWhiteLabelVariant(fields.labelType)) {
     return renderWhiteLabelDocument(fields, fileName, fields.labelType, {
       variantSuffix: options?.variantSuffix,
@@ -235,6 +248,9 @@ export async function renderLabelPdf({
       return
     }
     if (hideCodigoR && key === 'codigoR') {
+      return
+    }
+    if (key === 'codigoR' && !isMercadona) {
       return
     }
     if (lidlCebollinoOnlyLot && key !== 'lote') {
@@ -1060,4 +1076,319 @@ function buildLabelFileName(originalFileName: string, variantSuffix?: string): s
     withoutExtension.length > 0 ? withoutExtension : `etiqueta-${Date.now().toString(36)}`
   const suffix = variantSuffix ? `-${variantSuffix}` : ''
   return `${sanitized}${suffix}-etiqueta.pdf`
+}
+
+function normalizeAldiTraceValue(value?: string | null): string | null {
+  if (typeof value !== 'string') return null
+  const digits = value.replace(/\D/g, '')
+  if (digits.length === 0) return null
+  const normalizedDigits = digits.slice(-ALDI_TRACE_LENGTH).padStart(ALDI_TRACE_LENGTH, '0')
+  return `${ALDI_TRACE_PREFIX}${normalizedDigits}`
+}
+
+function normalizeAldiLotValue(value?: string | null): string | null {
+  if (typeof value !== 'string') return null
+  const match = value.trim().match(/^(\d{1,2})\/(\d{1,2})$/)
+  if (!match) return null
+  const [, rawWeek, rawDay] = match
+  const week = rawWeek.padStart(2, '0')
+  const day = rawDay.padStart(2, '0')
+  return `${week}/${day}`
+}
+
+function normalizeMercadonaTraceValue(value?: string | null): string | null {
+  if (typeof value !== 'string') return null
+  const digits = value.replace(/\D/g, '')
+  if (digits.length === 0) return null
+  const normalizedDigits = digits.slice(-MERCADONA_TRACE_LENGTH).padStart(MERCADONA_TRACE_LENGTH, '0')
+  return `${MERCADONA_TRACE_PREFIX}${normalizedDigits}`
+}
+
+function isAldiLabel(value?: LabelType | null): boolean {
+  return (value ?? '').toLowerCase() === 'aldi'
+}
+
+function resolveAldiTemplatePath(customPath?: string | null): string | undefined {
+  const candidates = [
+    customPath ?? null,
+    ...ALDI_TEMPLATE_CANDIDATES,
+    ...DEFAULT_TEMPLATE_CANDIDATES,
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0)
+
+  for (const candidate of candidates) {
+    const resolved = path.isAbsolute(candidate) ? candidate : path.join(process.cwd(), candidate)
+    if (existsSync(resolved)) {
+      return resolved
+    }
+  }
+
+  return undefined
+}
+
+async function renderAldiLabel({
+  fields,
+  fileName,
+  templatePath,
+}: {
+  fields: LabelRenderFields
+  fileName: string
+  templatePath?: string
+}): Promise<LabelRenderResult> {
+  const preferredTemplate = resolveAldiTemplatePath(templatePath)
+  const { buffer: templateBuffer, resolvedPath } = await loadTemplate(preferredTemplate)
+  const templateExtension = path.extname(resolvedPath).toLowerCase()
+  const pdfDoc = await PDFDocument.create()
+  const labelFont = await resolveLabelFont(pdfDoc)
+
+  let page: any
+  let pageWidth: number
+  let pageHeight: number
+
+  if (templateExtension === '.pdf') {
+    const templateDoc = await PDFDocument.load(templateBuffer)
+    const [templatePage] = await pdfDoc.copyPages(templateDoc, [0])
+    page = pdfDoc.addPage(templatePage)
+    pageWidth = page.getWidth()
+    pageHeight = page.getHeight()
+  } else {
+    const pngImage = await pdfDoc.embedPng(templateBuffer)
+    page = pdfDoc.addPage([pngImage.width, pngImage.height])
+    pageWidth = pngImage.width
+    pageHeight = pngImage.height
+
+    if (typeof page.drawImage === 'function') {
+      page.drawImage(pngImage, {
+        x: 0,
+        y: 0,
+        width: pngImage.width,
+        height: pngImage.height,
+      })
+    } else {
+      const imageName = page.node.newXObject(`Im-${Date.now().toString(36)}`, pngImage.ref)
+      page.pushOperators(
+        pushGraphicsState(),
+        translate(0, 0),
+        scale(pngImage.width, pngImage.height),
+        drawObject(imageName),
+        popGraphicsState(),
+      )
+    }
+  }
+
+  const marginX = pageWidth * 0.08
+  const product = formatProductText(fields.productName)
+  const variety = formatVarietyText(fields.variety)
+  const weight = formatWeightText(fields.weight)
+  const trazabilidad =
+    normalizeAldiTraceValue(fields.codigoR) ??
+    normalizeAldiTraceValue(fields.lote) ??
+    formatLotText(fields.codigoR) ??
+    formatLotText(fields.lote)
+  const loteAldi = normalizeAldiLotValue(fields.lote) ?? formatLotText(fields.lote)
+  const coc =
+    normalizeFieldValue(fields.codigoCoc, { preserveFormat: true }) ??
+    WHITE_LABEL_ORIGIN_LINE.split('CoC:').pop()?.trim() ??
+    ''
+  const lotSeed = normalizeAldiLotValue(fields.lote)
+  const sanitizeBase = (value: string) =>
+    value
+      .replace(/\.[^/.]+$/u, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+  const rawBase = sanitizeBase(fileName)
+  const baseWithPrefix = rawBase.startsWith('pedido-manual-') ? rawBase : `pedido-manual-${rawBase}`
+  const aldiBaseSeed = lotSeed
+    ? `pedido-manual-${lotSeed.replace('/', '-')}`
+    : baseWithPrefix
+  const outputFileName = `${aldiBaseSeed}-etiqueta.pdf`
+  const productFontSize = Math.max(22, Math.min(32, pageWidth * 0.02))
+  const bodySize = Math.max(10, Math.min(13, pageWidth * 0.011))
+  const smallSize = Math.max(9, Math.min(12, pageWidth * 0.009))
+  const lineSpacing = bodySize + 5
+  const baseY = Math.max(pageHeight * 0.35, pageHeight - 260)
+
+  page.drawText(product, {
+    x: marginX,
+    y: baseY,
+    size: productFontSize,
+    font: labelFont,
+    color: DEFAULT_FONT_COLOR,
+  })
+
+  const leftLines = [
+    `CATEGORIA: I    VARIEDAD: ${variety}`,
+    'ORIGEN: ESPAÑA/CANARIAS',
+    `TRAZABILIDAD: ${trazabilidad}    LOTE ALDI: ${loteAldi}`,
+    'ENVASADO POR: MONTAÑA ROJA HERBS SAT536/05',
+    'C/CONSTITUCION 53 ARICO',
+    'ART: 6007576    OPFH:1168',
+    'GGN: 4063061564405',
+    `CoC: ${coc}`,
+  ]
+
+  leftLines.forEach((text, index) => {
+    page.drawText(text, {
+      x: marginX,
+      y: baseY - lineSpacing * (index + 1),
+      size: index >= 6 ? smallSize : bodySize,
+      font: labelFont,
+      color: DEFAULT_FONT_COLOR,
+      maxWidth: pageWidth * 0.7,
+    })
+  })
+
+  const weightY = baseY - lineSpacing * 2 + bodySize / 2
+  page.drawText(weight, {
+    x: pageWidth * 0.76,
+    y: weightY,
+    size: bodySize,
+    font: labelFont,
+    color: DEFAULT_FONT_COLOR,
+  })
+
+  const barcodeValue = sanitizeBarcodeValue(fields.labelCode)
+  if (barcodeValue) {
+    drawEan13Barcode(page, barcodeValue, {
+      x: pageWidth * 0.52,
+      y: pageHeight * 0.08,
+      width: pageWidth * 0.4,
+      height: pageHeight * 0.17,
+      font: labelFont,
+    })
+  }
+
+  const pdfBytes = await pdfDoc.save()
+  return {
+    buffer: Buffer.from(pdfBytes),
+    fileName: outputFileName,
+    mimeType: 'application/pdf',
+  }
+}
+
+function sanitizeBarcodeValue(value?: string | null): string | null {
+  if (!value) return null
+  const digits = value.replace(/\D/g, '')
+  if (digits.length === 0) return null
+  if (digits.length >= 13) {
+    return digits.slice(0, 13)
+  }
+  if (digits.length === 12) {
+    const check = computeEan13CheckDigit(digits)
+    return `${digits}${check}`
+  }
+  return digits.padEnd(13, '0').slice(0, 13)
+}
+
+function computeEan13CheckDigit(code12: string): number {
+  const digits = code12.split('').map((digit) => Number(digit) || 0)
+  const sum = digits.reduce((acc, digit, index) => acc + digit * (index % 2 === 0 ? 1 : 3), 0)
+  const mod = sum % 10
+  return mod === 0 ? 0 : 10 - mod
+}
+
+function buildEan13Pattern(code: string): string {
+  const sanitized = sanitizeBarcodeValue(code)
+  if (!sanitized || sanitized.length !== 13) return ''
+  const firstDigit = Number(sanitized[0]) || 0
+  const parityPattern = [
+    'OOOOOO',
+    'OOEOEE',
+    'OOEEOE',
+    'OOEEEO',
+    'OEOOEE',
+    'OEEOOE',
+    'OEEEOO',
+    'OEOEOE',
+    'OEOEEO',
+    'OEEOEO',
+  ][firstDigit]
+  const leftDigits = sanitized.slice(1, 7)
+  const rightDigits = sanitized.slice(7)
+
+  const leftPatterns = leftDigits
+    .split('')
+    .map((digit, index) =>
+      encodeEanLeftDigit(Number(digit) || 0, parityPattern[index] === 'E' ? 'even' : 'odd'),
+    )
+  const rightPatterns = rightDigits.split('').map((digit) => encodeEanRightDigit(Number(digit) || 0))
+
+  return ['101', ...leftPatterns, '01010', ...rightPatterns, '101'].join('')
+}
+
+function encodeEanLeftDigit(digit: number, parity: 'odd' | 'even'): string {
+  const oddPatterns = [
+    '0001101',
+    '0011001',
+    '0010011',
+    '0111101',
+    '0100011',
+    '0110001',
+    '0101111',
+    '0111011',
+    '0110111',
+    '0001011',
+  ]
+  const evenPatterns = [
+    '0100111',
+    '0110011',
+    '0011011',
+    '0100001',
+    '0011101',
+    '0111001',
+    '0000101',
+    '0010001',
+    '0001001',
+    '0010111',
+  ]
+  return parity === 'even' ? evenPatterns[digit] : oddPatterns[digit]
+}
+
+function encodeEanRightDigit(digit: number): string {
+  const patterns = [
+    '1110010',
+    '1100110',
+    '1101100',
+    '1000010',
+    '1011100',
+    '1001110',
+    '1010000',
+    '1000100',
+    '1001000',
+    '1110100',
+  ]
+  return patterns[digit]
+}
+
+function drawEan13Barcode(
+  page: any,
+  code: string,
+  options: { x: number; y: number; width: number; height: number; font: PDFFont },
+) {
+  const pattern = buildEan13Pattern(code)
+  if (!pattern) return
+  const barWidth = options.width / pattern.length
+  const barHeight = options.height
+
+  Array.from(pattern).forEach((bit, index) => {
+    if (bit !== '1') return
+    page.drawRectangle({
+      x: options.x + index * barWidth,
+      y: options.y,
+      width: barWidth,
+      height: barHeight,
+      color: DEFAULT_FONT_COLOR,
+      borderColor: DEFAULT_FONT_COLOR,
+    })
+  })
+
+  const textSize = Math.max(10, options.width * 0.025)
+  const textWidth = options.font.widthOfTextAtSize(code, textSize)
+  const textX = options.x + (options.width - textWidth) / 2
+  page.drawText(code, {
+    x: textX,
+    y: options.y - textSize - 4,
+    size: textSize,
+    font: options.font,
+    color: DEFAULT_FONT_COLOR,
+  })
 }

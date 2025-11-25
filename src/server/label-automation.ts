@@ -50,6 +50,10 @@ export interface ProcessLabelAutomationResult {
 const DEFAULT_WEIGHT_TEXT = '40gr'
 const LOT_PATTERN = /^[A-Z]{2}\d{5}$/
 const LEGACY_LOT_PATTERN = /^[A-Z]{2}\d{4}$/
+const ALDI_LOT_PATTERN = /^(\d{1,2})\/(\d{1,2})$/
+const ALDI_TRACE_PREFIX = 'E'
+const ALDI_TRACE_LENGTH = 5
+const ALDI_TRACE_INITIAL = 35578
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const LIDL_WEIGHT_BUCKET = process.env.SUPABASE_LIDL_WEIGHT_BUCKET ?? 'grande_final'
 const LIDL_DETAIL_BUCKET = process.env.SUPABASE_LIDL_DETAIL_BUCKET ?? 'grande2_final'
@@ -174,20 +178,33 @@ function normalizeField(value?: string | null): string | null {
 function prepareLabelFields(fields: ManualLabelFields, fileName: string): LabelRenderFields {
   const resolvedLabelType = normalizeLabelType(fields.labelType ?? DEFAULT_LABEL_TYPE)
   const resolvedProduct = normalizeProductForLabelType(resolvedLabelType, fields.productName)
+  const referenceDate = fields.fechaCarga ?? fields.fechaEnvasado
   return {
     labelType: resolvedLabelType,
     productName: resolvedProduct,
     variety: normalizeField(fields.variety),
-    fechaEnvasado: normalizeField(fields.fechaCarga ?? fields.fechaEnvasado),
-    lote: resolveLot(fields.lote, fileName),
+    fechaEnvasado: normalizeField(referenceDate ?? fields.fechaEnvasado),
+    lote: resolveLot(fields.lote, fileName, resolvedLabelType, referenceDate),
     labelCode: normalizeField(fields.labelCode),
     codigoCoc: normalizeField(fields.codigoCoc),
-    codigoR: normalizeField(fields.codigoR),
+    codigoR: resolveCodigoR(resolvedLabelType, fields.codigoR),
     weight: resolveWeight(fields.weight),
   }
 }
 
-function resolveLot(value: string | null | undefined, seed: string): string {
+function resolveLot(
+  value: string | null | undefined,
+  seed: string,
+  labelType: LabelType,
+  referenceDate?: string | null,
+): string {
+  if (labelType === 'aldi') {
+    return resolveAldiLot(value, referenceDate)
+  }
+  return resolveStandardLot(value, seed)
+}
+
+function resolveStandardLot(value: string | null | undefined, seed: string): string {
   const normalized = normalizeLotFormat(value)
   if (normalized) return normalized
   return generateLot(seed)
@@ -278,6 +295,58 @@ function sanitizeLotText(value?: string | null): string | null {
   if (!value) return null
   const cleaned = value.trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase()
   return cleaned.length > 0 ? cleaned : null
+}
+
+function resolveAldiLot(value?: string | null, referenceDate?: string | null): string {
+  const normalized = normalizeAldiLotFormat(value)
+  if (normalized) return normalized
+  return buildAldiLotFromDate(referenceDate)
+}
+
+function normalizeAldiLotFormat(value?: string | null): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return null
+  const match = trimmed.match(ALDI_LOT_PATTERN)
+  if (!match) return null
+  const [, rawWeek, rawDay] = match
+  const week = rawWeek.padStart(2, '0')
+  const day = rawDay.padStart(2, '0')
+  return `${week}/${day}`
+}
+
+function buildAldiLotFromDate(referenceDate?: string | null): string {
+  const parsed = referenceDate ? new Date(referenceDate) : new Date()
+  const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed
+  const normalized = new Date(date.getTime())
+  normalized.setHours(0, 0, 0, 0)
+  const dayOfWeek = normalized.getDay() === 0 ? 7 : normalized.getDay()
+  normalized.setDate(normalized.getDate() + (4 - dayOfWeek))
+  const yearStart = new Date(normalized.getFullYear(), 0, 1)
+  const diff = normalized.getTime() - yearStart.getTime()
+  const week = Math.ceil((diff / 86_400_000 + 1) / 7)
+  const weekText = String(Math.max(1, Math.min(53, week))).padStart(2, '0')
+  const dayText = String(date.getDate()).padStart(2, '0')
+  return `${weekText}/${dayText}`
+}
+
+function resolveCodigoR(labelType: LabelType, value?: string | null): string | null {
+  if (labelType === 'aldi') {
+    return normalizeAldiTrace(value) ?? buildAldiTraceSeed()
+  }
+  return normalizeField(value)
+}
+
+function normalizeAldiTrace(value?: string | null): string | null {
+  if (typeof value !== 'string') return null
+  const digits = value.replace(/\D/g, '')
+  if (digits.length === 0) return null
+  const normalizedDigits = digits.slice(-ALDI_TRACE_LENGTH).padStart(ALDI_TRACE_LENGTH, '0')
+  return `${ALDI_TRACE_PREFIX}${normalizedDigits}`
+}
+
+function buildAldiTraceSeed(): string {
+  return `${ALDI_TRACE_PREFIX}${String(ALDI_TRACE_INITIAL).padStart(ALDI_TRACE_LENGTH, '0')}`
 }
 
 

@@ -183,6 +183,11 @@ const LOT_SEQUENCE_DEFAULT = `${LOT_INITIAL_PREFIX}${LOT_INITIAL_NUMBER}`
 const LOT_PATTERN = new RegExp(`^[A-Z]{${LOT_PREFIX_LENGTH}}\\d{${LOT_NUMBER_LENGTH}}$`)
 const LEGACY_LOT_PATTERN = new RegExp(`^[A-Z]{${LOT_PREFIX_LENGTH}}\\d{${LOT_NUMBER_LENGTH + 1}}$`)
 const LOT_MAX_NUMBER = Number('9'.repeat(LOT_NUMBER_LENGTH))
+const ALDI_LOT_PATTERN = /^(\d{1,2})\/(\d{1,2})$/
+const ALDI_TRACE_PREFIX = 'E'
+const ALDI_TRACE_LENGTH = 5
+const ALDI_TRACE_INITIAL = 35578
+const ALDI_TRACE_STORAGE_KEY = 'labels:aldi-trace-sequence'
 const MANUAL_ORDER_FILE_PREFIX = 'pedido-manual-'
 const INITIAL_PRODUCT_NAME = LABEL_TYPE_PRODUCTS[DEFAULT_LABEL_TYPE][0] ?? DEFAULT_PRODUCT
 const COMPANY_DEFAULT_CODIGO_COC = (process.env.NEXT_PUBLIC_COMPANY_COC ?? '4063061581198').toUpperCase()
@@ -219,12 +224,22 @@ const PRODUCT_BARCODE_MAP: Record<string, string> = (() => {
   }
 })()
 
-function generateLotValue(): string {
+function generateLotValue(labelType: LabelType = DEFAULT_LABEL_TYPE, referenceDate?: string | null): string {
+  if (labelType === 'aldi') {
+    return buildAldiLot(referenceDate)
+  }
   const lastUsed = getLastPersistedLot()
   return incrementLotSequence(lastUsed)
 }
 
 function normalizeLot(value: string): string | null {
+  const aldiLot = normalizeAldiLot(value)
+  if (aldiLot) return aldiLot
+  return normalizeStandardLot(value)
+}
+
+function normalizeStandardLot(value: string): string | null {
+  if (typeof value !== 'string') return null
   const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, '')
   if (LOT_PATTERN.test(compact)) {
     return compact
@@ -246,7 +261,9 @@ function findLotInString(value?: string | null): string | null {
   const legacyInlinePattern = new RegExp(
     `[A-Z]{${LOT_PREFIX_LENGTH}}\\d{${LOT_NUMBER_LENGTH + 1}}`,
   )
-  const match = upper.match(inlinePattern) ?? upper.match(legacyInlinePattern)
+  const aldiPattern = /\d{1,2}\/\d{1,2}/
+  const match =
+    upper.match(aldiPattern) ?? upper.match(inlinePattern) ?? upper.match(legacyInlinePattern)
   if (match && match[0]) {
     return normalizeLot(match[0]) ?? match[0]
   }
@@ -259,7 +276,7 @@ function getLastPersistedLot(): string {
   }
   try {
     const stored = window.localStorage.getItem(LOT_SEQUENCE_STORAGE_KEY)
-    const normalized = stored ? normalizeLot(stored) : null
+    const normalized = stored ? normalizeStandardLot(stored) : null
     return normalized ?? LOT_SEQUENCE_DEFAULT
   } catch {
     return LOT_SEQUENCE_DEFAULT
@@ -267,7 +284,7 @@ function getLastPersistedLot(): string {
 }
 
 function incrementLotSequence(value: string): string {
-  const normalized = normalizeLot(value) ?? LOT_SEQUENCE_DEFAULT
+  const normalized = normalizeStandardLot(value) ?? LOT_SEQUENCE_DEFAULT
   let prefix = normalized.slice(0, LOT_PREFIX_LENGTH)
   let numberPart = Number.parseInt(normalized.slice(LOT_PREFIX_LENGTH), 10)
   if (!Number.isFinite(numberPart)) {
@@ -294,13 +311,116 @@ function incrementLotPrefix(prefix: string): string {
 
 function persistLotSequence(value: string): void {
   if (typeof window === 'undefined') return
-  const normalized = normalizeLot(value)
-  if (!normalized) return
+  const normalized = normalizeStandardLot(value)
+  if (!normalized || normalizeAldiLot(normalized)) return
   try {
     window.localStorage.setItem(LOT_SEQUENCE_STORAGE_KEY, normalized)
   } catch {
     // ignore storage failures silently
   }
+}
+
+function resolveLotForLabelType(value: string, labelType: LabelType, referenceDate?: string | null): string {
+  if (labelType === 'aldi') {
+    const normalizedAldi = normalizeAldiLot(value)
+    if (normalizedAldi) return normalizedAldi
+    return buildAldiLot(referenceDate)
+  }
+  const normalized = normalizeStandardLot(value)
+  if (normalized) return normalized
+  return generateLotValue(labelType, referenceDate)
+}
+
+function buildAldiLot(referenceDate?: string | null): string {
+  const parsed = referenceDate ? parseIsoDate(referenceDate) : null
+  const date = parsed ?? new Date()
+  const normalized = new Date(date.getTime())
+  normalized.setHours(0, 0, 0, 0)
+  const dayOfWeek = normalized.getDay() === 0 ? 7 : normalized.getDay()
+  normalized.setDate(normalized.getDate() + (4 - dayOfWeek))
+  const yearStart = new Date(normalized.getFullYear(), 0, 1)
+  const diff = normalized.getTime() - yearStart.getTime()
+  const week = Math.ceil((diff / 86_400_000 + 1) / 7)
+  const weekText = String(Math.max(1, Math.min(53, week))).padStart(2, '0')
+  const dayText = String(date.getDate()).padStart(2, '0')
+  return `${weekText}/${dayText}`
+}
+
+function normalizeAldiLot(value?: string | null): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return null
+  const match = trimmed.match(ALDI_LOT_PATTERN)
+  if (!match) return null
+  const [, rawWeek, rawDay] = match
+  const week = rawWeek.padStart(2, '0')
+  const day = rawDay.padStart(2, '0')
+  return `${week}/${day}`
+}
+
+function normalizeAldiTrace(value?: string | null): string | null {
+  if (typeof value !== 'string') return null
+  const digits = value.replace(/\D/g, '')
+  if (digits.length === 0) return null
+  const trimmed = digits.slice(-ALDI_TRACE_LENGTH).padStart(ALDI_TRACE_LENGTH, '0')
+  return `${ALDI_TRACE_PREFIX}${trimmed}`
+}
+
+function getLastAldiTrace(): string {
+  if (typeof window === 'undefined') {
+    return `${ALDI_TRACE_PREFIX}${String(ALDI_TRACE_INITIAL).padStart(ALDI_TRACE_LENGTH, '0')}`
+  }
+  try {
+    const stored = window.localStorage.getItem(ALDI_TRACE_STORAGE_KEY)
+    const normalized = normalizeAldiTrace(stored)
+    if (normalized) return normalized
+  } catch {
+    // ignore storage issues
+  }
+  return `${ALDI_TRACE_PREFIX}${String(ALDI_TRACE_INITIAL).padStart(ALDI_TRACE_LENGTH, '0')}`
+}
+
+function incrementAldiTrace(value: string): string {
+  const normalized = normalizeAldiTrace(value) ?? getLastAldiTrace()
+  const digits = normalized.replace(/\D/g, '')
+  const next = (Number.parseInt(digits, 10) || 0) + 1
+  const wrapped = next % 100_000
+  return `${ALDI_TRACE_PREFIX}${String(wrapped).padStart(ALDI_TRACE_LENGTH, '0')}`
+}
+
+function persistAldiTrace(value: string): void {
+  if (typeof window === 'undefined') return
+  const normalized = normalizeAldiTrace(value)
+  if (!normalized) return
+  try {
+    window.localStorage.setItem(ALDI_TRACE_STORAGE_KEY, normalized)
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function buildCodigoRForLabelType(labelType: LabelType, referenceDate?: string | null): string {
+  if (labelType === 'aldi') {
+    return getLastAldiTrace()
+  }
+  return buildCodigoRFromDate(referenceDate ?? getTodayIsoDate())
+}
+
+function resolveCodigoRForLabelType(
+  labelType: LabelType,
+  value?: string | null,
+  referenceDate?: string | null,
+): string | null {
+  if (labelType === 'aldi') {
+    const normalized = normalizeAldiTrace(value)
+    return normalized ?? getLastAldiTrace()
+  }
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  if (trimmed.length > 0) {
+    return trimmed
+  }
+  const fallback = buildCodigoRFromDate(referenceDate ?? getTodayIsoDate())
+  return fallback.length > 0 ? fallback : null
 }
 
 function getDefaultLabelCodeForProduct(productName?: string | null): string {
@@ -1952,7 +2072,7 @@ function LabelsDashboard({
   const [file, setFile] = useState<File | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
   const [deletingAllUploads, setDeletingAllUploads] = useState(false)
-  const [manualLote, setManualLote] = useState(() => generateLotValue())
+  const [manualLote, setManualLote] = useState(() => generateLotValue(DEFAULT_LABEL_TYPE))
   const [manualFechaCarga, setManualFechaCarga] = useState(() => getTodayIsoDate())
   const [manualCodigoR, setManualCodigoR] = useState('')
   const [manualWeight, setManualWeight] = useState(DEFAULT_WEIGHT)
@@ -2064,6 +2184,20 @@ function LabelsDashboard({
   }, [labelType, productName])
 
   useEffect(() => {
+    if (labelType !== 'aldi') return
+    const desiredLot = resolveLotForLabelType(manualLote, labelType, manualFechaCarga)
+    if (desiredLot !== manualLote) {
+      setManualLote(desiredLot)
+    }
+    if (!codigoRManuallyEdited) {
+      const nextTrace = resolveCodigoRForLabelType(labelType, manualCodigoR, manualFechaCarga)
+      if (nextTrace && nextTrace !== manualCodigoR) {
+        setManualCodigoR(nextTrace)
+      }
+    }
+  }, [codigoRManuallyEdited, labelType, manualCodigoR, manualFechaCarga, manualLote])
+
+  useEffect(() => {
     if (weightManuallyEdited) {
       return
     }
@@ -2110,8 +2244,8 @@ function LabelsDashboard({
   }, [labelType, productName])
 
   const derivedCodigoR = useMemo(
-    () => buildCodigoRFromDate(manualFechaCarga || getTodayIsoDate()),
-    [manualFechaCarga],
+    () => buildCodigoRForLabelType(labelType, manualFechaCarga || getTodayIsoDate()),
+    [labelType, manualFechaCarga],
   )
   const derivedLabelCode = useMemo(
     () => getDefaultLabelCodeForProduct(productName),
@@ -2174,11 +2308,14 @@ function LabelsDashboard({
     'flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold transition'
 
   const resetForm = useCallback(() => {
+    const today = getTodayIsoDate()
+    const nextLot = generateLotValue(labelType, today)
     setFile(null)
     setLocalError(null)
-    setManualLote(generateLotValue())
-    setManualFechaCarga(getTodayIsoDate())
-    setManualCodigoR('')
+    setManualLote(nextLot)
+    setManualFechaCarga(today)
+    const defaultCodigoR = labelType === 'aldi' ? getLastAldiTrace() : ''
+    setManualCodigoR(defaultCodigoR)
     setCodigoRManuallyEdited(false)
     setManualCodigoCoc(COMPANY_DEFAULT_CODIGO_COC)
     setCodigoCocManuallyEdited(false)
@@ -2191,7 +2328,7 @@ function LabelsDashboard({
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-  }, [productName])
+  }, [labelType, productName])
 
   useEffect(() => {
     if (successMessage && !uploading) {
@@ -2206,18 +2343,24 @@ function LabelsDashboard({
       setFile(nextFile)
       if (nextFile) {
         setLocalError(null)
-        const generatedLot = generateLotValue()
+        const generatedLot = generateLotValue(labelType, manualFechaCarga)
         setManualLote(generatedLot)
       }
     },
-    [setManualLote, setLocalError],
+    [labelType, manualFechaCarga, setManualLote, setLocalError],
   )
 
-  const handleFechaChange = useCallback((value: string) => {
-    setLocalError(null)
-    setManualFechaCarga(value)
-    setCodigoRManuallyEdited(false)
-  }, [])
+  const handleFechaChange = useCallback(
+    (value: string) => {
+      setLocalError(null)
+      setManualFechaCarga(value)
+      setCodigoRManuallyEdited(false)
+      if (labelType === 'aldi') {
+        setManualLote(buildAldiLot(value))
+      }
+    },
+    [labelType],
+  )
 
   const handleCodigoRInputChange = useCallback((value: string) => {
     setLocalError(null)
@@ -2263,7 +2406,7 @@ function LabelsDashboard({
       `Fecha: ${manualFechaCarga.trim() || 'Sin fecha'}`,
       `Código de barras: ${manualLabelCode.trim() || 'Sin dato'}`,
       `Código COC: ${manualCodigoCoc.trim() || 'Sin dato'}`,
-      `Código R: ${manualCodigoR.trim() || 'Sin dato'}`,
+      `${labelType === 'mercadona' ? 'Código R' : 'Código E'}: ${manualCodigoR.trim() || 'Sin dato'}`,
       `Lote: ${manualLote.trim() || 'Sin lote'}`,
     ].join('\n')
     const normalizedLotForFile =
@@ -2299,9 +2442,9 @@ function LabelsDashboard({
 
       const meta: LabelUploadMeta = {}
 
-      const normalizedLot = normalizeLot(manualLote) ?? generateLotValue()
+      const normalizedLot = resolveLotForLabelType(manualLote, labelType, manualFechaCarga)
       meta.lote = normalizedLot
-      if (!normalizeLot(manualLote)) {
+      if (manualLote !== normalizedLot) {
         setManualLote(normalizedLot)
       }
 
@@ -2309,11 +2452,15 @@ function LabelsDashboard({
         meta.fechaEnvasado = manualFechaCarga.trim()
         meta.fechaCarga = manualFechaCarga.trim()
       }
-      if (manualCodigoR.trim().length > 0) {
-        meta.codigoR = manualCodigoR.trim()
-      }
       if (manualCodigoCoc.trim().length > 0) {
         meta.codigoCoc = manualCodigoCoc.trim()
+      }
+      const normalizedCodigoR = resolveCodigoRForLabelType(labelType, manualCodigoR, manualFechaCarga)
+      if (normalizedCodigoR) {
+        meta.codigoR = normalizedCodigoR
+        if (manualCodigoR !== normalizedCodigoR) {
+          setManualCodigoR(normalizedCodigoR)
+        }
       }
       if (manualLabelCode.trim().length > 0) {
         meta.labelCode = manualLabelCode.trim()
@@ -2326,7 +2473,14 @@ function LabelsDashboard({
       }
 
       await onUpload(uploadFile, meta)
-      persistLotSequence(normalizedLot)
+      if (labelType === 'aldi') {
+        if (normalizedCodigoR) {
+          const nextTrace = incrementAldiTrace(normalizedCodigoR)
+          persistAldiTrace(nextTrace)
+        }
+      } else {
+        persistLotSequence(normalizedLot)
+      }
     },
     [
       file,
@@ -2608,7 +2762,7 @@ function LabelsDashboard({
             label: 'Lote',
             type: 'text',
             value: manualLote,
-            placeholder: LOT_SEQUENCE_DEFAULT,
+            placeholder: labelType === 'aldi' ? '48/25' : LOT_SEQUENCE_DEFAULT,
             onChange: handleLoteChange,
           },
           {
@@ -2639,11 +2793,17 @@ function LabelsDashboard({
           },
           {
             name: 'codigoR',
-            label: 'Código R',
+            label: labelType === 'mercadona' ? 'Código R' : 'Código E',
             type: 'text',
             value: manualCodigoR,
-            placeholder: derivedCodigoR || 'R-15',
-            helper: 'Se genera automáticamente sumando 4 días (5 si la fecha cae en sábado).',
+            placeholder:
+              labelType === 'mercadona'
+                ? derivedCodigoR || 'R-15'
+                : derivedCodigoR || 'E35578',
+            helper:
+              labelType === 'aldi'
+                ? 'Código de trazabilidad Aldi (E + 5 dígitos).'
+                : 'Se genera automáticamente sumando 4 días (5 si la fecha cae en sábado).',
             onChange: handleCodigoRInputChange,
           },
         ]
