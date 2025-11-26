@@ -1270,11 +1270,7 @@ async function renderAldiLabel({
   }
 
   const leftLines = isAcelga
-    ? [
-        `${loteAldi}`,
-        `${trazabilidad}`,
-        `${weight}`,
-      ]
+    ? []
     : [
         `CATEGORIA: I    VARIEDAD: ${formatVarietyText(fields.variety)}`,
         'ORIGEN: ESPAÑA/CANARIAS',
@@ -1297,14 +1293,44 @@ async function renderAldiLabel({
     })
   })
 
-  const weightY = baseY - lineSpacing * 2 + bodySize / 2
-  page.drawText(weight, {
-    x: pageWidth * 0.76,
-    y: weightY,
-    size: bodySize,
-    font: labelFont,
-    color: DEFAULT_FONT_COLOR,
-  })
+  if (isAcelga) {
+    const loteY = pageHeight * 0.34
+    const codeY = loteY - bodySize * 1.5
+    const pesoY = loteY - bodySize * 3
+    const leftX = pageWidth * 0.18
+    const rightX = pageWidth * 0.72
+
+    page.drawText(loteAldi, {
+      x: leftX,
+      y: loteY,
+      size: bodySize + 2,
+      font: labelFont,
+      color: DEFAULT_FONT_COLOR,
+    })
+    page.drawText(trazabilidad, {
+      x: leftX,
+      y: codeY,
+      size: bodySize + 2,
+      font: labelFont,
+      color: DEFAULT_FONT_COLOR,
+    })
+    page.drawText(weight, {
+      x: rightX,
+      y: pesoY,
+      size: bodySize + 2,
+      font: labelFont,
+      color: DEFAULT_FONT_COLOR,
+    })
+  } else {
+    const weightY = baseY - lineSpacing * 2 + bodySize / 2
+    page.drawText(weight, {
+      x: pageWidth * 0.76,
+      y: weightY,
+      size: bodySize,
+      font: labelFont,
+      color: DEFAULT_FONT_COLOR,
+    })
+  }
 
   if (!isAcelga) {
     const barcodeValue = sanitizeBarcodeValue(fields.labelCode)
