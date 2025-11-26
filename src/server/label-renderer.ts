@@ -1271,9 +1271,9 @@ async function renderAldiLabel({
 
   const leftLines = isAcelga
     ? [
-        `LOTE ALDI: ${loteAldi}`,
-        `CÓDIGO E: ${trazabilidad}`,
-        `PESO: ${weight}`,
+        `${loteAldi}`,
+        `${trazabilidad}`,
+        `${weight}`,
       ]
     : [
         `CATEGORIA: I    VARIEDAD: ${formatVarietyText(fields.variety)}`,
@@ -1464,8 +1464,8 @@ function buildAldiFallbackLines(fields: LabelRenderFields): WhiteLabelLine[] {
     'SIN CODIGO'
   const peso = formatWeightText(fields.weight)
   return [
-    `LOTE ALDI: ${lote}`,
-    `CÓDIGO E: ${codigoE}`,
-    `PESO: ${peso}`,
+    { text: `LOTE ALDI: ${lote}` },
+    { text: `CÓDIGO E: ${codigoE}` },
+    { text: `PESO: ${peso}` },
   ]
 }
