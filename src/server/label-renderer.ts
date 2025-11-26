@@ -1253,9 +1253,15 @@ async function renderAldiLabel({
     : baseWithPrefix
   const orderSuffix = Date.now().toString().slice(-2)
   const outputFileName = `${aldiBaseSeed}-${orderSuffix}-etiqueta.pdf`
-  const productFontSize = Math.max(12, Math.min(16, pageWidth * 0.012))
-  const bodySize = Math.max(6, Math.min(8, pageWidth * 0.0055))
-  const smallSize = Math.max(5, Math.min(7, pageWidth * 0.0045))
+  const productFontSize = isAcelga
+    ? Math.max(10, Math.min(13, pageWidth * 0.01))
+    : Math.max(12, Math.min(16, pageWidth * 0.012))
+  const bodySize = isAcelga
+    ? Math.max(4.5, Math.min(5.5, pageWidth * 0.0038))
+    : Math.max(6, Math.min(8, pageWidth * 0.0055))
+  const smallSize = isAcelga
+    ? Math.max(3.5, Math.min(4.5, pageWidth * 0.003))
+    : Math.max(5, Math.min(7, pageWidth * 0.0045))
   const lineSpacing = bodySize + 1.5
   const baseY = Math.max(pageHeight * 0.8, pageHeight - 120)
 
@@ -1294,30 +1300,31 @@ async function renderAldiLabel({
   })
 
   if (isAcelga) {
-    const loteY = pageHeight * 0.34
-    const codeY = loteY - bodySize * 1.5
-    const pesoY = loteY - bodySize * 3
-    const leftX = pageWidth * 0.18
-    const rightX = pageWidth * 0.72
+    const loteY = pageHeight * 0.28
+    const pesoY = loteY + bodySize * 1.5
+    const leftX = pageWidth * 0.49
+    const rightX = pageWidth * 0.66
+    const codeX = mmToPageX(14, pageWidth)
+    const codeY = pageHeight * 0.28
 
     page.drawText(loteAldi, {
       x: leftX,
       y: loteY,
-      size: bodySize + 2,
+      size: bodySize + 1,
       font: labelFont,
       color: DEFAULT_FONT_COLOR,
     })
     page.drawText(trazabilidad, {
-      x: leftX,
+      x: codeX,
       y: codeY,
-      size: bodySize + 2,
+      size: bodySize + 1,
       font: labelFont,
       color: DEFAULT_FONT_COLOR,
     })
     page.drawText(weight, {
       x: rightX,
       y: pesoY,
-      size: bodySize + 2,
+      size: bodySize + 1,
       font: labelFont,
       color: DEFAULT_FONT_COLOR,
     })
