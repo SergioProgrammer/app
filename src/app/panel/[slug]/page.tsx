@@ -146,6 +146,7 @@ interface UploadedFileRecord {
   id: string
   name: string
   path: string
+  storageBucket?: string | null
   size?: number | null
   createdAt?: string | null
   updatedAt?: string | null
@@ -1012,6 +1013,10 @@ const nonLabelPlans = useMemo(
                 : null
             const publicUrl = file.webViewLink ?? file.webContentLink ?? null
             const mimeType = file.mimeType ?? null
+            const storageBucket =
+              typeof (file as { bucket?: unknown }).bucket === 'string'
+                ? ((file as { bucket?: string }).bucket ?? null)
+                : null
 
             let destination: string | null = null
             let notes: string | null = null
@@ -1104,7 +1109,7 @@ const nonLabelPlans = useMemo(
                         labelWebContentLink:
                           typeof automationPayload.labelWebContentLink === 'string'
                             ? automationPayload.labelWebContentLink
-                            : null,
+                          : null,
                         raw: automationPayload.raw,
                       }
 
@@ -1153,13 +1158,22 @@ const nonLabelPlans = useMemo(
                         }
                       }
                     }
-                    }
+                  }
                   if (typeof parsed.generatedFromFileId === 'string') {
                     generatedFromFileId = parsed.generatedFromFileId
                   }
                 }
               } catch {
                 // ignore malformed description payloads
+              }
+            }
+            if (!automation && publicUrl) {
+              automation = {
+                status: 'completed',
+                processedAt: file.updatedAt ?? file.createdAt ?? new Date().toISOString(),
+                fields: {},
+                labelWebViewLink: publicUrl,
+                labelWebContentLink: publicUrl,
               }
             }
 
@@ -1172,6 +1186,7 @@ const nonLabelPlans = useMemo(
               id,
               name,
               path,
+              storageBucket,
               size,
               createdAt: file.createdAt ?? null,
               updatedAt: file.updatedAt ?? null,
@@ -1205,6 +1220,15 @@ const nonLabelPlans = useMemo(
                 record.labelType = normalizeLabelType(automationLabelType)
               }
             }
+            if (
+              !record.labelType &&
+              storageBucket === SUPABASE_ETIQUETAS_BUCKET &&
+              typeof name === 'string' &&
+              name.toLowerCase().includes('pedido-manual') &&
+              name.toLowerCase().includes('etiqueta')
+            ) {
+              record.labelType = 'lidl'
+            }
             if (!record.lotValue) {
               const automationLot = automation?.fields?.lote
               if (typeof automationLot === 'string' && automationLot.trim().length > 0) {
@@ -1213,6 +1237,16 @@ const nonLabelPlans = useMemo(
             }
 
             return record
+          })
+          .sort((a, b) => {
+            const parse = (value?: string | null) => {
+              if (!value) return 0
+              const time = new Date(value).getTime()
+              return Number.isNaN(time) ? 0 : time
+            }
+            const left = parse(a.updatedAt) || parse(a.createdAt)
+            const right = parse(b.updatedAt) || parse(b.createdAt)
+            return right - left
           })
 
         const filtered = mapped.filter((record) => !record.generatedFromFileId)
@@ -1655,7 +1689,7 @@ const nonLabelPlans = useMemo(
         const response = await fetch('/api/storage/uploads', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileId: file.id }),
+          body: JSON.stringify({ fileId: file.id, bucket: file.storageBucket }),
         })
 
         if (!response.ok) {
@@ -2738,6 +2772,38 @@ function LabelsDashboard({
             })
           }
           return lidlFields
+        }
+        if (
+          labelType === 'aldi' &&
+          productName.trim().toLowerCase() === 'hojas frescas acelga'
+        ) {
+          return [
+            {
+              name: 'lote',
+              label: 'Lote',
+              type: 'text',
+              value: manualLote,
+              placeholder: '48/25',
+              onChange: handleLoteChange,
+            },
+            {
+              name: 'peso',
+              label: 'Peso',
+              type: 'text',
+              value: manualWeight,
+              placeholder: 'Ej. 40gr',
+              onChange: handleWeightChange,
+            },
+            {
+              name: 'codigoR',
+              label: 'Código E',
+              type: 'text',
+              value: manualCodigoR,
+              placeholder: derivedCodigoR || 'E35578',
+              helper: 'Código de trazabilidad Aldi (E + 5 dígitos).',
+              onChange: handleCodigoRInputChange,
+            },
+          ]
         }
         return [
           {
@@ -4357,12 +4423,16 @@ function deriveLidlCajaUrls(
   const caja2Path = folder ? `${folder}/${baseSeed}-caja2-etiqueta.pdf` : `${baseSeed}-caja2-etiqueta.pdf`
   const caja1 = buildPublicLabelUrlWithBucket(caja1Path, SUPABASE_LIDL_WEIGHT_BUCKET)
   const caja2 = buildPublicLabelUrlWithBucket(caja2Path, SUPABASE_LIDL_DETAIL_BUCKET)
-  const isLikelyLidl = /^pedido-manual-[a-z0-9]+$/i.test(baseSeed)
+  const isLikelyLidl = /^pedido-manual-[a-z0-9-]+$/i.test(baseSeed)
   return { caja1: caja1 ?? undefined, caja2: caja2 ?? undefined, isLikelyLidl }
 }
 
 function buildLabelStoragePath(file: UploadedFileRecord): string | null {
   if (!file) return null
+  if (file.storageBucket && file.storageBucket === SUPABASE_ETIQUETAS_BUCKET) {
+    const path = file.path || file.name
+    return typeof path === 'string' && path.length > 0 ? path : null
+  }
   const automationFilePath = file.automation?.labelFilePath ?? null
   if (automationFilePath) {
     return automationFilePath

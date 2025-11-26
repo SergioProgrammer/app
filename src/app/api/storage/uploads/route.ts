@@ -10,11 +10,13 @@ import {
   type ManualLabelFields,
 } from '@/server/label-automation'
 import { extractFechaCargaFromImage } from '@/server/label-ocr'
+import { normalizeLabelType } from '@/lib/product-selection'
 
 export const runtime = 'nodejs'
 
 const ALBARANES_BUCKET = process.env.SUPABASE_ALBARANES_BUCKET ?? 'albaranes_finales'
 const ETIQUETAS_BUCKET = process.env.SUPABASE_ETIQUETAS_BUCKET ?? 'etiquetas_final'
+const MANUAL_ORDER_FILE_PREFIX = 'pedido-manual-'
 
 function normalizeFolderPath(folderId: string | null) {
   if (!folderId) return null
@@ -44,8 +46,15 @@ function getOptionalString(value: FormDataEntryValue | null): string | null {
 export async function GET(request: NextRequest) {
   try {
     const folderPath = getFolderPath(request)
-    const files = await listFilesFromBucket(ALBARANES_BUCKET, folderPath)
-    return NextResponse.json({ files })
+    const [baseFiles, labelFiles] = await Promise.all([
+      listFilesFromBucket(ALBARANES_BUCKET, folderPath),
+      listFilesFromBucket(ETIQUETAS_BUCKET, folderPath).catch((error) => {
+        console.error('[storage/uploads] Error listing etiquetas bucket:', error)
+        return []
+      }),
+    ])
+    const combined = [...baseFiles, ...labelFiles]
+    return NextResponse.json({ files: combined })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error al consultar archivos.'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -77,10 +86,17 @@ export async function POST(request: NextRequest) {
     const manualWeight = formData.get('manualWeight')
     const manualLabelType = formData.get('labelType')
     const manualProductName = formData.get('productName')
-    const manualVariety = formData.get('variety')
-    const userEmailValue = formData.get('userEmail')
-    const fechaEnvasadoValue = getOptionalString(manualFechaEnvasado)
-    const fechaCargaValue = getOptionalString(manualFechaCarga)
+  const manualVariety = formData.get('variety')
+  const userEmailValue = formData.get('userEmail')
+  const fechaEnvasadoValue = getOptionalString(manualFechaEnvasado)
+  const fechaCargaValue = getOptionalString(manualFechaCarga)
+  const manualLabelTypeValue = getOptionalString(manualLabelType)
+  const normalizedLabelType = normalizeLabelType(manualLabelTypeValue)
+  const isManualPlaceholder =
+    typeof file.name === 'string' &&
+    file.name.startsWith(MANUAL_ORDER_FILE_PREFIX) &&
+    file.type === 'text/plain'
+  const skipSourceUpload = isManualPlaceholder
 
     let detectedFechaCarga: string | null = null
     try {
@@ -90,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     const manualFields: ManualLabelFields = {
-      labelType: getOptionalString(manualLabelType),
+      labelType: manualLabelTypeValue,
       productName: getOptionalString(manualProductName),
       variety: getOptionalString(manualVariety),
       lote: getOptionalString(manualLote),
@@ -176,13 +192,15 @@ export async function POST(request: NextRequest) {
         automation: automationResult.automation,
       })
 
-      await uploadFileToBucket({
-        bucket: ALBARANES_BUCKET,
-        path: targetPath,
-        buffer,
-        contentType: file.type || 'application/octet-stream',
-        metadata: descriptionPayload ? { description: descriptionPayload } : undefined,
-      })
+      if (!skipSourceUpload) {
+        await uploadFileToBucket({
+          bucket: ALBARANES_BUCKET,
+          path: targetPath,
+          buffer,
+          contentType: file.type || 'application/octet-stream',
+          metadata: descriptionPayload ? { description: descriptionPayload } : undefined,
+        })
+      }
 
       automationError =
         automationResult.automation.status === 'error'
@@ -208,13 +226,15 @@ export async function POST(request: NextRequest) {
         automation,
       })
 
-      await uploadFileToBucket({
-        bucket: ALBARANES_BUCKET,
-        path: targetPath,
-        buffer,
-        contentType: file.type || 'application/octet-stream',
-        metadata: descriptionPayload ? { description: descriptionPayload } : undefined,
-      })
+      if (!skipSourceUpload) {
+        await uploadFileToBucket({
+          bucket: ALBARANES_BUCKET,
+          path: targetPath,
+          buffer,
+          contentType: file.type || 'application/octet-stream',
+          metadata: descriptionPayload ? { description: descriptionPayload } : undefined,
+        })
+      }
     }
 
     return NextResponse.json({ automation, automationError })
@@ -229,12 +249,15 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { fileId } = await request.json()
+    const { fileId, bucket } = await request.json()
     if (!fileId || typeof fileId !== 'string') {
       return NextResponse.json({ error: 'Falta el identificador del archivo.' }, { status: 400 })
     }
 
-    await deleteFileFromBucket(ALBARANES_BUCKET, fileId)
+    const targetBucket =
+      typeof bucket === 'string' && bucket.trim().length > 0 ? bucket.trim() : ALBARANES_BUCKET
+
+    await deleteFileFromBucket(targetBucket, fileId)
     return NextResponse.json({ success: true })
   } catch (error) {
     const message =

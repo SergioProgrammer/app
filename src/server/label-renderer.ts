@@ -175,7 +175,15 @@ export async function renderLabelPdf({
   options?: { hideCodigoR?: boolean; variantSuffix?: string }
 }): Promise<LabelRenderResult> {
   if (isAldiLabel(fields.labelType)) {
-    return renderAldiLabel({ fields, fileName, templatePath })
+    try {
+      return await renderAldiLabel({ fields, fileName, templatePath })
+    } catch (error) {
+      console.error('[label-renderer] Aldi render failed, using fallback white label:', error)
+      return renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
+        variantSuffix: 'aldi-fallback',
+        defaultAlign: 'left',
+      })
+    }
   }
   if (isWhiteLabelVariant(fields.labelType)) {
     return renderWhiteLabelDocument(fields, fileName, fields.labelType, {
@@ -1078,6 +1086,14 @@ function buildLabelFileName(originalFileName: string, variantSuffix?: string): s
   return `${sanitized}${suffix}-etiqueta.pdf`
 }
 
+function normalizeTemplateKey(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+}
+
 function normalizeAldiTraceValue(value?: string | null): string | null {
   if (typeof value !== 'string') return null
   const digits = value.replace(/\D/g, '')
@@ -1108,11 +1124,25 @@ function isAldiLabel(value?: LabelType | null): boolean {
   return (value ?? '').toLowerCase() === 'aldi'
 }
 
-function resolveAldiTemplatePath(customPath?: string | null): string | undefined {
+function resolveAldiTemplatePath(
+  customPath?: string | null,
+  productName?: string | null,
+): string | undefined {
+  const productCandidates: string[] = []
+  if (productName) {
+    const key = normalizeTemplateKey(productName)
+    const suffixes = ['-aldi.pdf', '_aldi.pdf', '-aldi-template.pdf', '-aldi_etiqueta.pdf', 'aldi.pdf']
+    for (const suffix of suffixes) {
+      productCandidates.push(path.join('public', `${key}${suffix}`))
+    }
+    if (key.includes('acelga')) {
+      productCandidates.unshift(path.join('public', 'acelgasaldi.pdf'))
+    }
+  }
   const candidates = [
     customPath ?? null,
+    ...productCandidates,
     ...ALDI_TEMPLATE_CANDIDATES,
-    ...DEFAULT_TEMPLATE_CANDIDATES,
   ].filter((value): value is string => typeof value === 'string' && value.length > 0)
 
   for (const candidate of candidates) {
@@ -1134,8 +1164,28 @@ async function renderAldiLabel({
   fileName: string
   templatePath?: string
 }): Promise<LabelRenderResult> {
-  const preferredTemplate = resolveAldiTemplatePath(templatePath)
-  const { buffer: templateBuffer, resolvedPath } = await loadTemplate(preferredTemplate)
+  const preferredTemplate = resolveAldiTemplatePath(templatePath, fields.productName)
+  let templateBuffer: Buffer
+  let resolvedPath: string
+
+  try {
+    if (!preferredTemplate) {
+      throw new Error('No encontramos plantilla específica para Aldi.')
+    }
+    resolvedPath = path.isAbsolute(preferredTemplate)
+      ? preferredTemplate
+      : path.join(process.cwd(), preferredTemplate)
+    templateBuffer = await readFile(resolvedPath)
+  } catch (error) {
+    console.error('[label-renderer] Aldi template load failed, using fallback white label:', error)
+    const fallbackLines = buildAldiFallbackLines(fields)
+    return renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
+      lines: fallbackLines,
+      variantSuffix: 'aldi-fallback',
+      defaultAlign: 'left',
+    })
+  }
+
   const templateExtension = path.extname(resolvedPath).toLowerCase()
   const pdfDoc = await PDFDocument.create()
   const labelFont = await resolveLabelFont(pdfDoc)
@@ -1189,6 +1239,8 @@ async function renderAldiLabel({
     normalizeFieldValue(fields.codigoCoc, { preserveFormat: true }) ??
     WHITE_LABEL_ORIGIN_LINE.split('CoC:').pop()?.trim() ??
     ''
+  const normalizedProductKey = normalizeTemplateKey(fields.productName ?? '')
+  const isAcelga = normalizedProductKey.includes('acelga')
   const lotSeed = normalizeAldiLotValue(fields.lote)
   const sanitizeBase = (value: string) =>
     value
@@ -1200,12 +1252,13 @@ async function renderAldiLabel({
   const aldiBaseSeed = lotSeed
     ? `pedido-manual-${lotSeed.replace('/', '-')}`
     : baseWithPrefix
-  const outputFileName = `${aldiBaseSeed}-etiqueta.pdf`
-  const productFontSize = Math.max(22, Math.min(32, pageWidth * 0.02))
-  const bodySize = Math.max(10, Math.min(13, pageWidth * 0.011))
-  const smallSize = Math.max(9, Math.min(12, pageWidth * 0.009))
-  const lineSpacing = bodySize + 5
-  const baseY = Math.max(pageHeight * 0.35, pageHeight - 260)
+  const orderSuffix = Date.now().toString().slice(-2)
+  const outputFileName = `${aldiBaseSeed}-${orderSuffix}-etiqueta.pdf`
+  const productFontSize = Math.max(12, Math.min(16, pageWidth * 0.012))
+  const bodySize = Math.max(6, Math.min(8, pageWidth * 0.0055))
+  const smallSize = Math.max(5, Math.min(7, pageWidth * 0.0045))
+  const lineSpacing = bodySize + 1.5
+  const baseY = Math.max(pageHeight * 0.8, pageHeight - 120)
 
   page.drawText(product, {
     x: marginX,
@@ -1215,16 +1268,22 @@ async function renderAldiLabel({
     color: DEFAULT_FONT_COLOR,
   })
 
-  const leftLines = [
-    `CATEGORIA: I    VARIEDAD: ${variety}`,
-    'ORIGEN: ESPAÑA/CANARIAS',
-    `TRAZABILIDAD: ${trazabilidad}    LOTE ALDI: ${loteAldi}`,
-    'ENVASADO POR: MONTAÑA ROJA HERBS SAT536/05',
-    'C/CONSTITUCION 53 ARICO',
-    'ART: 6007576    OPFH:1168',
-    'GGN: 4063061564405',
-    `CoC: ${coc}`,
-  ]
+  const leftLines = isAcelga
+    ? [
+        `LOTE ALDI: ${loteAldi}`,
+        `CÓDIGO E: ${trazabilidad}`,
+        `PESO: ${weight}`,
+      ]
+    : [
+        `CATEGORIA: I    VARIEDAD: ${variety}`,
+        'ORIGEN: ESPAÑA/CANARIAS',
+        `TRAZABILIDAD: ${trazabilidad}    LOTE ALDI: ${loteAldi}`,
+        'ENVASADO POR: MONTAÑA ROJA HERBS SAT536/05',
+        'C/CONSTITUCION 53 ARICO',
+        'ART: 6007576    OPFH:1168',
+        'GGN: 4063061564405',
+        `CoC: ${coc}`,
+      ]
 
   leftLines.forEach((text, index) => {
     page.drawText(text, {
@@ -1250,9 +1309,9 @@ async function renderAldiLabel({
   if (barcodeValue) {
     drawEan13Barcode(page, barcodeValue, {
       x: pageWidth * 0.52,
-      y: pageHeight * 0.08,
-      width: pageWidth * 0.4,
-      height: pageHeight * 0.17,
+      y: pageHeight * 0.04,
+      width: pageWidth * 0.34,
+      height: pageHeight * 0.1,
       font: labelFont,
     })
   }
@@ -1391,4 +1450,19 @@ function drawEan13Barcode(
     font: options.font,
     color: DEFAULT_FONT_COLOR,
   })
+}
+
+function buildAldiFallbackLines(fields: LabelRenderFields): WhiteLabelLine[] {
+  const lote = normalizeAldiLotValue(fields.lote) ?? formatLotText(fields.lote)
+  const codigoE =
+    normalizeAldiTraceValue(fields.codigoR) ??
+    normalizeAldiTraceValue(fields.lote) ??
+    formatLotText(fields.codigoR) ??
+    'SIN CODIGO'
+  const peso = formatWeightText(fields.weight)
+  return [
+    `LOTE ALDI: ${lote}`,
+    `CÓDIGO E: ${codigoE}`,
+    `PESO: ${peso}`,
+  ]
 }

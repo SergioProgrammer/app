@@ -4,6 +4,7 @@ export interface StorageFileDescriptor {
   id: string
   name: string
   path: string
+  bucket?: string | null
   size?: number | null
   createdAt?: string | null
   updatedAt?: string | null
@@ -112,7 +113,7 @@ export async function listFilesFromBucket(bucket: string, folder?: string | null
     offset += batch.length
   }
 
-  const sortableEntries = collected.filter((entry): entry is SupabaseStorageObject => Boolean(entry?.id))
+  const sortableEntries = collected.filter((entry): entry is SupabaseStorageObject => Boolean(entry?.name))
   sortableEntries.sort((a, b) => {
     const left = new Date(a.updated_at ?? a.created_at ?? 0).getTime()
     const right = new Date(b.updated_at ?? b.created_at ?? 0).getTime()
@@ -186,6 +187,7 @@ function buildFallbackDescriptor(
 
   return {
     id: normalizedPath,
+    bucket,
     name: fileName,
     path: normalizedPath,
     size,
@@ -214,6 +216,7 @@ function mapStorageObject(bucket: string, folder: string, entry: SupabaseStorage
 
   return {
     id: filePath,
+    bucket,
     name: entry.name,
     path: filePath,
     size,
