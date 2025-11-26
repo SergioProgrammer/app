@@ -1227,7 +1227,6 @@ async function renderAldiLabel({
 
   const marginX = pageWidth * 0.08
   const product = formatProductText(fields.productName)
-  const variety = formatVarietyText(fields.variety)
   const weight = formatWeightText(fields.weight)
   const trazabilidad =
     normalizeAldiTraceValue(fields.codigoR) ??
@@ -1260,13 +1259,15 @@ async function renderAldiLabel({
   const lineSpacing = bodySize + 1.5
   const baseY = Math.max(pageHeight * 0.8, pageHeight - 120)
 
-  page.drawText(product, {
-    x: marginX,
-    y: baseY,
-    size: productFontSize,
-    font: labelFont,
-    color: DEFAULT_FONT_COLOR,
-  })
+  if (!isAcelga) {
+    page.drawText(product, {
+      x: marginX,
+      y: baseY,
+      size: productFontSize,
+      font: labelFont,
+      color: DEFAULT_FONT_COLOR,
+    })
+  }
 
   const leftLines = isAcelga
     ? [
@@ -1275,7 +1276,7 @@ async function renderAldiLabel({
         `PESO: ${weight}`,
       ]
     : [
-        `CATEGORIA: I    VARIEDAD: ${variety}`,
+        `CATEGORIA: I    VARIEDAD: ${formatVarietyText(fields.variety)}`,
         'ORIGEN: ESPAÑA/CANARIAS',
         `TRAZABILIDAD: ${trazabilidad}    LOTE ALDI: ${loteAldi}`,
         'ENVASADO POR: MONTAÑA ROJA HERBS SAT536/05',
@@ -1305,15 +1306,17 @@ async function renderAldiLabel({
     color: DEFAULT_FONT_COLOR,
   })
 
-  const barcodeValue = sanitizeBarcodeValue(fields.labelCode)
-  if (barcodeValue) {
-    drawEan13Barcode(page, barcodeValue, {
-      x: pageWidth * 0.52,
-      y: pageHeight * 0.04,
-      width: pageWidth * 0.34,
-      height: pageHeight * 0.1,
-      font: labelFont,
-    })
+  if (!isAcelga) {
+    const barcodeValue = sanitizeBarcodeValue(fields.labelCode)
+    if (barcodeValue) {
+      drawEan13Barcode(page, barcodeValue, {
+        x: pageWidth * 0.52,
+        y: pageHeight * 0.04,
+        width: pageWidth * 0.34,
+        height: pageHeight * 0.1,
+        font: labelFont,
+      })
+    }
   }
 
   const pdfBytes = await pdfDoc.save()

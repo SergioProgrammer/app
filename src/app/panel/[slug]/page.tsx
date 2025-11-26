@@ -2123,6 +2123,7 @@ function LabelsDashboard({
   const [labelCodeManuallyEdited, setLabelCodeManuallyEdited] = useState(false)
   const [activeStep, setActiveStep] = useState(1)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const hasResetAfterSuccessRef = useRef(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2364,9 +2365,13 @@ function LabelsDashboard({
   }, [labelType, productName])
 
   useEffect(() => {
-    if (successMessage && !uploading) {
+    if (successMessage && !uploading && !hasResetAfterSuccessRef.current) {
+      hasResetAfterSuccessRef.current = true
       resetForm()
       setActiveStep(1)
+    }
+    if (!successMessage) {
+      hasResetAfterSuccessRef.current = false
     }
   }, [resetForm, successMessage, uploading])
 
