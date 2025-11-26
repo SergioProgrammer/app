@@ -2114,7 +2114,7 @@ function LabelsDashboard({
   const [manualVariety, setManualVariety] = useState(DEFAULT_VARIETY)
   const [codigoRManuallyEdited, setCodigoRManuallyEdited] = useState(false)
   const [labelType, setLabelType] = useState<LabelType>(DEFAULT_LABEL_TYPE)
-  const [productName, setProductName] = useState(INITIAL_PRODUCT_NAME)
+  const [productName, setProductName] = useState('')
   const [manualCodigoCoc, setManualCodigoCoc] = useState(() => COMPANY_DEFAULT_CODIGO_COC)
   const [codigoCocManuallyEdited, setCodigoCocManuallyEdited] = useState(false)
   const [manualLabelCode, setManualLabelCode] = useState(() =>
@@ -2178,8 +2178,10 @@ function LabelsDashboard({
     const applyStoredSelection = (rawValue: string | null) => {
       const stored = parseStoredProductSelection(rawValue)
       if (stored) {
-        setLabelType(stored.labelType)
-        setProductName(stored.productName)
+        const nextLabelType = stored.labelType
+        setLabelType(nextLabelType)
+        const isMercadona = nextLabelType === 'mercadona'
+        setProductName(isMercadona ? LABEL_TYPE_PRODUCTS[nextLabelType][0] ?? DEFAULT_PRODUCT : '')
       }
     }
 
@@ -2201,15 +2203,12 @@ function LabelsDashboard({
     setProductName((current) => {
       const options = LABEL_TYPE_PRODUCTS[labelType]
       if (allowFreeText) {
-        if (current && current.trim().length > 0) {
-          return current
-        }
-        return options[0] ?? DEFAULT_PRODUCT
-      }
-      if (options.includes(current)) {
         return current
       }
-      return options[0] ?? DEFAULT_PRODUCT
+      if (labelType === 'mercadona') {
+        return options[0] ?? DEFAULT_PRODUCT
+      }
+      return ''
     })
   }, [labelType])
 
@@ -2585,14 +2584,10 @@ function LabelsDashboard({
   )
 
   useEffect(() => {
-    const firstIncomplete = stepsInfo.find((step) => !step.completed)
-    if (firstIncomplete && activeStep > firstIncomplete.id) {
-      setActiveStep(firstIncomplete.id)
-    }
-    if (!firstIncomplete && activeStep > summaryStep) {
+    if (activeStep > summaryStep) {
       setActiveStep(summaryStep)
     }
-  }, [activeStep, stepsInfo, summaryStep])
+  }, [activeStep, summaryStep])
 
   const handleViewHistory = useCallback(() => {
     const targetId = historyDisabled ? 'archivos-subidos' : 'historial-etiquetas'
