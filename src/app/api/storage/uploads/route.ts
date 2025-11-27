@@ -10,7 +10,6 @@ import {
   type ManualLabelFields,
 } from '@/server/label-automation'
 import { extractFechaCargaFromImage } from '@/server/label-ocr'
-import { normalizeLabelType } from '@/lib/product-selection'
 
 export const runtime = 'nodejs'
 
@@ -90,8 +89,7 @@ export async function POST(request: NextRequest) {
   const userEmailValue = formData.get('userEmail')
   const fechaEnvasadoValue = getOptionalString(manualFechaEnvasado)
   const fechaCargaValue = getOptionalString(manualFechaCarga)
-  const manualLabelTypeValue = getOptionalString(manualLabelType)
-  const normalizedLabelType = normalizeLabelType(manualLabelTypeValue)
+    const manualLabelTypeValue = getOptionalString(manualLabelType)
   const isManualPlaceholder =
     typeof file.name === 'string' &&
     file.name.startsWith(MANUAL_ORDER_FILE_PREFIX) &&

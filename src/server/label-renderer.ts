@@ -47,8 +47,6 @@ const ALDI_TEMPLATE_CANDIDATES = [
 ]
 const ALDI_TRACE_PREFIX = 'E'
 const ALDI_TRACE_LENGTH = 5
-const MERCADONA_TRACE_PREFIX = 'E'
-const MERCADONA_TRACE_LENGTH = 5
 const DEFAULT_FONT_SIZE = 55
 const DEFAULT_FONT_COLOR = rgb(0, 0, 0)
 const DEFAULT_FONT_NAME = StandardFonts.Helvetica
@@ -643,54 +641,11 @@ function formatWeightText(value?: string | null): string {
   return '40gr'
 }
 
-function buildLidlSummaryLines(fields: LabelRenderFields): WhiteLabelLine[] {
-  const config = WHITE_LABEL_CONFIGS['blanca-grande']
-  const product = formatProductText(fields.productName)
-  const weight = formatWeightText(fields.weight)
-  return [
-    { text: product, size: config.titleSize },
-    { text: `Peso unidad: ${weight}` },
-  ]
-}
-
-function buildLidlDetailLines(fields: LabelRenderFields): WhiteLabelLine[] {
-  const product = formatProductText(fields.productName)
-  const weight = formatWeightText(fields.weight)
-  const variety = formatVarietyText(fields.variety)
-  const date = formatWhiteLabelDate(fields.fechaEnvasado)
-  const lot = formatLotText(fields.lote)
-  const coc = (fields.codigoCoc ?? '').trim()
-  const lines: WhiteLabelLine[] = [
-    { text: product, size: WHITE_LABEL_CONFIGS['blanca-grande'].titleSize },
-    { text: `Variedad: ${variety}` },
-    { text: `Peso unidad: ${weight}` },
-    { text: `Envasado: ${date}` },
-    { text: `Lote: ${lot}` },
-  ]
-  if (coc.length > 0) {
-    lines.push({ text: `CoC: ${coc}` })
-  }
-  lines.push({ text: WHITE_LABEL_ORIGIN_LINE })
-  return lines
-}
-
 function buildLidl10x5SummaryLines(fields: LabelRenderFields): WhiteLabelLine[] {
   const product = formatProductText(fields.productName)
   const weight = formatWeightText(fields.weight)
   return [
     { text: `${product} ${weight}`, size: LIDL_CENTERED_10X5_CONFIG.titleSize, align: 'center' },
-  ]
-}
-
-function buildLidl10x5DetailLines(fields: LabelRenderFields): WhiteLabelLine[] {
-  const product = formatProductText(fields.productName)
-  const weight = formatWeightText(fields.weight)
-  const lot = formatLotText(fields.lote)
-  return [
-    { text: 'Origen: España', align: 'center', size: LIDL_CENTERED_10X5_CONFIG.bodySize },
-    { text: product, align: 'center', size: LIDL_CENTERED_10X5_CONFIG.titleSize },
-    { text: `Lote: ${lot}`, align: 'center', size: LIDL_CENTERED_10X5_CONFIG.bodySize },
-    { text: `Peso: ${weight}`, align: 'center', size: LIDL_CENTERED_10X5_CONFIG.bodySize },
   ]
 }
 
@@ -1112,14 +1067,6 @@ function normalizeAldiLotValue(value?: string | null): string | null {
   return `${week}/${day}`
 }
 
-function normalizeMercadonaTraceValue(value?: string | null): string | null {
-  if (typeof value !== 'string') return null
-  const digits = value.replace(/\D/g, '')
-  if (digits.length === 0) return null
-  const normalizedDigits = digits.slice(-MERCADONA_TRACE_LENGTH).padStart(MERCADONA_TRACE_LENGTH, '0')
-  return `${MERCADONA_TRACE_PREFIX}${normalizedDigits}`
-}
-
 function isAldiLabel(value?: LabelType | null): boolean {
   return (value ?? '').toLowerCase() === 'aldi'
 }
@@ -1130,6 +1077,59 @@ const ALDI_SPECIAL_TEMPLATE_MAP: Record<string, string> = {
   cebollino: 'cebollinosaldi.pdf',
   cilantro: 'cilantrosaldi.pdf',
   eneldo: 'eneldosaldi.pdf',
+}
+
+const ALDI_SPECIAL_LAYOUT: Record<
+  string,
+  {
+    loteYFactor: number
+    pesoOffset: number
+    leftXFactor: number
+    rightXFactor: number
+    codeXmm: number
+    codeYFactor: number
+  }
+> = {
+  hojasfrescasacelga: {
+    loteYFactor: 0.30,
+    pesoOffset: 0.9,
+    leftXFactor: 0.49,
+    rightXFactor: 0.66,
+    codeXmm: 14,
+    codeYFactor: 0.28,
+  },
+  albahaca: {
+    loteYFactor: 0.28,
+    pesoOffset: 0.9,
+    leftXFactor: 0.49,
+    rightXFactor: 0.66,
+    codeXmm: 15,
+    codeYFactor: 0.275,
+  },
+  cilantro: {
+    loteYFactor: 0.27,
+    pesoOffset: 0.9,
+    leftXFactor: 0.52,
+    rightXFactor: 0.66,
+    codeXmm: 15,
+    codeYFactor: 0.27,
+  },
+  cebollino: {
+    loteYFactor: 0.27,
+    pesoOffset: 0.9,
+    leftXFactor: 0.52,
+    rightXFactor: 0.66,
+    codeXmm: 16,
+    codeYFactor: 0.27,
+  },
+  eneldo: {
+    loteYFactor: 0.27,
+    pesoOffset: 0.9,
+    leftXFactor: 0.54,
+    rightXFactor: 0.70,
+    codeXmm: 15,
+    codeYFactor: 0.26,
+  },
 }
 
 function isAldiSpecialKey(normalizedKey: string): boolean {
@@ -1313,53 +1313,14 @@ async function renderAldiLabel({
   })
 
   if (isAldiSpecial) {
-    const isAlbahaca = normalizedProductKey === 'albahaca' || normalizedProductKey.includes('albahaca')
-    const isCilantro = normalizedProductKey === 'cilantro' || normalizedProductKey.includes('cilantro')
-    const isCebollino = normalizedProductKey === 'cebollino' || normalizedProductKey.includes('cebollino')
-    const isEneldo = normalizedProductKey === 'eneldo' || normalizedProductKey.includes('eneldo')
-
-    const loteY = isAlbahaca
-      ? pageHeight * 0.27
-      : isCilantro
-      ? pageHeight * 0.27
-      : isCebollino
-      ? pageHeight * 0.27
-      : isEneldo
-      ? pageHeight * 0.27
-      : pageHeight * 0.30
-    const pesoY = loteY + bodySize * 0.9
-    const leftX = isCilantro
-      ? pageWidth * 0.52
-      : isCebollino
-      ? pageWidth * 0.52
-      : isEneldo
-      ? pageWidth * 0.54
-      : pageWidth * 0.49
-    const rightX = isCilantro
-      ? pageWidth * 0.66
-      : isCebollino
-      ? pageWidth * 0.66
-      : isEneldo
-      ? pageWidth * 0.70
-      : pageWidth * 0.66
-    const codeX = isAlbahaca
-      ? mmToPageX(15, pageWidth)
-      : isCilantro
-      ? mmToPageX(15, pageWidth)
-      : isCebollino
-      ? mmToPageX(16, pageWidth)
-      : isEneldo
-      ? mmToPageX(15, pageWidth)
-      : mmToPageX(14, pageWidth)
-    const codeY = isAlbahaca
-      ? pageHeight * 0.275
-      : isCilantro
-      ? pageHeight * 0.27
-      : isCebollino
-      ? pageHeight * 0.27
-      : isEneldo
-      ? pageHeight * 0.26
-      : pageHeight * 0.28
+    const layout =
+      ALDI_SPECIAL_LAYOUT[normalizedProductKey] ?? ALDI_SPECIAL_LAYOUT['hojasfrescasacelga']
+    const loteY = pageHeight * layout.loteYFactor
+    const pesoY = loteY + bodySize * layout.pesoOffset
+    const leftX = pageWidth * layout.leftXFactor
+    const rightX = pageWidth * layout.rightXFactor
+    const codeX = mmToPageX(layout.codeXmm, pageWidth)
+    const codeY = pageHeight * layout.codeYFactor
 
     page.drawText(loteAldi, {
       x: leftX,

@@ -249,15 +249,6 @@ function resolveWeight(value: string | null | undefined): string {
   return normalized ?? DEFAULT_WEIGHT_TEXT
 }
 
-function normalizeProductKey(value?: string | null): string {
-  if (!value) return ''
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '')
-}
-
 function resolveLidlBaseSeed(lot: string | null | undefined, fallbackFileName: string): string {
   const normalizedLot = normalizeLotFormat(lot) ?? sanitizeLotText(lot)
   if (normalizedLot) {
