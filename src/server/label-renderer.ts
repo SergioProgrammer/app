@@ -1077,58 +1077,78 @@ const ALDI_SPECIAL_TEMPLATE_MAP: Record<string, string> = {
   cebollino: 'cebollinosaldi.pdf',
   cilantro: 'cilantrosaldi.pdf',
   eneldo: 'eneldosaldi.pdf',
+  pakchoi: 'pakchoialdi.pdf',
+  hierbahuerto: 'hierbahuertoaldi.pdf',
 }
 
 const ALDI_SPECIAL_LAYOUT: Record<
   string,
   {
-    loteYFactor: number
+    loteXmm: number
+    loteYmmFromBottom: number
+    pesoXmm: number
     pesoOffset: number
-    leftXFactor: number
-    rightXFactor: number
     codeXmm: number
-    codeYFactor: number
+    codeYmmFromBottom: number
   }
 > = {
+  // All distances are expressed in millimeters from the bottom-left corner of the label.
+  // pesoOffset keeps using the body font size as a multiplier to preserve existing spacing.
   hojasfrescasacelga: {
-    loteYFactor: 0.30,
+    loteXmm: 32.83,
+    loteYmmFromBottom: 11.6,
+    pesoXmm: 44.22,
     pesoOffset: 0.9,
-    leftXFactor: 0.49,
-    rightXFactor: 0.66,
     codeXmm: 14,
-    codeYFactor: 0.28,
+    codeYmmFromBottom: 11.48,
   },
   albahaca: {
-    loteYFactor: 0.28,
+    loteXmm: 32.83,
+    loteYmmFromBottom: 11.48,
+    pesoXmm: 44.22,
     pesoOffset: 0.9,
-    leftXFactor: 0.49,
-    rightXFactor: 0.66,
     codeXmm: 15,
-    codeYFactor: 0.275,
+    codeYmmFromBottom: 11.27,
   },
   cilantro: {
-    loteYFactor: 0.27,
+    loteXmm: 34.84,
+    loteYmmFromBottom: 11.07,
+    pesoXmm: 44.22,
     pesoOffset: 0.9,
-    leftXFactor: 0.52,
-    rightXFactor: 0.66,
     codeXmm: 15,
-    codeYFactor: 0.27,
+    codeYmmFromBottom: 11.07,
   },
   cebollino: {
-    loteYFactor: 0.27,
-    pesoOffset: 0.9,
-    leftXFactor: 0.52,
-    rightXFactor: 0.66,
+    loteXmm: 34.84,
+    loteYmmFromBottom: 11.18,
+    pesoXmm: 44.22,
+    pesoOffset: 0.7,
     codeXmm: 16,
-    codeYFactor: 0.27,
+    codeYmmFromBottom: 11.18,
   },
   eneldo: {
-    loteYFactor: 0.27,
-    pesoOffset: 0.9,
-    leftXFactor: 0.54,
-    rightXFactor: 0.70,
+    loteXmm: 36.18,
+    loteYmmFromBottom: 11.18,
+    pesoXmm: 46.9,
+    pesoOffset: 0.7,
     codeXmm: 15,
-    codeYFactor: 0.26,
+    codeYmmFromBottom: 10.66,
+  },
+  hierbahuerto: {
+    loteXmm: 34.84,
+    loteYmmFromBottom: 11.48,
+    pesoXmm: 44.22,
+    pesoOffset: 0.45,
+    codeXmm: 16,
+    codeYmmFromBottom: 11.48,
+  },
+  pakchoi: {
+    loteXmm: 34.84,
+    loteYmmFromBottom: 11.48,
+    pesoXmm: 44.22,
+    pesoOffset: 0.7,
+    codeXmm: 16,
+    codeYmmFromBottom: 11.48,
   },
 }
 
@@ -1315,12 +1335,12 @@ async function renderAldiLabel({
   if (isAldiSpecial) {
     const layout =
       ALDI_SPECIAL_LAYOUT[normalizedProductKey] ?? ALDI_SPECIAL_LAYOUT['hojasfrescasacelga']
-    const loteY = pageHeight * layout.loteYFactor
+    const loteY = mmToPageYDelta(layout.loteYmmFromBottom, pageHeight)
     const pesoY = loteY + bodySize * layout.pesoOffset
-    const leftX = pageWidth * layout.leftXFactor
-    const rightX = pageWidth * layout.rightXFactor
+    const leftX = mmToPageX(layout.loteXmm, pageWidth)
+    const rightX = mmToPageX(layout.pesoXmm, pageWidth)
     const codeX = mmToPageX(layout.codeXmm, pageWidth)
-    const codeY = pageHeight * layout.codeYFactor
+    const codeY = mmToPageYDelta(layout.codeYmmFromBottom, pageHeight)
 
     page.drawText(loteAldi, {
       x: leftX,
