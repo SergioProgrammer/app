@@ -1129,6 +1129,7 @@ const ALDI_SPECIAL_TEMPLATE_MAP: Record<string, string> = {
   albahaca: 'albahacasaldi.pdf',
   cebollino: 'cebollinosaldi.pdf',
   cilantro: 'cilantrosaldi.pdf',
+  eneldo: 'eneldosaldi.pdf',
 }
 
 function isAldiSpecialKey(normalizedKey: string): boolean {
@@ -1315,23 +1316,40 @@ async function renderAldiLabel({
     const isAlbahaca = normalizedProductKey === 'albahaca' || normalizedProductKey.includes('albahaca')
     const isCilantro = normalizedProductKey === 'cilantro' || normalizedProductKey.includes('cilantro')
     const isCebollino = normalizedProductKey === 'cebollino' || normalizedProductKey.includes('cebollino')
+    const isEneldo = normalizedProductKey === 'eneldo' || normalizedProductKey.includes('eneldo')
 
     const loteY = isAlbahaca
-      ? pageHeight * 0.275
+      ? pageHeight * 0.27
       : isCilantro
       ? pageHeight * 0.27
       : isCebollino
       ? pageHeight * 0.27
-      : pageHeight * 0.28
-    const pesoY = loteY + bodySize * 1.7
-    const leftX = isCilantro ? pageWidth * 0.52 : isCebollino ? pageWidth * 0.52 : pageWidth * 0.49
-    const rightX = isCilantro ? pageWidth * 0.66 : isCebollino ? pageWidth * 0.66 : pageWidth * 0.66
+      : isEneldo
+      ? pageHeight * 0.27
+      : pageHeight * 0.30
+    const pesoY = loteY + bodySize * 0.9
+    const leftX = isCilantro
+      ? pageWidth * 0.52
+      : isCebollino
+      ? pageWidth * 0.52
+      : isEneldo
+      ? pageWidth * 0.54
+      : pageWidth * 0.49
+    const rightX = isCilantro
+      ? pageWidth * 0.66
+      : isCebollino
+      ? pageWidth * 0.66
+      : isEneldo
+      ? pageWidth * 0.70
+      : pageWidth * 0.66
     const codeX = isAlbahaca
       ? mmToPageX(15, pageWidth)
       : isCilantro
       ? mmToPageX(15, pageWidth)
       : isCebollino
       ? mmToPageX(16, pageWidth)
+      : isEneldo
+      ? mmToPageX(15, pageWidth)
       : mmToPageX(14, pageWidth)
     const codeY = isAlbahaca
       ? pageHeight * 0.275
@@ -1339,6 +1357,8 @@ async function renderAldiLabel({
       ? pageHeight * 0.27
       : isCebollino
       ? pageHeight * 0.27
+      : isEneldo
+      ? pageHeight * 0.26
       : pageHeight * 0.28
 
     page.drawText(loteAldi, {

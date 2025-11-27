@@ -2237,11 +2237,14 @@ function LabelsDashboard({
     }
     const normalized = productName.trim().toLowerCase()
     const isLidl = labelType === 'lidl'
+    const isAldi = labelType === 'aldi'
     let desiredWeight = DEFAULT_WEIGHT
     if (normalized === 'albahaca') {
       desiredWeight = '60gr'
     } else if (isLidl && normalized === 'eneldo') {
       desiredWeight = '30g'
+    } else if (isAldi && normalized === 'eneldo') {
+      desiredWeight = '30gr'
     }
     if (manualWeight !== desiredWeight) {
       setManualWeight(desiredWeight)
