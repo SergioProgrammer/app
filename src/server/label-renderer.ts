@@ -420,7 +420,7 @@ export async function renderLabelPdf({
           font: labelFont,
         })
         if (isEneldo || isHierbahuerto || isPerejil || isRomero) {
-          const defaultWeight = isEneldo ? '30g' : '40g'
+          const defaultWeight = isEneldo || isRomero ? '30g' : '40g'
           const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? defaultWeight
           const weightFontSize = (isEneldo ? 110 : 90) * scaleY
           const weightWidth = measureTextWidth(weightText, weightFontSize, labelFont)
@@ -1079,6 +1079,8 @@ const ALDI_SPECIAL_TEMPLATE_MAP: Record<string, string> = {
   eneldo: 'eneldosaldi.pdf',
   pakchoi: 'pakchoialdi.pdf',
   hierbahuerto: 'hierbahuertoaldi.pdf',
+  perejil: 'perejilaldi.pdf',
+  romero: 'romeroaldi.pdf',
 }
 
 const ALDI_SPECIAL_LAYOUT: Record<
@@ -1146,8 +1148,24 @@ const ALDI_SPECIAL_LAYOUT: Record<
     loteXmm: 34.84,
     loteYmmFromBottom: 11.48,
     pesoXmm: 44.22,
-    pesoOffset: 0.7,
+    pesoOffset: 0.6,
     codeXmm: 16,
+    codeYmmFromBottom: 11.48,
+  },
+  perejil: {
+    loteXmm: 36,
+    loteYmmFromBottom: 11.6,
+    pesoXmm: 44.22,
+    pesoOffset: 0.55,
+    codeXmm: 15.2,
+    codeYmmFromBottom: 11.48,
+  },
+  romero: {
+    loteXmm: 38.6,
+    loteYmmFromBottom: 11.6,
+    pesoXmm: 44.22,
+    pesoOffset: 0.9,
+    codeXmm: 14,
     codeYmmFromBottom: 11.48,
   },
 }
