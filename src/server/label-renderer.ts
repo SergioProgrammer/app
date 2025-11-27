@@ -1124,6 +1124,17 @@ function isAldiLabel(value?: LabelType | null): boolean {
   return (value ?? '').toLowerCase() === 'aldi'
 }
 
+const ALDI_SPECIAL_TEMPLATE_MAP: Record<string, string> = {
+  hojasfrescasacelga: 'acelgasaldi.pdf',
+  albahaca: 'albahacasaldi.pdf',
+  cebollino: 'cebollinosaldi.pdf',
+  cilantro: 'cilantrosaldi.pdf',
+}
+
+function isAldiSpecialKey(normalizedKey: string): boolean {
+  return Boolean(ALDI_SPECIAL_TEMPLATE_MAP[normalizedKey])
+}
+
 function resolveAldiTemplatePath(
   customPath?: string | null,
   productName?: string | null,
@@ -1131,12 +1142,13 @@ function resolveAldiTemplatePath(
   const productCandidates: string[] = []
   if (productName) {
     const key = normalizeTemplateKey(productName)
-    const suffixes = ['-aldi.pdf', '_aldi.pdf', '-aldi-template.pdf', '-aldi_etiqueta.pdf', 'aldi.pdf']
-    for (const suffix of suffixes) {
-      productCandidates.push(path.join('public', `${key}${suffix}`))
-    }
-    if (key.includes('acelga')) {
-      productCandidates.unshift(path.join('public', 'acelgasaldi.pdf'))
+    if (isAldiSpecialKey(key)) {
+      productCandidates.push(path.join(process.cwd(), 'public', ALDI_SPECIAL_TEMPLATE_MAP[key]))
+    } else {
+      const suffixes = ['-aldi.pdf', '_aldi.pdf', '-aldi-template.pdf', '-aldi_etiqueta.pdf', 'aldi.pdf']
+      for (const suffix of suffixes) {
+        productCandidates.push(path.join(process.cwd(), 'public', `${key}${suffix}`))
+      }
     }
   }
   const candidates = [
@@ -1239,7 +1251,7 @@ async function renderAldiLabel({
     WHITE_LABEL_ORIGIN_LINE.split('CoC:').pop()?.trim() ??
     ''
   const normalizedProductKey = normalizeTemplateKey(fields.productName ?? '')
-  const isAcelga = normalizedProductKey.includes('acelga')
+  const isAldiSpecial = isAldiSpecialKey(normalizedProductKey)
   const lotSeed = normalizeAldiLotValue(fields.lote)
   const sanitizeBase = (value: string) =>
     value
@@ -1253,19 +1265,19 @@ async function renderAldiLabel({
     : baseWithPrefix
   const orderSuffix = Date.now().toString().slice(-2)
   const outputFileName = `${aldiBaseSeed}-${orderSuffix}-etiqueta.pdf`
-  const productFontSize = isAcelga
+  const productFontSize = isAldiSpecial
     ? Math.max(10, Math.min(13, pageWidth * 0.01))
     : Math.max(12, Math.min(16, pageWidth * 0.012))
-  const bodySize = isAcelga
+  const bodySize = isAldiSpecial
     ? Math.max(4.5, Math.min(5.5, pageWidth * 0.0038))
     : Math.max(6, Math.min(8, pageWidth * 0.0055))
-  const smallSize = isAcelga
+  const smallSize = isAldiSpecial
     ? Math.max(3.5, Math.min(4.5, pageWidth * 0.003))
     : Math.max(5, Math.min(7, pageWidth * 0.0045))
   const lineSpacing = bodySize + 1.5
   const baseY = Math.max(pageHeight * 0.8, pageHeight - 120)
 
-  if (!isAcelga) {
+  if (!isAldiSpecial) {
     page.drawText(product, {
       x: marginX,
       y: baseY,
@@ -1275,7 +1287,7 @@ async function renderAldiLabel({
     })
   }
 
-  const leftLines = isAcelga
+  const leftLines = isAldiSpecial
     ? []
     : [
         `CATEGORIA: I    VARIEDAD: ${formatVarietyText(fields.variety)}`,
@@ -1299,13 +1311,35 @@ async function renderAldiLabel({
     })
   })
 
-  if (isAcelga) {
-    const loteY = pageHeight * 0.28
-    const pesoY = loteY + bodySize * 1.5
-    const leftX = pageWidth * 0.49
-    const rightX = pageWidth * 0.66
-    const codeX = mmToPageX(14, pageWidth)
-    const codeY = pageHeight * 0.28
+  if (isAldiSpecial) {
+    const isAlbahaca = normalizedProductKey === 'albahaca' || normalizedProductKey.includes('albahaca')
+    const isCilantro = normalizedProductKey === 'cilantro' || normalizedProductKey.includes('cilantro')
+    const isCebollino = normalizedProductKey === 'cebollino' || normalizedProductKey.includes('cebollino')
+
+    const loteY = isAlbahaca
+      ? pageHeight * 0.275
+      : isCilantro
+      ? pageHeight * 0.27
+      : isCebollino
+      ? pageHeight * 0.27
+      : pageHeight * 0.28
+    const pesoY = loteY + bodySize * 1.7
+    const leftX = isCilantro ? pageWidth * 0.52 : isCebollino ? pageWidth * 0.52 : pageWidth * 0.49
+    const rightX = isCilantro ? pageWidth * 0.66 : isCebollino ? pageWidth * 0.66 : pageWidth * 0.66
+    const codeX = isAlbahaca
+      ? mmToPageX(15, pageWidth)
+      : isCilantro
+      ? mmToPageX(15, pageWidth)
+      : isCebollino
+      ? mmToPageX(16, pageWidth)
+      : mmToPageX(14, pageWidth)
+    const codeY = isAlbahaca
+      ? pageHeight * 0.275
+      : isCilantro
+      ? pageHeight * 0.27
+      : isCebollino
+      ? pageHeight * 0.27
+      : pageHeight * 0.28
 
     page.drawText(loteAldi, {
       x: leftX,
@@ -1339,7 +1373,7 @@ async function renderAldiLabel({
     })
   }
 
-  if (!isAcelga) {
+  if (!isAldiSpecial) {
     const barcodeValue = sanitizeBarcodeValue(fields.labelCode)
     if (barcodeValue) {
       drawEan13Barcode(page, barcodeValue, {
