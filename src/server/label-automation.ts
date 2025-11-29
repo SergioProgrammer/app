@@ -6,7 +6,7 @@ import {
   normalizeProductForLabelType,
   type LabelType,
 } from '@/lib/product-selection'
-import { renderLabelPdf, renderLidlLabelSet, type LabelRenderFields, type LabelRenderResult } from './label-renderer'
+import { renderAldiLabelSet, renderLabelPdf, renderLidlLabelSet, type LabelRenderFields, type LabelRenderResult } from './label-renderer'
 
 export interface ManualLabelFields {
   labelType?: LabelType | string | null
@@ -80,10 +80,12 @@ export async function processLabelAutomation({
 
   try {
     const useLidlExtras = preparedFields.labelType === 'lidl'
+    const useAldiExtras = preparedFields.labelType === 'aldi'
     const templateToUse = preparedFields.labelType === 'lidl' ? lidlTemplatePath : resolvedTemplatePath
     const baseSeed = useLidlExtras
       ? resolveLidlBaseSeed(preparedFields.lote, fileName)
       : deriveBaseSeed(fileName)
+    const aldiSeed = useAldiExtras ? resolveAldiBaseSeed(preparedFields.lote, fileName) : null
 
     if (useLidlExtras) {
       const lidlFileNames = buildLidlFileNames(preparedFields.lote, baseSeed)
@@ -105,6 +107,30 @@ export async function processLabelAutomation({
           ? {
               ...detailLabel,
               fileName: lidlFileNames.caja2,
+              storageBucket: LIDL_DETAIL_BUCKET,
+            }
+          : null,
+      ].filter(Boolean) as LabelRenderResult[]
+    } else if (useAldiExtras) {
+      const [baseLabel, summaryLabel, detailLabel] = await renderAldiLabelSet({
+        fields: preparedFields,
+        fileName: aldiSeed ?? baseSeed,
+        templatePath: templateToUse,
+      })
+      const aldiFileNames = buildAldiFileNames(baseLabel.fileName, aldiSeed ?? baseSeed)
+      labels = [
+        { ...baseLabel, fileName: aldiFileNames.product },
+        summaryLabel
+          ? {
+              ...summaryLabel,
+              fileName: aldiFileNames.caja1,
+              storageBucket: LIDL_WEIGHT_BUCKET,
+            }
+          : null,
+        detailLabel
+          ? {
+              ...detailLabel,
+              fileName: aldiFileNames.caja2,
               storageBucket: LIDL_DETAIL_BUCKET,
             }
           : null,
@@ -271,6 +297,30 @@ function buildLidlFileNames(lot: string | null | undefined, fallbackSeed: string
   }
 }
 
+function buildAldiFileNames(baseFileName: string | null | undefined, fallbackSeed: string): {
+  product: string
+  caja1: string
+  caja2: string
+} {
+  const seed = extractBaseSeed(baseFileName) ?? fallbackSeed
+  const sanitized =
+    seed.replace(/\.pdf$/i, '').replace(/-etiqueta$/i, '') || fallbackSeed.replace(/-etiqueta$/i, '')
+  return {
+    product: `${sanitized}-etiqueta.pdf`,
+    caja1: `${sanitized}-caja-etiqueta.pdf`,
+    caja2: `${sanitized}-caja2-etiqueta.pdf`,
+  }
+}
+
+function extractBaseSeed(fileName?: string | null): string | null {
+  if (!fileName) return null
+  const trimmed = fileName.trim()
+  if (trimmed.length === 0) return null
+  const withoutExtension = trimmed.replace(/\.pdf$/i, '')
+  const withoutEtiqueta = withoutExtension.replace(/-etiqueta$/i, '')
+  return withoutEtiqueta.length > 0 ? withoutEtiqueta : null
+}
+
 function deriveBaseSeed(fileName: string): string {
   const trimmed = fileName.trim()
   const withoutExtension = trimmed.replace(/\.pdf$/i, '')
@@ -286,6 +336,15 @@ function sanitizeLotText(value?: string | null): string | null {
   if (!value) return null
   const cleaned = value.trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase()
   return cleaned.length > 0 ? cleaned : null
+}
+
+function resolveAldiBaseSeed(lot: string | null | undefined, fallbackFileName: string): string {
+  const normalizedLot = normalizeAldiLotFormat(lot)
+  if (normalizedLot) {
+    return `pedido-manual-${normalizedLot.replace('/', '-')}`
+  }
+  const derivedSeed = deriveBaseSeed(fallbackFileName)
+  return derivedSeed.startsWith('pedido-manual-') ? derivedSeed : `pedido-manual-${derivedSeed}`
 }
 
 function resolveAldiLot(value?: string | null, referenceDate?: string | null): string {

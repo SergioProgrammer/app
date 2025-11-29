@@ -551,6 +551,34 @@ export async function renderLidlLabelSet({
   return [baseLabel, summaryLabel, detailedLabel]
 }
 
+export async function renderAldiLabelSet({
+  fields,
+  fileName,
+  templatePath,
+}: {
+  fields: LabelRenderFields
+  fileName: string
+  templatePath?: string
+}): Promise<LabelRenderResult[]> {
+  const baseLabel = await renderLabelPdf({
+    fields,
+    fileName,
+    templatePath,
+  })
+  const summaryLines = buildLidl10x5SummaryLines(fields)
+  const summaryLabel = await renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
+    lines: summaryLines,
+    variantSuffix: 'aldi-10x5-peso',
+    configOverride: LIDL_CENTERED_10X5_CONFIG,
+    defaultAlign: 'center',
+  })
+  const detailedLabel = await renderLidlCajaDetailLabel(fields, fileName, {
+    variantSuffix: 'aldi-10x5-detalle',
+    brandLabel: 'Aldi',
+  })
+  return [baseLabel, summaryLabel, detailedLabel]
+}
+
 function buildWhiteLabelLines(
   variant: WhiteLabelVariant,
   fields: LabelRenderFields,
@@ -652,7 +680,7 @@ function buildLidl10x5SummaryLines(fields: LabelRenderFields): WhiteLabelLine[] 
 async function renderLidlCajaDetailLabel(
   fields: LabelRenderFields,
   fileName: string,
-  options?: { variantSuffix?: string },
+  options?: { variantSuffix?: string; brandLabel?: string },
 ): Promise<LabelRenderResult> {
   const config = LIDL_CENTERED_10X5_CONFIG
   const pdfDoc = await PDFDocument.create()
@@ -710,6 +738,7 @@ async function renderLidlCajaDetailLabel(
   const units = '12 UNIDADES CAJA'
   const categoria = '-'
   const agenciaCodigo = '34583'
+  const brandLabel = options?.brandLabel ?? 'Lidl'
 
   let cursorY = startY
 
@@ -788,14 +817,14 @@ async function renderLidlCajaDetailLabel(
   })
   cursorY -= rowHeight
 
-  // Agencia (código, lote Lidl, unidades)
+  // Agencia (código, lote y unidades)
   drawBox({
     x: padding,
     y: cursorY,
     w: fullWidth,
     h: rowHeight,
     label: 'AGENCIA',
-    value: `${agenciaCodigo} · Lote Lidl: ${lot} · ${units}`,
+    value: `${agenciaCodigo} · Lote ${brandLabel}: ${lot} · ${units}`,
     valueSize: 14,
   })
   cursorY -= rowHeight
