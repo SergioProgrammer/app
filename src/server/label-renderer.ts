@@ -721,14 +721,6 @@ function formatWeightText(value?: string | null): string {
   return '40gr'
 }
 
-function buildLidl10x5SummaryLines(fields: LabelRenderFields): WhiteLabelLine[] {
-  const product = formatProductText(fields.productName)
-  const weight = formatWeightText(fields.weight)
-  return [
-    { text: `${product} ${weight}`, size: LIDL_CENTERED_10X5_CONFIG.titleSize, align: 'center' },
-  ]
-}
-
 async function renderLidlCajaDetailLabel(
   fields: LabelRenderFields,
   fileName: string,
