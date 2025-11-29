@@ -538,12 +538,8 @@ export async function renderLidlLabelSet({
     templatePath,
     options: { hideCodigoR: true },
   })
-  const summaryLines = buildLidl10x5SummaryLines(fields)
-  const summaryLabel = await renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
-    lines: summaryLines,
+  const summaryLabel = await renderCenteredNameWeightLabel(fields, fileName, {
     variantSuffix: 'lidl-10x5-peso',
-    configOverride: LIDL_CENTERED_10X5_CONFIG,
-    defaultAlign: 'center',
   })
   const detailedLabel = await renderLidlCajaDetailLabel(fields, fileName, {
     variantSuffix: 'lidl-10x5-detalle',
@@ -565,18 +561,74 @@ export async function renderAldiLabelSet({
     fileName,
     templatePath,
   })
-  const summaryLines = buildLidl10x5SummaryLines(fields)
-  const summaryLabel = await renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
-    lines: summaryLines,
+  const summaryLabel = await renderCenteredNameWeightLabel(fields, fileName, {
     variantSuffix: 'aldi-10x5-peso',
-    configOverride: LIDL_CENTERED_10X5_CONFIG,
-    defaultAlign: 'center',
   })
   const detailedLabel = await renderLidlCajaDetailLabel(fields, fileName, {
     variantSuffix: 'aldi-10x5-detalle',
     brandLabel: 'Aldi',
   })
   return [baseLabel, summaryLabel, detailedLabel]
+}
+
+async function renderCenteredNameWeightLabel(
+  fields: LabelRenderFields,
+  fileName: string,
+  options?: { variantSuffix?: string },
+): Promise<LabelRenderResult> {
+  const config = LIDL_CENTERED_10X5_CONFIG
+  const pdfDoc = await PDFDocument.create()
+  const page = pdfDoc.addPage([config.width, config.height])
+  const font = await resolveLabelFont(pdfDoc)
+  const text = `${formatProductText(fields.productName)} ${formatWeightText(fields.weight)}`
+  const size = config.titleSize + 4
+  const textWidth = measureTextWidth(text, size, font)
+  const x = Math.max(config.margin, (config.width - textWidth) / 2)
+  const y = config.height / 2 + size / 2
+  const color = DEFAULT_FONT_COLOR
+  const boldOffsets: Array<[number, number]> = [
+    [0, 0],
+    [0.4, 0],
+    [0, 0.4],
+  ]
+
+  boldOffsets.forEach(([dx, dy]) => {
+    page.drawText(text, {
+      x: x + dx,
+      y: y + dy,
+      size,
+      font,
+      color,
+    })
+  })
+
+  const underlineY = y - size * 0.2
+  const underlineStart = Math.max(config.margin, x - size * 0.1)
+  const underlineEnd = Math.min(config.width - config.margin, x + textWidth + size * 0.1)
+  if (typeof (page as any).drawLine === 'function') {
+    page.drawLine({
+      start: { x: underlineStart, y: underlineY },
+      end: { x: underlineEnd, y: underlineY },
+      thickness: 2,
+      color,
+    })
+  } else {
+    const thickness = 2
+    page.drawRectangle({
+      x: underlineStart,
+      y: underlineY - thickness / 2,
+      width: underlineEnd - underlineStart,
+      height: thickness,
+      color,
+    })
+  }
+
+  const pdfBytes = await pdfDoc.save()
+  return {
+    buffer: Buffer.from(pdfBytes),
+    fileName: buildLabelFileName(fileName, options?.variantSuffix),
+    mimeType: 'application/pdf',
+  }
 }
 
 function buildWhiteLabelLines(
