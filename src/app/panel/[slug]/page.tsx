@@ -2655,8 +2655,19 @@ function LabelsDashboard({
       const normalizedProductName = productName.trim().toLowerCase()
       const isLidlLotOnly = labelType === 'lidl'
       const isLidlAlbahaca = isLidlLotOnly && normalizedProductName === 'albahaca'
+      const isKanali = labelType === 'kanali'
       const resumenValueParts: string[] = []
-      if (!isLidlLotOnly) {
+      if (isKanali) {
+        if (manualLote.trim().length > 0) {
+          resumenValueParts.push(`Lote ${manualLote.trim()}`)
+        }
+        if (manualFechaCarga.trim().length > 0) {
+          resumenValueParts.push(`Fecha ${formatDate(manualFechaCarga.trim())}`)
+        }
+        if (manualWeight.trim().length > 0) {
+          resumenValueParts.push(`Peso ${manualWeight.trim()}`)
+        }
+      } else if (!isLidlLotOnly) {
         if (productName.trim().length > 0) {
           resumenValueParts.push(`${productName.trim()} · ${getLabelTypeLabel(labelType)}`)
         } else {
@@ -2681,7 +2692,7 @@ function LabelsDashboard({
           resumenValueParts.push(`EAN ${manualLabelCode.trim()}`)
         }
       }
-      if (manualLote.trim().length > 0) {
+      if (!isKanali && manualLote.trim().length > 0) {
         resumenValueParts.push(`Lote ${manualLote.trim()}`)
       }
       if (isLidlLotOnly) {
@@ -2775,6 +2786,34 @@ function LabelsDashboard({
             })
           }
           return lidlFields
+        }
+        if (isKanali) {
+          return [
+            {
+              name: 'lote',
+              label: 'Lote',
+              type: 'text',
+              value: manualLote,
+              placeholder: LOT_SEQUENCE_DEFAULT,
+              onChange: handleLoteChange,
+            },
+            {
+              name: 'fecha',
+              label: 'Fecha envasado / carga',
+              type: 'date',
+              value: manualFechaCarga,
+              helper: 'Verifica la fecha importada automáticamente.',
+              onChange: handleFechaChange,
+            },
+            {
+              name: 'peso',
+              label: 'Peso',
+              type: 'text',
+              value: manualWeight,
+              placeholder: 'Ej. 40gr',
+              onChange: handleWeightChange,
+            },
+          ]
         }
         if (
           labelType === 'aldi' &&
