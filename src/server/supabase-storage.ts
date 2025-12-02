@@ -65,7 +65,7 @@ export async function uploadFileToBucket({
 }: UploadFileOptions): Promise<StorageFileDescriptor> {
   const client = getSupabaseServiceClient()
   const { error } = await client.storage.from(bucket).upload(path, buffer, {
-    cacheControl: '3600',
+    cacheControl: '0',
     contentType,
     upsert: true,
     metadata,

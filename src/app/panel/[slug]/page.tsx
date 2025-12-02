@@ -226,7 +226,7 @@ const PRODUCT_BARCODE_MAP: Record<string, string> = (() => {
 })()
 
 function generateLotValue(labelType: LabelType = DEFAULT_LABEL_TYPE, referenceDate?: string | null): string {
-  if (labelType === 'aldi') {
+  if (labelType === 'aldi' || labelType === 'kanali') {
     return buildAldiLot(referenceDate)
   }
   const lastUsed = getLastPersistedLot()
@@ -322,7 +322,7 @@ function persistLotSequence(value: string): void {
 }
 
 function resolveLotForLabelType(value: string, labelType: LabelType, referenceDate?: string | null): string {
-  if (labelType === 'aldi') {
+  if (labelType === 'aldi' || labelType === 'kanali') {
     const normalizedAldi = normalizeAldiLot(value)
     if (normalizedAldi) return normalizedAldi
     return buildAldiLot(referenceDate)
@@ -2218,16 +2218,17 @@ function LabelsDashboard({
   }, [labelType, productName])
 
   useEffect(() => {
-    if (labelType !== 'aldi') return
+    if (labelType !== 'aldi' && labelType !== 'kanali') return
     const desiredLot = resolveLotForLabelType(manualLote, labelType, manualFechaCarga)
     if (desiredLot !== manualLote) {
       setManualLote(desiredLot)
     }
-    if (!codigoRManuallyEdited) {
-      const nextTrace = resolveCodigoRForLabelType(labelType, manualCodigoR, manualFechaCarga)
-      if (nextTrace && nextTrace !== manualCodigoR) {
-        setManualCodigoR(nextTrace)
-      }
+    if (labelType !== 'aldi' || codigoRManuallyEdited) {
+      return
+    }
+    const nextTrace = resolveCodigoRForLabelType(labelType, manualCodigoR, manualFechaCarga)
+    if (nextTrace && nextTrace !== manualCodigoR) {
+      setManualCodigoR(nextTrace)
     }
   }, [codigoRManuallyEdited, labelType, manualCodigoR, manualFechaCarga, manualLote])
 
@@ -2238,6 +2239,7 @@ function LabelsDashboard({
     const normalized = productName.trim().toLowerCase()
     const isLidl = labelType === 'lidl'
     const isAldi = labelType === 'aldi'
+    const isKanali = labelType === 'kanali'
     let desiredWeight = DEFAULT_WEIGHT
     if (normalized === 'albahaca') {
       desiredWeight = '60gr'
@@ -2245,6 +2247,8 @@ function LabelsDashboard({
       desiredWeight = '30g'
     } else if (isAldi && normalized === 'eneldo') {
       desiredWeight = '30gr'
+    } else if (isKanali && normalized === 'cilantro') {
+      desiredWeight = '50gr'
     }
     if (manualWeight !== desiredWeight) {
       setManualWeight(desiredWeight)
@@ -2396,7 +2400,7 @@ function LabelsDashboard({
       setLocalError(null)
       setManualFechaCarga(value)
       setCodigoRManuallyEdited(false)
-      if (labelType === 'aldi') {
+      if (labelType === 'aldi' || labelType === 'kanali') {
         setManualLote(buildAldiLot(value))
       }
     },
@@ -2656,6 +2660,7 @@ function LabelsDashboard({
       const isLidlLotOnly = labelType === 'lidl'
       const isLidlAlbahaca = isLidlLotOnly && normalizedProductName === 'albahaca'
       const isKanali = labelType === 'kanali'
+      const isKanaliCilantro = isKanali && normalizedProductName === 'cilantro'
       const resumenValueParts: string[] = []
       if (isKanali) {
         if (manualLote.trim().length > 0) {
@@ -2666,6 +2671,8 @@ function LabelsDashboard({
         }
         if (manualWeight.trim().length > 0) {
           resumenValueParts.push(`Peso ${manualWeight.trim()}`)
+        } else if (isKanaliCilantro) {
+          resumenValueParts.push('Peso 50gr')
         }
       } else if (!isLidlLotOnly) {
         if (productName.trim().length > 0) {
@@ -2805,14 +2812,14 @@ function LabelsDashboard({
               helper: 'Verifica la fecha importada automáticamente.',
               onChange: handleFechaChange,
             },
-            {
-              name: 'peso',
-              label: 'Peso',
-              type: 'text',
-              value: manualWeight,
-              placeholder: 'Ej. 40gr',
-              onChange: handleWeightChange,
-            },
+        {
+          name: 'peso',
+          label: 'Peso',
+          type: 'text',
+          value: manualWeight,
+          placeholder: normalizedProductName === 'cilantro' ? '50gr' : 'Ej. 40gr',
+          onChange: handleWeightChange,
+        },
           ]
         }
         if (

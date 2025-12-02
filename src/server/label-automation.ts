@@ -6,7 +6,8 @@ import {
   normalizeProductForLabelType,
   type LabelType,
 } from '@/lib/product-selection'
-import { renderAldiLabelSet, renderLabelPdf, renderLidlLabelSet, type LabelRenderFields, type LabelRenderResult } from './label-renderer'
+import { renderAldiLabelSet, renderLabelPdf, renderLidlLabelSet } from './label-renderer'
+import type { LabelRenderFields, LabelRenderResult } from './label-types'
 
 export interface ManualLabelFields {
   labelType?: LabelType | string | null
@@ -224,7 +225,7 @@ function resolveLot(
   labelType: LabelType,
   referenceDate?: string | null,
 ): string {
-  if (labelType === 'aldi') {
+  if (labelType === 'aldi' || labelType === 'kanali') {
     return resolveAldiLot(value, referenceDate)
   }
   return resolveStandardLot(value, seed)
@@ -238,6 +239,8 @@ function resolveStandardLot(value: string | null | undefined, seed: string): str
 
 function normalizeLotFormat(value: string | null | undefined): string | null {
   if (!value) return null
+  const aldiLot = normalizeAldiLotFormat(value)
+  if (aldiLot) return aldiLot
   const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, '')
   if (LOT_PATTERN.test(compact)) {
     return compact

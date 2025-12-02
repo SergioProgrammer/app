@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import fontkit from '@pdf-lib/fontkit'
 import type { LabelType } from '@/lib/product-selection'
+import type { LabelRenderFields, LabelRenderResult, WhiteLabelLine } from './label-types'
+import { renderKanaliLabel, resolveKanaliTemplatePath } from './renderers/kanali-renderer'
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
@@ -17,25 +19,6 @@ import {
   type PDFFont,
 } from 'pdf-lib'
 
-export interface LabelRenderFields {
-  fechaEnvasado?: string | null
-  lote?: string | null
-  labelCode?: string | null
-  codigoCoc?: string | null
-  codigoR?: string | null
-  weight?: string | null
-  labelType?: LabelType | null
-  productName?: string | null
-  variety?: string | null
-}
-
-export interface LabelRenderResult {
-  buffer: Buffer
-  fileName: string
-  mimeType: string
-  storageBucket?: string
-}
-
 const DEFAULT_TEMPLATE_CANDIDATES = [
   path.join('public', 'Etiqueta.pdf'),
   path.join('public', 'Etiqueta.png'),
@@ -44,11 +27,6 @@ const ALDI_TEMPLATE_CANDIDATES = [
   path.join('public', 'Etiqueta-Aldi.pdf'),
   path.join('public', 'etiqueta-aldi.pdf'),
   path.join('public', 'Etiqueta_Aldi.pdf'),
-]
-const KANALI_TEMPLATE_CANDIDATES = [
-  path.join('public', 'Etiqueta-Kanali.pdf'),
-  path.join('public', 'etiqueta-kanali.pdf'),
-  path.join('public', 'Etiqueta_Kanali.pdf'),
 ]
 const ALDI_TRACE_PREFIX = 'E'
 const ALDI_TRACE_LENGTH = 5
@@ -118,13 +96,6 @@ interface WhiteLabelConfig {
   smallSize: number
 }
 
-interface WhiteLabelLine {
-  text: string
-  size?: number
-  spacing?: number
-  align?: 'left' | 'center' | 'right'
-}
-
 const WHITE_LABEL_CONFIGS: Record<WhiteLabelVariant, WhiteLabelConfig> = {
   'blanca-grande': {
     width: 720,
@@ -189,15 +160,27 @@ export async function renderLabelPdf({
     }
   }
   if (isKanaliLabel(fields.labelType)) {
-    try {
-      return await renderKanaliLabel({ fields, fileName, templatePath })
-    } catch (error) {
-      console.error('[label-renderer] Kanali render failed, using fallback white label:', error)
-      return renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
-        variantSuffix: 'kanali-fallback',
-        defaultAlign: 'left',
-      })
-    }
+    return await renderKanaliLabel({
+      fields,
+      fileName,
+      templatePath: resolveKanaliTemplatePath(templatePath, fields.productName),
+      shared: {
+        formatProductText,
+        formatVarietyText,
+        formatWeightText,
+        formatLotText,
+        normalizeFieldValue,
+        resolveLabelFont,
+        DEFAULT_FONT_COLOR,
+        WHITE_LABEL_ORIGIN_LINE,
+        normalizeTemplateKey,
+        mmToPageX,
+        mmToPageYDelta,
+        buildLabelFileName,
+        drawEan13Barcode,
+        sanitizeBarcodeValue,
+      },
+    })
   }
   if (isWhiteLabelVariant(fields.labelType)) {
     return renderWhiteLabelDocument(fields, fileName, fields.labelType, {
@@ -484,7 +467,7 @@ export async function renderLabelPdf({
   const pdfBytes = await pdfDoc.save()
   return {
     buffer: Buffer.from(pdfBytes),
-    fileName: buildLabelFileName(fileName, options?.variantSuffix),
+    fileName: buildLabelFileName(fileName, options?.variantSuffix, fields.lote),
     mimeType: 'application/pdf',
   }
 }
@@ -534,7 +517,7 @@ async function renderWhiteLabelDocument(
   const pdfBytes = await pdfDoc.save()
   return {
     buffer: Buffer.from(pdfBytes),
-    fileName: buildLabelFileName(fileName, options?.variantSuffix),
+    fileName: buildLabelFileName(fileName, options?.variantSuffix, fields.lote),
     mimeType: 'application/pdf',
   }
 }
@@ -642,7 +625,7 @@ async function renderCenteredNameWeightLabel(
   const pdfBytes = await pdfDoc.save()
   return {
     buffer: Buffer.from(pdfBytes),
-    fileName: buildLabelFileName(fileName, options?.variantSuffix),
+    fileName: buildLabelFileName(fileName, options?.variantSuffix, fields.lote),
     mimeType: 'application/pdf',
   }
 }
@@ -913,7 +896,7 @@ async function renderLidlCajaDetailLabel(
   const pdfBytes = await pdfDoc.save()
   return {
     buffer: Buffer.from(pdfBytes),
-    fileName: buildLabelFileName(fileName, options?.variantSuffix),
+    fileName: buildLabelFileName(fileName, options?.variantSuffix, fields.lote),
     mimeType: 'application/pdf',
   }
 }
@@ -963,33 +946,10 @@ function parseIsoDate(value?: string | null): Date | null {
   return parsed
 }
 
-function parseDateFlexible(value?: string | null): Date | null {
-  const iso = parseIsoDate(value)
-  if (iso) return iso
-  if (!value) return null
-  const trimmed = value.trim()
-  const localeMatch = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/)
-  if (!localeMatch) return null
-  const [, day, month, rawYear] = localeMatch
-  const year = rawYear.length === 2 ? Number(`20${rawYear}`) : Number(rawYear)
-  const parsed = new Date(Date.UTC(year, Number(month) - 1, Number(day)))
-  if (Number.isNaN(parsed.getTime())) return null
-  return parsed
-}
-
 function addDaysUtc(date: Date, days: number): Date {
   const result = new Date(date.getTime())
   result.setUTCDate(result.getUTCDate() + days)
   return result
-}
-
-function getIsoWeekNumber(date: Date): number {
-  const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
-  const dayNr = (target.getUTCDay() + 6) % 7
-  target.setUTCDate(target.getUTCDate() - dayNr + 3)
-  const firstThursday = target.getTime()
-  const firstThursdayOfYear = new Date(Date.UTC(target.getUTCFullYear(), 0, 4)).getTime()
-  return 1 + Math.round((firstThursday - firstThursdayOfYear) / (7 * 24 * 60 * 60 * 1000))
 }
 
 function buildCodigoRFromDate(value?: string | null): string {
@@ -1145,7 +1105,33 @@ function buildDayMonthYear(day: string, month: string, year: string): string {
   return `${normalizedDay}.${normalizedMonth}.${shortYear}`
 }
 
-function buildLabelFileName(originalFileName: string, variantSuffix?: string): string {
+const lotSequencePools: Record<string, number[]> = {}
+
+function normalizeLotForFileName(lot?: string | null): string | null {
+  if (typeof lot !== 'string') return null
+  const cleaned = lot.trim()
+  if (!cleaned) return null
+  const normalized = cleaned
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toUpperCase()
+  return normalized.length > 0 ? normalized : null
+}
+
+function buildLabelFileName(originalFileName: string, variantSuffix?: string, lot?: string | null): string {
+  const lotBase = normalizeLotForFileName(lot)
+  if (lotBase) {
+    if (!lotSequencePools[lotBase] || lotSequencePools[lotBase].length === 0) {
+      lotSequencePools[lotBase] = Array.from({ length: 999 }, (_, index) => index + 1)
+    }
+    const pool = lotSequencePools[lotBase]
+    const randomIndex = Math.floor(Math.random() * pool.length)
+    const [next] = pool.splice(randomIndex, 1)
+    const sequence = next.toString().padStart(3, '0')
+    const suffix = variantSuffix ? `-${variantSuffix}` : ''
+    return `pedido-manual-${lotBase}-${sequence}${suffix}-etiqueta.pdf`
+  }
   const withoutExtension = originalFileName.replace(/\.[^/.]+$/u, '')
   const sanitized =
     withoutExtension.length > 0 ? withoutExtension : `etiqueta-${Date.now().toString(36)}`
@@ -1197,16 +1183,6 @@ const ALDI_SPECIAL_TEMPLATE_MAP: Record<string, string> = {
   hierbahuerto: 'hierbahuertoaldi.pdf',
   perejil: 'perejilaldi.pdf',
   romero: 'romeroaldi.pdf',
-}
-
-const KANALI_SPECIAL_TEMPLATE_MAP: Record<string, string> = {
-  albahaca: 'albahacakanali.pdf',
-  cebollino: 'cebollinokanali.pdf',
-  cilantro: 'cilantrokanali.pdf',
-  hierbahuerto: 'hierbahuertokanali.pdf',
-  perejil: 'perejilkanali.pdf',
-  romero: 'romerokanali.pdf',
-  rucula: 'ruculakanali.pdf',
 }
 
 const ALDI_SPECIAL_LAYOUT: Record<
@@ -1296,27 +1272,9 @@ const ALDI_SPECIAL_LAYOUT: Record<
   },
 }
 
-const KANALI_SPECIAL_LAYOUT: typeof ALDI_SPECIAL_LAYOUT = {
-  ...ALDI_SPECIAL_LAYOUT,
-  cilantro: {
-    ...ALDI_SPECIAL_LAYOUT.cilantro,
-    // Raise packed-date line for Kanali cilantro template.
-    codeYmmFromBottom: 19,
-    loteYmmFromBottom: 19,
-    loteXmm: 33,
-    pesoXmm: 22,
-    pesoOffset: 3,
-  },
-}
-
 function isAldiSpecialKey(normalizedKey: string): boolean {
   return Boolean(ALDI_SPECIAL_TEMPLATE_MAP[normalizedKey])
 }
-
-function isKanaliSpecialKey(normalizedKey: string): boolean {
-  return Boolean(KANALI_SPECIAL_TEMPLATE_MAP[normalizedKey])
-}
-
 function resolveAldiTemplatePath(
   customPath?: string | null,
   productName?: string | null,
@@ -1347,228 +1305,6 @@ function resolveAldiTemplatePath(
   }
 
   return undefined
-}
-
-function resolveKanaliTemplatePath(
-  customPath?: string | null,
-  productName?: string | null,
-): string | undefined {
-  const productCandidates: string[] = []
-  if (productName) {
-    const key = normalizeTemplateKey(productName)
-    if (isKanaliSpecialKey(key)) {
-      productCandidates.push(path.join(process.cwd(), 'public', KANALI_SPECIAL_TEMPLATE_MAP[key]))
-    } else {
-      const suffixes = ['-kanali.pdf', '_kanali.pdf', '-kanali-template.pdf', '-kanali_etiqueta.pdf', 'kanali.pdf']
-      for (const suffix of suffixes) {
-        productCandidates.push(path.join(process.cwd(), 'public', `${key}${suffix}`))
-      }
-    }
-  }
-  const candidates = [
-    customPath ?? null,
-    ...productCandidates,
-    ...KANALI_TEMPLATE_CANDIDATES,
-  ].filter((value): value is string => typeof value === 'string' && value.length > 0)
-
-  for (const candidate of candidates) {
-    const resolved = path.isAbsolute(candidate) ? candidate : path.join(process.cwd(), candidate)
-    if (existsSync(resolved)) {
-      return resolved
-    }
-  }
-
-  return undefined
-}
-
-async function renderKanaliLabel({
-  fields,
-  fileName,
-  templatePath,
-}: {
-  fields: LabelRenderFields
-  fileName: string
-  templatePath?: string
-}): Promise<LabelRenderResult> {
-  const preferredTemplate = resolveKanaliTemplatePath(templatePath, fields.productName)
-  let templateBuffer: Buffer
-  let resolvedPath: string
-
-  try {
-    if (!preferredTemplate) {
-      throw new Error('No encontramos plantilla específica para Kanali.')
-    }
-    resolvedPath = path.isAbsolute(preferredTemplate)
-      ? preferredTemplate
-      : path.join(process.cwd(), preferredTemplate)
-    templateBuffer = await readFile(resolvedPath)
-  } catch (error) {
-    console.error('[label-renderer] Kanali template load failed, using fallback white label:', error)
-    const fallbackLines = buildKanaliFallbackLines(fields)
-    return renderWhiteLabelDocument(fields, fileName, 'blanca-grande', {
-      lines: fallbackLines,
-      variantSuffix: 'kanali-fallback',
-      defaultAlign: 'left',
-    })
-  }
-
-  const templateExtension = path.extname(resolvedPath).toLowerCase()
-  const pdfDoc = await PDFDocument.create()
-  const labelFont = await resolveLabelFont(pdfDoc)
-
-  let page: any
-  let pageWidth: number
-  let pageHeight: number
-
-  if (templateExtension === '.pdf') {
-    const templateDoc = await PDFDocument.load(templateBuffer)
-    const [templatePage] = await pdfDoc.copyPages(templateDoc, [0])
-    page = pdfDoc.addPage(templatePage)
-    pageWidth = page.getWidth()
-    pageHeight = page.getHeight()
-  } else {
-    const pngImage = await pdfDoc.embedPng(templateBuffer)
-    page = pdfDoc.addPage([pngImage.width, pngImage.height])
-    pageWidth = pngImage.width
-    pageHeight = pngImage.height
-
-    if (typeof page.drawImage === 'function') {
-      page.drawImage(pngImage, {
-        x: 0,
-        y: 0,
-        width: pngImage.width,
-        height: pngImage.height,
-      })
-    } else {
-      const imageName = page.node.newXObject(`Im-${Date.now().toString(36)}`, pngImage.ref)
-      page.pushOperators(
-        pushGraphicsState(),
-        translate(0, 0),
-        scale(pngImage.width, pngImage.height),
-        drawObject(imageName),
-        popGraphicsState(),
-      )
-    }
-  }
-
-  const marginX = pageWidth * 0.08
-  const product = formatProductText(fields.productName)
-  const weight = formatWeightText(fields.weight)
-  const fechaEnvasado =
-    normalizeFieldValue(fields.fechaEnvasado, { formatAsDate: true }) ?? 'SIN FECHA'
-  const loteKanali = formatKanaliLot(fields.lote, fields.fechaEnvasado)
-  const coc =
-    normalizeFieldValue(fields.codigoCoc, { preserveFormat: true }) ??
-    WHITE_LABEL_ORIGIN_LINE.split('CoC:').pop()?.trim() ??
-    ''
-  const normalizedProductKey = normalizeTemplateKey(fields.productName ?? '')
-  const isKanaliSpecial = isKanaliSpecialKey(normalizedProductKey)
-  const productFontSize = isKanaliSpecial
-    ? Math.max(10, Math.min(13, pageWidth * 0.01))
-    : Math.max(12, Math.min(16, pageWidth * 0.012))
-  const bodySize = isKanaliSpecial
-    ? Math.max(4.5, Math.min(5.5, pageWidth * 0.0038))
-    : Math.max(6, Math.min(8, pageWidth * 0.0055))
-  const smallSize = isKanaliSpecial
-    ? Math.max(3.5, Math.min(4.5, pageWidth * 0.003))
-    : Math.max(5, Math.min(7, pageWidth * 0.0045))
-  const lineSpacing = bodySize + 1.5
-  const baseY = Math.max(pageHeight * 0.8, pageHeight - 120)
-
-  if (!isKanaliSpecial) {
-    page.drawText(product, {
-      x: marginX,
-      y: baseY,
-      size: productFontSize,
-      font: labelFont,
-      color: DEFAULT_FONT_COLOR,
-    })
-  }
-
-  const leftLines = isKanaliSpecial
-    ? []
-    : [
-        `CATEGORIA: I    VARIEDAD: ${formatVarietyText(fields.variety)}`,
-        'ORIGEN: ESPAÑA/CANARIAS',
-        `FECHA ENVASADO: ${fechaEnvasado}    LOTE KANALI: ${loteKanali}`,
-        'ENVASADO POR: MONTAÑA ROJA HERBS SAT536/05',
-        'C/CONSTITUCION 53 ARICO',
-        'ART: 6007576    OPFH:1168',
-        'GGN: 4063061564405',
-        `CoC: ${coc}`,
-      ]
-
-  leftLines.forEach((text, index) => {
-    page.drawText(text, {
-      x: marginX,
-      y: baseY - lineSpacing * (index + 1),
-      size: index >= 6 ? smallSize : bodySize,
-      font: labelFont,
-      color: DEFAULT_FONT_COLOR,
-      maxWidth: pageWidth * 0.7,
-    })
-  })
-
-  if (isKanaliSpecial) {
-    const layout = KANALI_SPECIAL_LAYOUT[normalizedProductKey] ?? KANALI_SPECIAL_LAYOUT['hojasfrescasacelga']
-    const loteY = mmToPageYDelta(layout.loteYmmFromBottom, pageHeight)
-    const pesoY = loteY + bodySize * layout.pesoOffset
-    const leftX = mmToPageX(layout.loteXmm, pageWidth)
-    const rightX = mmToPageX(layout.pesoXmm, pageWidth)
-    const codeX = mmToPageX(layout.codeXmm, pageWidth)
-    const codeY = mmToPageYDelta(layout.codeYmmFromBottom, pageHeight)
-
-    page.drawText(loteKanali, {
-      x: leftX,
-      y: loteY,
-      size: bodySize + 1,
-      font: labelFont,
-      color: DEFAULT_FONT_COLOR,
-    })
-    page.drawText(fechaEnvasado, {
-      x: codeX,
-      y: codeY,
-      size: bodySize + 1,
-      font: labelFont,
-      color: DEFAULT_FONT_COLOR,
-    })
-    page.drawText(weight, {
-      x: rightX,
-      y: pesoY,
-      size: bodySize + 1,
-      font: labelFont,
-      color: DEFAULT_FONT_COLOR,
-    })
-  } else {
-    const weightY = baseY - lineSpacing * 2 + bodySize / 2
-    page.drawText(weight, {
-      x: pageWidth * 0.76,
-      y: weightY,
-      size: bodySize,
-      font: labelFont,
-      color: DEFAULT_FONT_COLOR,
-    })
-  }
-
-  if (!isKanaliSpecial) {
-    const barcodeValue = sanitizeBarcodeValue(fields.labelCode)
-    if (barcodeValue) {
-      drawEan13Barcode(page, barcodeValue, {
-        x: pageWidth * 0.52,
-        y: pageHeight * 0.04,
-        width: pageWidth * 0.34,
-        height: pageHeight * 0.1,
-        font: labelFont,
-      })
-    }
-  }
-
-  const pdfBytes = await pdfDoc.save()
-  return {
-    buffer: Buffer.from(pdfBytes),
-    fileName: buildLabelFileName(fileName),
-    mimeType: 'application/pdf',
-  }
 }
 
 async function renderAldiLabel({
@@ -1904,45 +1640,6 @@ function drawEan13Barcode(
     font: options.font,
     color: DEFAULT_FONT_COLOR,
   })
-}
-
-function buildKanaliFallbackLines(fields: LabelRenderFields): WhiteLabelLine[] {
-  const lote = formatKanaliLot(fields.lote, fields.fechaEnvasado)
-  const fecha =
-    normalizeFieldValue(fields.fechaEnvasado, { formatAsDate: true }) ?? 'SIN FECHA'
-  const peso = formatWeightText(fields.weight)
-  return [
-    { text: `LOTE KANALI: ${lote}` },
-    { text: `FECHA ENVASADO: ${fecha}` },
-    { text: `PESO: ${peso}` },
-  ]
-}
-
-function formatKanaliLot(value?: string | null, fechaEnvasado?: string | null): string {
-  const fromDate = buildWeekDayLotFromDate(fechaEnvasado)
-  if (fromDate) {
-    return fromDate
-  }
-  const normalizedWithSlash = normalizeAldiLotValue(value)
-  if (normalizedWithSlash) {
-    return normalizedWithSlash
-  }
-  const digits = typeof value === 'string' ? value.replace(/\D/g, '') : ''
-  if (digits.length >= 3 && digits.length <= 4) {
-    const padded = digits.padStart(4, '0')
-    const week = padded.slice(0, padded.length - 2).padStart(2, '0')
-    const day = padded.slice(-2)
-    return `${week}/${day}`
-  }
-  return formatLotText(value)
-}
-
-function buildWeekDayLotFromDate(fechaEnvasado?: string | null): string | null {
-  const parsed = parseDateFlexible(fechaEnvasado)
-  if (!parsed) return null
-  const week = getIsoWeekNumber(parsed)
-  const day = parsed.getUTCDate().toString().padStart(2, '0')
-  return `${week.toString().padStart(2, '0')}/${day}`
 }
 
 function buildAldiFallbackLines(fields: LabelRenderFields): WhiteLabelLine[] {
