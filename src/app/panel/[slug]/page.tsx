@@ -2929,10 +2929,7 @@ function LabelsDashboard({
             label: 'Lote',
             type: 'text',
             value: manualLote,
-            placeholder:
-              labelType === 'aldi' || labelType === 'kanali' || labelType === 'hiperdino'
-                ? '48/25'
-                : LOT_SEQUENCE_DEFAULT,
+            placeholder: LOT_SEQUENCE_DEFAULT,
             onChange: handleLoteChange,
           },
           {

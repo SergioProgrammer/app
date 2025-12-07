@@ -6,7 +6,9 @@ import {
   normalizeProductForLabelType,
   type LabelType,
 } from '@/lib/product-selection'
-import { renderAldiLabelSet, renderLabelPdf, renderLidlLabelSet } from './label-renderer'
+import { renderLabelPdf } from './label-renderer'
+import { renderAldiLabelSet } from './renderers/aldi-renderer'
+import { renderLidlLabelSet } from './renderers/lidl-renderer'
 import type { LabelRenderFields, LabelRenderResult } from './label-types'
 
 export interface ManualLabelFields {

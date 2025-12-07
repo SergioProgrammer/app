@@ -32,7 +32,7 @@ const ALDI_TEMPLATE_CANDIDATES = [
 const ALDI_TRACE_PREFIX = 'E'
 const ALDI_TRACE_LENGTH = 5
 const DEFAULT_FONT_SIZE = 55
-const DEFAULT_FONT_COLOR = rgb(0, 0, 0)
+export const DEFAULT_FONT_COLOR = rgb(0, 0, 0)
 const DEFAULT_FONT_NAME = StandardFonts.Helvetica
 const LABEL_FONT_ENV_KEY = 'LABEL_FONT_PATH'
 const DEFAULT_FONT_CANDIDATES = [
@@ -130,7 +130,7 @@ const LIDL_CENTERED_10X5_CONFIG: WhiteLabelConfig = {
 
 const WHITE_LABEL_COMPANY_NAME = 'Montaña Roja Herbs Sat 536/05 OPFH 1168'
 const WHITE_LABEL_COMPANY_ADDRESS = 'C/La Constitución 53, Arico Viejo'
-const WHITE_LABEL_ORIGIN_LINE = 'Origen: España (Canarias) · CoC: 4063061581198'
+export const WHITE_LABEL_ORIGIN_LINE = 'Origen: España (Canarias) · CoC: 4063061581198'
 const WHITE_LABEL_SMALL_PRODUCER_LINE = 'Producido en España/Islas Canarias por'
 const WHITE_LABEL_SMALL_PRODUCER_NAME = 'MONTAÑA ROJA HERBS OPFH 1186'
 const WHITE_LABEL_SMALL_ADDRESS = 'C/Castillo 68, piso 6, Santa Cruz de Tenerife'
@@ -493,7 +493,7 @@ export async function renderLabelPdf({
   }
 }
 
-async function renderWhiteLabelDocument(
+export async function renderWhiteLabelDocument(
   fields: LabelRenderFields,
   fileName: string,
   variant: WhiteLabelVariant,
@@ -689,7 +689,7 @@ function isWhiteLabelVariant(value?: LabelType | null): value is WhiteLabelVaria
   return value === 'blanca-grande' || value === 'blanca-pequena'
 }
 
-function formatProductText(value?: string | null): string {
+export function formatProductText(value?: string | null): string {
   const trimmed = value?.trim()
   if (trimmed && trimmed.length > 0) {
     return trimmed.toUpperCase()
@@ -697,7 +697,7 @@ function formatProductText(value?: string | null): string {
   return 'PRODUCTO SIN NOMBRE'
 }
 
-function formatVarietyText(value?: string | null): string {
+export function formatVarietyText(value?: string | null): string {
   const trimmed = value?.trim()
   if (trimmed && trimmed.length > 0) {
     return trimmed.toUpperCase()
@@ -705,7 +705,7 @@ function formatVarietyText(value?: string | null): string {
   return 'SIN VARIEDAD'
 }
 
-function formatWhiteLabelDate(value?: string | null): string {
+export function formatWhiteLabelDate(value?: string | null): string {
   if (!value) return 'Sin fecha'
   const trimmed = value.trim()
   if (!trimmed) return 'Sin fecha'
@@ -725,7 +725,7 @@ function formatWhiteLabelDate(value?: string | null): string {
   return trimmed
 }
 
-function formatLotText(value?: string | null): string {
+export function formatLotText(value?: string | null): string {
   const trimmed = value?.trim()
   if (trimmed && trimmed.length > 0) {
     return trimmed.toUpperCase()
@@ -733,7 +733,7 @@ function formatLotText(value?: string | null): string {
   return 'SIN LOTE'
 }
 
-function formatWeightText(value?: string | null): string {
+export function formatWeightText(value?: string | null): string {
   const trimmed = value?.trim()
   if (trimmed && trimmed.length > 0) {
     return trimmed
@@ -939,19 +939,19 @@ function pxToMmY(px: number): number {
   return px / PX_PER_MM_Y
 }
 
-function mmToPageX(mm: number, pageWidth: number): number {
+export function mmToPageX(mm: number, pageWidth: number): number {
   return (mm / LABEL_WIDTH_MM) * pageWidth
 }
 
-function mmToPageYFromTop(mm: number, pageHeight: number): number {
+export function mmToPageYFromTop(mm: number, pageHeight: number): number {
   return pageHeight - (mm / LABEL_HEIGHT_MM) * pageHeight
 }
 
-function mmToPageXDelta(mm: number, pageWidth: number): number {
+export function mmToPageXDelta(mm: number, pageWidth: number): number {
   return (mm / LABEL_WIDTH_MM) * pageWidth
 }
 
-function mmToPageYDelta(mm: number, pageHeight: number): number {
+export function mmToPageYDelta(mm: number, pageHeight: number): number {
   return (mm / LABEL_HEIGHT_MM) * pageHeight
 }
 
@@ -997,7 +997,7 @@ function shouldRenderOnlyLot(fields: LabelRenderFields): boolean {
   )
 }
 
-async function resolveLabelFont(pdfDoc: PDFDocument): Promise<PDFFont> {
+export async function resolveLabelFont(pdfDoc: PDFDocument): Promise<PDFFont> {
   const fontBytes = await loadPreferredFontBytes()
   if (fontBytes) {
     try {
@@ -1080,7 +1080,7 @@ function resolvePosition(
   return absoluteX
 }
 
-function normalizeFieldValue(
+export function normalizeFieldValue(
   value?: string | null,
   options?: { preserveFormat?: boolean; formatAsDate?: boolean },
 ): string | null {
@@ -1140,7 +1140,7 @@ function normalizeLotForFileName(lot?: string | null): string | null {
   return normalized.length > 0 ? normalized : null
 }
 
-function buildLabelFileName(originalFileName: string, variantSuffix?: string, lot?: string | null): string {
+export function buildLabelFileName(originalFileName: string, variantSuffix?: string, lot?: string | null): string {
   const lotBase = normalizeLotForFileName(lot)
   if (lotBase) {
     if (!lotSequencePools[lotBase] || lotSequencePools[lotBase].length === 0) {
@@ -1160,7 +1160,7 @@ function buildLabelFileName(originalFileName: string, variantSuffix?: string, lo
   return `${sanitized}${suffix}-etiqueta.pdf`
 }
 
-function normalizeTemplateKey(value: string): string {
+export function normalizeTemplateKey(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -1539,7 +1539,7 @@ async function renderAldiLabel({
   }
 }
 
-function sanitizeBarcodeValue(value?: string | null): string | null {
+export function sanitizeBarcodeValue(value?: string | null): string | null {
   if (!value) return null
   const digits = value.replace(/\D/g, '')
   if (digits.length === 0) return null
@@ -1633,7 +1633,7 @@ function encodeEanRightDigit(digit: number): string {
   return patterns[digit]
 }
 
-function drawEan13Barcode(
+export function drawEan13Barcode(
   page: any,
   code: string,
   options: { x: number; y: number; width: number; height: number; font: PDFFont },
