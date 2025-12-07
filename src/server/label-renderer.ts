@@ -5,6 +5,7 @@ import fontkit from '@pdf-lib/fontkit'
 import type { LabelType } from '@/lib/product-selection'
 import type { LabelRenderFields, LabelRenderResult, WhiteLabelLine } from './label-types'
 import { renderKanaliLabel, resolveKanaliTemplatePath } from './renderers/kanali-renderer'
+import { renderHiperdinoLabel, resolveHiperdinoTemplatePath } from './renderers/hiperdino-renderer'
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
@@ -158,6 +159,26 @@ export async function renderLabelPdf({
         defaultAlign: 'left',
       })
     }
+  }
+  if (isHiperdinoLabel(fields.labelType)) {
+    return await renderHiperdinoLabel({
+      fields,
+      fileName,
+      templatePath: resolveHiperdinoTemplatePath(templatePath, fields.productName),
+      shared: {
+        formatProductText,
+        formatVarietyText,
+        formatWeightText,
+        formatLotText,
+        normalizeFieldValue,
+        resolveLabelFont,
+        DEFAULT_FONT_COLOR,
+        normalizeTemplateKey,
+        mmToPageX,
+        mmToPageYDelta,
+        buildLabelFileName,
+      },
+    })
   }
   if (isKanaliLabel(fields.labelType)) {
     return await renderKanaliLabel({
@@ -1167,6 +1188,10 @@ function normalizeAldiLotValue(value?: string | null): string | null {
 
 function isAldiLabel(value?: LabelType | null): boolean {
   return (value ?? '').toLowerCase() === 'aldi'
+}
+
+function isHiperdinoLabel(value?: LabelType | null): boolean {
+  return (value ?? '').toLowerCase() === 'hiperdino'
 }
 
 function isKanaliLabel(value?: LabelType | null): boolean {

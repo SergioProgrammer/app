@@ -226,7 +226,7 @@ const PRODUCT_BARCODE_MAP: Record<string, string> = (() => {
 })()
 
 function generateLotValue(labelType: LabelType = DEFAULT_LABEL_TYPE, referenceDate?: string | null): string {
-  if (labelType === 'aldi' || labelType === 'kanali') {
+  if (labelType === 'aldi' || labelType === 'kanali' || labelType === 'hiperdino') {
     return buildAldiLot(referenceDate)
   }
   const lastUsed = getLastPersistedLot()
@@ -322,7 +322,7 @@ function persistLotSequence(value: string): void {
 }
 
 function resolveLotForLabelType(value: string, labelType: LabelType, referenceDate?: string | null): string {
-  if (labelType === 'aldi' || labelType === 'kanali') {
+  if (labelType === 'aldi' || labelType === 'kanali' || labelType === 'hiperdino') {
     const normalizedAldi = normalizeAldiLot(value)
     if (normalizedAldi) return normalizedAldi
     return buildAldiLot(referenceDate)
@@ -2661,18 +2661,22 @@ function LabelsDashboard({
       const isLidlAlbahaca = isLidlLotOnly && normalizedProductName === 'albahaca'
       const isKanali = labelType === 'kanali'
       const isKanaliCilantro = isKanali && normalizedProductName === 'cilantro'
+      const isHiperdino = labelType === 'hiperdino'
+      const isHiperdinoNaranja = isHiperdino && normalizedProductName === 'naranja'
       const resumenValueParts: string[] = []
-      if (isKanali) {
+      if (isKanali || isHiperdino) {
         if (manualLote.trim().length > 0) {
           resumenValueParts.push(`Lote ${manualLote.trim()}`)
         }
         if (manualFechaCarga.trim().length > 0) {
           resumenValueParts.push(`Fecha ${formatDate(manualFechaCarga.trim())}`)
         }
-        if (manualWeight.trim().length > 0) {
-          resumenValueParts.push(`Peso ${manualWeight.trim()}`)
-        } else if (isKanaliCilantro) {
-          resumenValueParts.push('Peso 50gr')
+        if (!isHiperdinoNaranja) {
+          if (manualWeight.trim().length > 0) {
+            resumenValueParts.push(`Peso ${manualWeight.trim()}`)
+          } else if (isKanaliCilantro) {
+            resumenValueParts.push('Peso 50gr')
+          }
         }
       } else if (!isLidlLotOnly) {
         if (productName.trim().length > 0) {
@@ -2699,7 +2703,7 @@ function LabelsDashboard({
           resumenValueParts.push(`EAN ${manualLabelCode.trim()}`)
         }
       }
-      if (!isKanali && manualLote.trim().length > 0) {
+      if (!isKanali && !isHiperdino && manualLote.trim().length > 0) {
         resumenValueParts.push(`Lote ${manualLote.trim()}`)
       }
       if (isLidlLotOnly) {
@@ -2769,7 +2773,7 @@ function LabelsDashboard({
               label: 'Lote',
               type: 'text',
               value: manualLote,
-              placeholder: LOT_SEQUENCE_DEFAULT,
+              placeholder: '48/25',
               onChange: handleLoteChange,
             },
             {
@@ -2801,7 +2805,7 @@ function LabelsDashboard({
               label: 'Lote',
               type: 'text',
               value: manualLote,
-              placeholder: LOT_SEQUENCE_DEFAULT,
+              placeholder: '48/25',
               onChange: handleLoteChange,
             },
             {
@@ -2817,9 +2821,57 @@ function LabelsDashboard({
           label: 'Peso',
           type: 'text',
           value: manualWeight,
-          placeholder: normalizedProductName === 'cilantro' ? '50gr' : 'Ej. 40gr',
-          onChange: handleWeightChange,
-        },
+              placeholder: normalizedProductName === 'cilantro' ? '50gr' : 'Ej. 40gr',
+              onChange: handleWeightChange,
+            },
+          ]
+        }
+        if (isHiperdino) {
+          if (isHiperdinoNaranja) {
+            return [
+              {
+                name: 'lote',
+                label: 'Lote',
+                type: 'text',
+                value: manualLote,
+                placeholder: LOT_SEQUENCE_DEFAULT,
+                onChange: handleLoteChange,
+              },
+              {
+                name: 'fecha',
+                label: 'Fecha envasado / carga',
+                type: 'date',
+                value: manualFechaCarga,
+                helper: 'Verifica la fecha importada automáticamente.',
+                onChange: handleFechaChange,
+              },
+            ]
+          }
+          return [
+            {
+              name: 'lote',
+              label: 'Lote',
+              type: 'text',
+              value: manualLote,
+              placeholder: '48/25',
+              onChange: handleLoteChange,
+            },
+            {
+              name: 'fecha',
+              label: 'Fecha envasado / carga',
+              type: 'date',
+              value: manualFechaCarga,
+              helper: 'Verifica la fecha importada automáticamente.',
+              onChange: handleFechaChange,
+            },
+            {
+              name: 'peso',
+              label: 'Peso',
+              type: 'text',
+              value: manualWeight,
+              placeholder: normalizedProductName === 'cilantro' ? '50gr' : 'Ej. 40gr',
+              onChange: handleWeightChange,
+            },
           ]
         }
         if (
@@ -2877,7 +2929,10 @@ function LabelsDashboard({
             label: 'Lote',
             type: 'text',
             value: manualLote,
-            placeholder: labelType === 'aldi' ? '48/25' : LOT_SEQUENCE_DEFAULT,
+            placeholder:
+              labelType === 'aldi' || labelType === 'kanali' || labelType === 'hiperdino'
+                ? '48/25'
+                : LOT_SEQUENCE_DEFAULT,
             onChange: handleLoteChange,
           },
           {

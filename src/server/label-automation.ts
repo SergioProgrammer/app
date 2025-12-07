@@ -225,7 +225,7 @@ function resolveLot(
   labelType: LabelType,
   referenceDate?: string | null,
 ): string {
-  if (labelType === 'aldi' || labelType === 'kanali') {
+  if (labelType === 'aldi' || labelType === 'kanali' || labelType === 'hiperdino') {
     return resolveAldiLot(value, referenceDate)
   }
   return resolveStandardLot(value, seed)
