@@ -89,13 +89,13 @@ const HIPERDINO_SPECIAL_LAYOUT = {
     pesoOffset: 3,
   },
   naranja: {
-    codeYmmFromBottom: 20.5,
-    loteYmmFromBottom: 20.5,
-    loteXmm: 33,
-    codeXmm: 15,
+    codeYmmFromBottom: 16.5,
+    loteYmmFromBottom: 16.5,
+    loteXmm: 44,
+    codeXmm: 29,
     pesoXmm: 25.5,
     pesoOffset: 3,
-  },
+  }
 } as const
 
 const ALDI_LOT_PATTERN = /^(\d{1,2})\/(\d{1,2})$/

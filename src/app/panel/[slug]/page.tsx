@@ -1723,7 +1723,7 @@ const nonLabelPlans = useMemo(
   return (
     <div className={rootContainerClass}>
       {/* Topbar */}
-      <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/50 bg-white/70 border-b">
+      <header className="sticky top-0 z-10 backdrop-blu bg-white/70 border-b">
         <div className={headerInnerClass}>
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-black flex items-center justify-center text-[#FAF9F6]">
@@ -2991,7 +2991,7 @@ function LabelsDashboard({
             {summaryStaticItems.map((item) => (
               <div key={item.label} className="rounded-xl border border-gray-200 bg-white px-3 py-3">
                 <dt className="text-xs uppercase tracking-wide text-gray-500">{item.label}</dt>
-                <dd className="mt-1 text-sm text-gray-900 break-words">{item.value}</dd>
+                <dd className="mt-1 text-sm text-gray-900">{item.value}</dd>
               </div>
             ))}
           </dl>
@@ -3920,7 +3920,7 @@ function TurnosDashboard({
               Mostramos los últimos {TURNOS_RECENT_LIMIT} fichajes sincronizados en tiempo real.
             </p>
           </div>
-          <div className="max-h-[320px] overflow-auto">
+          <div className=" overflow-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-white text-gray-500 uppercase tracking-wide text-xs">
                 <tr>

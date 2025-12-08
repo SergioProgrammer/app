@@ -403,15 +403,15 @@ export async function renderLabelPdf({
       } else {
         const baseFontSize = 44 * scaleY
         const textWidth = measureTextWidth(lotText, baseFontSize, labelFont)
-        const lotOffset = isEneldo ? 30 : isHierbahuerto ? 20 : isPerejil ? 15 : isRomero ? 12 : 10
+        const lotOffset = isEneldo ? 30 : isHierbahuerto ? 20 : isPerejil ? 20 : isRomero ? 12 : 10
         const shouldShiftLotLeft =
           isEneldo || isCebollino || isCilantro || isHierbahuerto || isPerejil || isRomero
         const lotShift = isEneldo
           ? 80
           : isHierbahuerto
-          ? 70
+          ? 50
           : isPerejil
-          ? 70
+          ? 30
           : shouldShiftLotLeft
           ? 40
           : 0
@@ -425,10 +425,12 @@ export async function renderLabelPdf({
           ? pageHeight / 2 - mmToPageYDelta(pxToMmY(40), pageHeight)
           : isEneldo
           ? pageHeight / 2 - mmToPageYDelta(pxToMmY(25), pageHeight)
+          : isCebollino
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(15), pageHeight)
           : isHierbahuerto
           ? pageHeight / 2 - mmToPageYDelta(pxToMmY(40), pageHeight)
           : isPerejil
-          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(20), pageHeight)
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(30), pageHeight)
           : isRomero
           ? pageHeight / 2 - mmToPageYDelta(pxToMmY(25), pageHeight)
           : pageHeight / 2 - mmToPageYDelta(pxToMmY(5), pageHeight)
@@ -449,7 +451,7 @@ export async function renderLabelPdf({
           const weightShift = isEneldo
             ? 80
             : isHierbahuerto
-            ? 50
+            ? 30
             : isPerejil
             ? 70
             : shouldShiftWeightLeft
@@ -467,7 +469,7 @@ export async function renderLabelPdf({
           const weightY = isEneldo
             ? y + mmToPageYDelta(pxToMmY(80), pageHeight)
             : isPerejil
-            ? y + mmToPageYDelta(pxToMmY(55), pageHeight)
+            ? y + mmToPageYDelta(pxToMmY(65), pageHeight)
             : isHierbahuerto
             ? y + mmToPageYDelta(pxToMmY(55), pageHeight)
             : isRomero
