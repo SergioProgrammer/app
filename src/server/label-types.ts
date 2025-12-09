@@ -11,6 +11,7 @@ export interface LabelRenderFields {
   productName?: string | null
   variety?: string | null
   category?: string | null
+  boxWeight?: string | null
 }
 
 export interface LabelRenderResult {

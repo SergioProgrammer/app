@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
     const manualCodigoCoc = formData.get('manualCodigoCoc')
     const manualCodigoR = formData.get('manualCodigoR')
     const manualWeight = formData.get('manualWeight')
+    const manualBoxWeight = formData.get('manualBoxWeight')
     const manualLabelType = formData.get('labelType')
     const manualProductName = formData.get('productName')
     const manualVariety = formData.get('variety')
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
       codigoR: getOptionalString(manualCodigoR),
       weight: getOptionalString(manualWeight),
       category: getOptionalString(manualCategory),
+      boxWeight: getOptionalString(manualBoxWeight),
     }
 
     if (!manualFields.fechaEnvasado && manualFields.fechaCarga) {

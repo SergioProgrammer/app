@@ -23,6 +23,7 @@ export interface ManualLabelFields {
   codigoCoc?: string | null
   codigoR?: string | null
   weight?: string | null
+  boxWeight?: string | null
 }
 
 export type LabelAutomationStatus = 'completed' | 'error'
@@ -197,6 +198,7 @@ function normalizeManualFields(manualFields: ManualLabelFields | undefined): Man
     codigoR: normalizeField(manualFields?.codigoR),
     weight: normalizeField(manualFields?.weight),
     category: normalizeField(manualFields?.category),
+    boxWeight: normalizeField(manualFields?.boxWeight),
   }
 }
 
@@ -221,6 +223,7 @@ function prepareLabelFields(fields: ManualLabelFields, fileName: string): LabelR
     codigoR: resolveCodigoR(resolvedLabelType, fields.codigoR),
     weight: resolveWeight(fields.weight),
     category: normalizeField(fields.category),
+    boxWeight: normalizeField(fields.boxWeight),
   }
 }
 

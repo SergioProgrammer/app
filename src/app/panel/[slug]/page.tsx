@@ -111,6 +111,7 @@ interface LabelUploadMeta {
   productName?: string
   variety?: string
   category?: string
+  boxWeight?: string
 }
 
 interface UploadedFileAutomationFields {
@@ -125,6 +126,7 @@ interface UploadedFileAutomationFields {
   variety?: string | null
   labelType?: string | null
   category?: string | null
+  boxWeight?: string | null
 }
 
 interface UploadedFileAutomation {
@@ -1170,6 +1172,10 @@ const nonLabelPlans = useMemo(
                             typeof fieldsPayload.category === 'string'
                               ? fieldsPayload.category
                               : null,
+                          boxWeight:
+                            typeof fieldsPayload.boxWeight === 'string'
+                              ? fieldsPayload.boxWeight
+                              : null,
                           labelType:
                             typeof fieldsPayload.labelType === 'string'
                               ? fieldsPayload.labelType
@@ -1606,6 +1612,9 @@ const nonLabelPlans = useMemo(
         }
         if (meta?.weight) {
           formData.append('manualWeight', meta.weight)
+        }
+        if (meta?.boxWeight) {
+          formData.append('manualBoxWeight', meta.boxWeight)
         }
         if (meta?.labelType) {
           formData.append('labelType', meta.labelType)
@@ -2133,6 +2142,7 @@ function LabelsDashboard({
   const [manualFechaCarga, setManualFechaCarga] = useState(() => getTodayIsoDate())
   const [manualCodigoR, setManualCodigoR] = useState('')
   const [manualWeight, setManualWeight] = useState(DEFAULT_WEIGHT)
+  const [manualBoxWeight, setManualBoxWeight] = useState('')
   const [weightManuallyEdited, setWeightManuallyEdited] = useState(false)
   const [manualVariety, setManualVariety] = useState(DEFAULT_VARIETY)
   const [manualCategory, setManualCategory] = useState(DEFAULT_CATEGORY)
@@ -2189,6 +2199,9 @@ function LabelsDashboard({
       }
       if (typeof parsed?.weight === 'string' && parsed.weight.trim().length > 0) {
         setManualWeight(parsed.weight)
+      }
+      if (typeof parsed?.boxWeight === 'string' && parsed.boxWeight.trim().length > 0) {
+        setManualBoxWeight(parsed.boxWeight)
       }
       if (typeof parsed?.variety === 'string' && parsed.variety.trim().length > 0) {
         setManualVariety(parsed.variety)
@@ -2346,6 +2359,7 @@ function LabelsDashboard({
       weight: manualWeight,
       variety: manualVariety,
       category: manualCategory,
+      boxWeight: manualBoxWeight,
     }
     try {
       window.localStorage.setItem('labels:manual-fields', JSON.stringify(payload))
@@ -2361,6 +2375,7 @@ function LabelsDashboard({
     manualWeight,
     manualVariety,
     manualCategory,
+    manualBoxWeight,
   ])
 
   const stepsInfo = useMemo(
@@ -2402,6 +2417,7 @@ function LabelsDashboard({
     setManualLabelCode(fallbackLabelCode)
     setLabelCodeManuallyEdited(false)
     setManualWeight(DEFAULT_WEIGHT)
+    setManualBoxWeight('')
     setWeightManuallyEdited(false)
     setManualVariety(DEFAULT_VARIETY)
     setManualCategory(DEFAULT_CATEGORY)
@@ -2480,6 +2496,11 @@ function LabelsDashboard({
     setWeightManuallyEdited(true)
   }, [])
 
+  const handleBoxWeightChange = useCallback((value: string) => {
+    setLocalError(null)
+    setManualBoxWeight(value)
+  }, [])
+
   const handleVarietyChange = useCallback((value: string) => {
     setLocalError(null)
     setManualVariety(value)
@@ -2498,6 +2519,7 @@ function LabelsDashboard({
       `Variedad: ${manualVariety.trim() || 'Sin variedad'}`,
       `Categoría: ${manualCategory.trim() || 'Sin categoría'}`,
       `Peso: ${manualWeight.trim() || DEFAULT_WEIGHT}`,
+      `Peso caja: ${manualBoxWeight.trim() || 'Sin dato'}`,
       `Fecha: ${manualFechaCarga.trim() || 'Sin fecha'}`,
       `Código de barras: ${manualLabelCode.trim() || 'Sin dato'}`,
       `Código COC: ${manualCodigoCoc.trim() || 'Sin dato'}`,
@@ -2527,6 +2549,7 @@ function LabelsDashboard({
     manualCategory,
     manualVariety,
     manualWeight,
+    manualBoxWeight,
     productName,
   ])
 
@@ -2562,6 +2585,9 @@ function LabelsDashboard({
         meta.labelCode = manualLabelCode.trim()
       }
       meta.weight = manualWeight.trim().length > 0 ? manualWeight.trim() : DEFAULT_WEIGHT
+      if (manualBoxWeight.trim().length > 0) {
+        meta.boxWeight = manualBoxWeight.trim()
+      }
       meta.labelType = labelType
       meta.productName = productName.trim()
       if (manualVariety.trim().length > 0) {
@@ -2592,6 +2618,7 @@ function LabelsDashboard({
       manualCategory,
       manualVariety,
       manualWeight,
+      manualBoxWeight,
       productName,
       buildManualUploadFile,
       onUpload,
@@ -2847,6 +2874,15 @@ function LabelsDashboard({
               helper: lidlWeightHelper,
               onChange: handleWeightChange,
             },
+            {
+              name: 'pesoCaja',
+              label: 'Peso caja (solo etiqueta caja 2)',
+              type: 'text',
+              value: manualBoxWeight,
+              placeholder: 'Ej. 1 kg',
+              helper: 'Se imprime en KG CAJA (caja 2).',
+              onChange: handleBoxWeightChange,
+            },
           ]
           if (isLidlAlbahaca) {
             lidlFields.push({
@@ -3005,6 +3041,15 @@ function LabelsDashboard({
               onChange: handleWeightChange,
             },
             {
+              name: 'pesoCaja',
+              label: 'Peso caja (solo etiqueta caja 2)',
+              type: 'text',
+              value: manualBoxWeight,
+              placeholder: 'Ej. 1 kg',
+              helper: 'Se imprime en KG CAJA.',
+              onChange: handleBoxWeightChange,
+            },
+            {
               name: 'codigoR',
               label: 'Código E',
               type: 'text',
@@ -3049,6 +3094,19 @@ function LabelsDashboard({
             placeholder: 'Ej. 40gr',
             onChange: handleWeightChange,
           },
+          ...(labelType === 'aldi'
+            ? [
+                {
+                  name: 'pesoCaja',
+                  label: 'Peso caja (solo etiqueta caja 2)',
+                  type: 'text',
+                  value: manualBoxWeight,
+                  placeholder: 'Ej. 1 kg',
+                  helper: 'Se imprime en KG CAJA.',
+                  onChange: handleBoxWeightChange,
+                },
+              ]
+            : []),
           {
             name: 'codigoCoc',
             label: 'Código COC',
