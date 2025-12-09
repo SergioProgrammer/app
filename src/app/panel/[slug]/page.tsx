@@ -2916,7 +2916,7 @@ function LabelsDashboard({
               placeholder: normalizedProductName === 'cilantro' ? '50gr' : 'Ej. 40gr',
               onChange: handleWeightChange,
             },
-          ]
+          ] satisfies SummaryEditableField[]
         }
         if (isWhiteLabel) {
           return [
@@ -2963,7 +2963,7 @@ function LabelsDashboard({
               placeholder: 'Ej. 40gr',
               onChange: handleWeightChange,
             },
-          ]
+          ] satisfies SummaryEditableField[]
         }
         if (isHiperdino) {
           if (isHiperdinoNaranja) {
@@ -2984,7 +2984,7 @@ function LabelsDashboard({
                 helper: 'Verifica la fecha importada automáticamente.',
                 onChange: handleFechaChange,
               },
-            ]
+            ] satisfies SummaryEditableField[]
           }
           return [
             {
@@ -3011,7 +3011,7 @@ function LabelsDashboard({
               placeholder: normalizedProductName === 'cilantro' ? '50gr' : 'Ej. 40gr',
               onChange: handleWeightChange,
             },
-          ]
+          ] satisfies SummaryEditableField[]
         }
         if (
           labelType === 'aldi' &&
@@ -3052,9 +3052,9 @@ function LabelsDashboard({
               helper: 'Código de trazabilidad Aldi (E + 5 dígitos).',
               onChange: handleCodigoRInputChange,
             },
-          ]
+          ] satisfies SummaryEditableField[]
         }
-        return [
+        const genericFields: SummaryEditableField[] = [
           {
             name: 'variety',
             label: 'Variedad',
@@ -3088,19 +3088,19 @@ function LabelsDashboard({
             placeholder: 'Ej. 40gr',
             onChange: handleWeightChange,
           },
-          ...(labelType === 'aldi'
-            ? [
-                {
-                  name: 'pesoCaja',
-                  label: 'Peso caja (solo etiqueta caja 2)',
-                  type: 'text',
-                  value: manualBoxWeight,
-                  placeholder: 'Ej. 1 kg',
-                  helper: 'Se imprime en KG CAJA.',
-                  onChange: handleBoxWeightChange,
-                },
-              ]
-            : []),
+        ]
+        if (labelType === 'aldi') {
+          genericFields.push({
+            name: 'pesoCaja',
+            label: 'Peso caja (solo etiqueta caja 2)',
+            type: 'text',
+            value: manualBoxWeight,
+            placeholder: 'Ej. 1 kg',
+            helper: 'Se imprime en KG CAJA.',
+            onChange: handleBoxWeightChange,
+          })
+        }
+        genericFields.push(
           {
             name: 'codigoCoc',
             label: 'Código COC',
@@ -3134,7 +3134,8 @@ function LabelsDashboard({
                 : 'Se genera automáticamente sumando 4 días (5 si la fecha cae en sábado).',
             onChange: handleCodigoRInputChange,
           },
-        ]
+        )
+        return genericFields
       })()
 
       return (
