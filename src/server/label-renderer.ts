@@ -412,6 +412,8 @@ export async function renderLabelPdf({
           ? 50
           : isPerejil
           ? 30
+          : isCilantro
+          ? 90
           : shouldShiftLotLeft
           ? 40
           : 0
@@ -422,7 +424,7 @@ export async function renderLabelPdf({
           desiredCenterX - textWidth / 2 + mmToPageXDelta(lotOffsetMm, pageWidth) - mmToPageXDelta(lotShiftMm, pageWidth),
         )
         const y = isCilantro
-          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(40), pageHeight)
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(50), pageHeight)
           : isEneldo
           ? pageHeight / 2 - mmToPageYDelta(pxToMmY(25), pageHeight)
           : isCebollino
@@ -441,19 +443,22 @@ export async function renderLabelPdf({
           color: DEFAULT_FONT_COLOR,
           font: labelFont,
         })
-        if (isEneldo || isHierbahuerto || isPerejil || isRomero) {
+        if (isEneldo || isHierbahuerto || isPerejil || isRomero || isCilantro) {
           const defaultWeight = isEneldo || isRomero ? '30g' : '40g'
           const weightText = normalizeFieldValue(fields.weight, { preserveFormat: true }) ?? defaultWeight
           const weightFontSize = (isEneldo ? 110 : 90) * scaleY
           const weightWidth = measureTextWidth(weightText, weightFontSize, labelFont)
-          const weightOffset = isEneldo ? 30 : isPerejil ? 15 : isHierbahuerto ? 20 : isRomero ? 12 : 20
-          const shouldShiftWeightLeft = isEneldo || isHierbahuerto || isPerejil || isRomero
+          const weightOffset =
+            isEneldo ? 30 : isPerejil ? 15 : isHierbahuerto ? 20 : isRomero ? 12 : isCilantro ? 20 : 20
+          const shouldShiftWeightLeft = isEneldo || isHierbahuerto || isPerejil || isRomero || isCilantro
           const weightShift = isEneldo
             ? 80
             : isHierbahuerto
             ? 30
             : isPerejil
             ? 70
+            : isCilantro
+            ? 99
             : shouldShiftWeightLeft
             ? 40
             : 0
@@ -471,6 +476,8 @@ export async function renderLabelPdf({
             : isPerejil
             ? y + mmToPageYDelta(pxToMmY(65), pageHeight)
             : isHierbahuerto
+            ? y + mmToPageYDelta(pxToMmY(65), pageHeight)
+            : isCilantro
             ? y + mmToPageYDelta(pxToMmY(65), pageHeight)
             : isRomero
             ? y + mmToPageYDelta(pxToMmY(65), pageHeight)
