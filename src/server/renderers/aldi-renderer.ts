@@ -426,10 +426,15 @@ function buildAldiFallbackLines(fields: LabelRenderFields): WhiteLabelLine[] {
     formatLotText(fields.codigoR) ??
     'SIN CODIGO'
   const peso = formatWeightText(fields.weight)
+  const coc =
+    normalizeFieldValue(fields.codigoCoc, { preserveFormat: true }) ??
+    WHITE_LABEL_ORIGIN_LINE.split('CoC:').pop()?.trim() ??
+    '4063061581198'
   return [
     { text: `LOTE ALDI: ${lote}` },
     { text: `CÓDIGO E: ${codigoE}` },
     { text: `PESO: ${peso}` },
+    { text: `COC: ${coc}` },
   ]
 }
 

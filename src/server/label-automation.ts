@@ -15,6 +15,7 @@ export interface ManualLabelFields {
   labelType?: LabelType | string | null
   productName?: string | null
   variety?: string | null
+  category?: string | null
   lote?: string | null
   fechaEnvasado?: string | null
   fechaCarga?: string | null
@@ -195,6 +196,7 @@ function normalizeManualFields(manualFields: ManualLabelFields | undefined): Man
     codigoCoc: normalizeField(manualFields?.codigoCoc),
     codigoR: normalizeField(manualFields?.codigoR),
     weight: normalizeField(manualFields?.weight),
+    category: normalizeField(manualFields?.category),
   }
 }
 
@@ -218,6 +220,7 @@ function prepareLabelFields(fields: ManualLabelFields, fileName: string): LabelR
     codigoCoc: normalizeField(fields.codigoCoc),
     codigoR: resolveCodigoR(resolvedLabelType, fields.codigoR),
     weight: resolveWeight(fields.weight),
+    category: normalizeField(fields.category),
   }
 }
 
@@ -227,7 +230,13 @@ function resolveLot(
   labelType: LabelType,
   referenceDate?: string | null,
 ): string {
-  if (labelType === 'aldi' || labelType === 'kanali' || labelType === 'hiperdino') {
+  if (
+    labelType === 'aldi' ||
+    labelType === 'kanali' ||
+    labelType === 'hiperdino' ||
+    labelType === 'blanca-grande' ||
+    labelType === 'blanca-pequena'
+  ) {
     return resolveAldiLot(value, referenceDate)
   }
   return resolveStandardLot(value, seed)

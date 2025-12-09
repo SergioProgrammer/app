@@ -110,6 +110,7 @@ interface LabelUploadMeta {
   labelType?: LabelType
   productName?: string
   variety?: string
+  category?: string
 }
 
 interface UploadedFileAutomationFields {
@@ -123,6 +124,7 @@ interface UploadedFileAutomationFields {
   productName?: string | null
   variety?: string | null
   labelType?: string | null
+  category?: string | null
 }
 
 interface UploadedFileAutomation {
@@ -174,6 +176,7 @@ type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
 const TURNOS_RECENT_LIMIT = 8
 const DEFAULT_WEIGHT = '40gr'
 const DEFAULT_VARIETY = 'RED JASPER'
+const DEFAULT_CATEGORY = '1'
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const LOT_PREFIX_LENGTH = 2
 const LOT_INITIAL_PREFIX = 'NS'
@@ -226,7 +229,13 @@ const PRODUCT_BARCODE_MAP: Record<string, string> = (() => {
 })()
 
 function generateLotValue(labelType: LabelType = DEFAULT_LABEL_TYPE, referenceDate?: string | null): string {
-  if (labelType === 'aldi' || labelType === 'kanali' || labelType === 'hiperdino') {
+  if (
+    labelType === 'aldi' ||
+    labelType === 'kanali' ||
+    labelType === 'hiperdino' ||
+    labelType === 'blanca-grande' ||
+    labelType === 'blanca-pequena'
+  ) {
     return buildAldiLot(referenceDate)
   }
   const lastUsed = getLastPersistedLot()
@@ -322,7 +331,13 @@ function persistLotSequence(value: string): void {
 }
 
 function resolveLotForLabelType(value: string, labelType: LabelType, referenceDate?: string | null): string {
-  if (labelType === 'aldi' || labelType === 'kanali' || labelType === 'hiperdino') {
+  if (
+    labelType === 'aldi' ||
+    labelType === 'kanali' ||
+    labelType === 'hiperdino' ||
+    labelType === 'blanca-grande' ||
+    labelType === 'blanca-pequena'
+  ) {
     const normalizedAldi = normalizeAldiLot(value)
     if (normalizedAldi) return normalizedAldi
     return buildAldiLot(referenceDate)
@@ -1151,6 +1166,10 @@ const nonLabelPlans = useMemo(
                             typeof fieldsPayload.variety === 'string'
                               ? fieldsPayload.variety
                               : null,
+                          category:
+                            typeof fieldsPayload.category === 'string'
+                              ? fieldsPayload.category
+                              : null,
                           labelType:
                             typeof fieldsPayload.labelType === 'string'
                               ? fieldsPayload.labelType
@@ -1597,6 +1616,9 @@ const nonLabelPlans = useMemo(
         if (meta?.variety) {
           formData.append('variety', meta.variety)
         }
+        if (meta?.category) {
+          formData.append('category', meta.category)
+        }
         if (userEmail.length > 0) {
           formData.append('userEmail', userEmail)
         }
@@ -1620,6 +1642,7 @@ const nonLabelPlans = useMemo(
                   codigoCoc?: string | null
                   codigoR?: string | null
                   weight?: string | null
+                  category?: string | null
                 }
                 labelFileName?: string | null
                 labelFilePath?: string | null
@@ -2112,6 +2135,7 @@ function LabelsDashboard({
   const [manualWeight, setManualWeight] = useState(DEFAULT_WEIGHT)
   const [weightManuallyEdited, setWeightManuallyEdited] = useState(false)
   const [manualVariety, setManualVariety] = useState(DEFAULT_VARIETY)
+  const [manualCategory, setManualCategory] = useState(DEFAULT_CATEGORY)
   const [codigoRManuallyEdited, setCodigoRManuallyEdited] = useState(false)
   const [labelType, setLabelType] = useState<LabelType>(DEFAULT_LABEL_TYPE)
   const [productName, setProductName] = useState('')
@@ -2169,6 +2193,9 @@ function LabelsDashboard({
       if (typeof parsed?.variety === 'string' && parsed.variety.trim().length > 0) {
         setManualVariety(parsed.variety)
       }
+      if (typeof parsed?.category === 'string' && parsed.category.trim().length > 0) {
+        setManualCategory(parsed.category)
+      }
     } catch {
       // ignore malformed storage values
     }
@@ -2218,7 +2245,14 @@ function LabelsDashboard({
   }, [labelType, productName])
 
   useEffect(() => {
-    if (labelType !== 'aldi' && labelType !== 'kanali') return
+    if (
+      labelType !== 'aldi' &&
+      labelType !== 'kanali' &&
+      labelType !== 'blanca-grande' &&
+      labelType !== 'blanca-pequena'
+    ) {
+      return
+    }
     const desiredLot = resolveLotForLabelType(manualLote, labelType, manualFechaCarga)
     if (desiredLot !== manualLote) {
       setManualLote(desiredLot)
@@ -2311,6 +2345,7 @@ function LabelsDashboard({
       labelCode: manualLabelCode,
       weight: manualWeight,
       variety: manualVariety,
+      category: manualCategory,
     }
     try {
       window.localStorage.setItem('labels:manual-fields', JSON.stringify(payload))
@@ -2325,6 +2360,7 @@ function LabelsDashboard({
     manualLote,
     manualWeight,
     manualVariety,
+    manualCategory,
   ])
 
   const stepsInfo = useMemo(
@@ -2337,13 +2373,15 @@ function LabelsDashboard({
 
   const summaryStep = stepsInfo.length + 1
   const allStepsCompleted = stepsInfo.every((step) => step.completed)
+  const isWhiteLabelSelected = labelType === 'blanca-grande' || labelType === 'blanca-pequena'
   const canSubmit =
     manualLote.trim().length > 0 &&
     manualFechaCarga.trim().length > 0 &&
     manualCodigoCoc.trim().length > 0 &&
     manualLabelCode.trim().length > 0 &&
     manualWeight.trim().length > 0 &&
-    productName.trim().length > 0
+    productName.trim().length > 0 &&
+    (!isWhiteLabelSelected || manualCategory.trim().length > 0)
 
   const stepButtonBaseClass =
     'flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold transition'
@@ -2366,6 +2404,7 @@ function LabelsDashboard({
     setManualWeight(DEFAULT_WEIGHT)
     setWeightManuallyEdited(false)
     setManualVariety(DEFAULT_VARIETY)
+    setManualCategory(DEFAULT_CATEGORY)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -2400,7 +2439,12 @@ function LabelsDashboard({
       setLocalError(null)
       setManualFechaCarga(value)
       setCodigoRManuallyEdited(false)
-      if (labelType === 'aldi' || labelType === 'kanali') {
+      if (
+        labelType === 'aldi' ||
+        labelType === 'kanali' ||
+        labelType === 'blanca-grande' ||
+        labelType === 'blanca-pequena'
+      ) {
         setManualLote(buildAldiLot(value))
       }
     },
@@ -2441,12 +2485,18 @@ function LabelsDashboard({
     setManualVariety(value)
   }, [])
 
+  const handleCategoryChange = useCallback((value: string) => {
+    setLocalError(null)
+    setManualCategory(value)
+  }, [])
+
   const buildManualUploadFile = useCallback(() => {
     const manualNotes = [
       'Pedido creado sin archivo adjunto.',
       `Tipo de etiqueta: ${getLabelTypeLabel(labelType)}`,
       `Producto: ${productName.trim() || 'Sin producto'}`,
       `Variedad: ${manualVariety.trim() || 'Sin variedad'}`,
+      `Categoría: ${manualCategory.trim() || 'Sin categoría'}`,
       `Peso: ${manualWeight.trim() || DEFAULT_WEIGHT}`,
       `Fecha: ${manualFechaCarga.trim() || 'Sin fecha'}`,
       `Código de barras: ${manualLabelCode.trim() || 'Sin dato'}`,
@@ -2474,6 +2524,7 @@ function LabelsDashboard({
     manualFechaCarga,
     manualLabelCode,
     manualLote,
+    manualCategory,
     manualVariety,
     manualWeight,
     productName,
@@ -2516,6 +2567,9 @@ function LabelsDashboard({
       if (manualVariety.trim().length > 0) {
         meta.variety = manualVariety.trim()
       }
+      if (manualCategory.trim().length > 0) {
+        meta.category = manualCategory.trim()
+      }
 
       await onUpload(uploadFile, meta)
       if (labelType === 'aldi') {
@@ -2535,6 +2589,7 @@ function LabelsDashboard({
       manualLabelCode,
       manualFechaCarga,
       manualLote,
+      manualCategory,
       manualVariety,
       manualWeight,
       productName,
@@ -2657,6 +2712,7 @@ function LabelsDashboard({
   const renderActiveStep = () => {
     if (activeStep === summaryStep) {
       const normalizedProductName = productName.trim().toLowerCase()
+      const isWhiteLabel = labelType === 'blanca-grande' || labelType === 'blanca-pequena'
       const isLidlLotOnly = labelType === 'lidl'
       const isLidlAlbahaca = isLidlLotOnly && normalizedProductName === 'albahaca'
       const isKanali = labelType === 'kanali'
@@ -2684,6 +2740,9 @@ function LabelsDashboard({
         } else {
           resumenValueParts.push(getLabelTypeLabel(labelType))
         }
+        if (isWhiteLabel && manualCategory.trim().length > 0) {
+          resumenValueParts.push(`Categoría ${manualCategory.trim()}`)
+        }
         if (manualVariety.trim().length > 0) {
           resumenValueParts.push(`Variedad ${manualVariety.trim()}`)
         }
@@ -2693,13 +2752,13 @@ function LabelsDashboard({
         if (manualFechaCarga.trim().length > 0) {
           resumenValueParts.push(`Fecha ${formatDate(manualFechaCarga.trim())}`)
         }
-        if (manualCodigoCoc.trim().length > 0) {
+        if (!isWhiteLabel && manualCodigoCoc.trim().length > 0) {
           resumenValueParts.push(`COC ${manualCodigoCoc.trim()}`)
         }
-        if (manualCodigoR.trim().length > 0) {
+        if (!isWhiteLabel && manualCodigoR.trim().length > 0) {
           resumenValueParts.push(manualCodigoR.trim())
         }
-        if (manualLabelCode.trim().length > 0) {
+        if (!isWhiteLabel && manualLabelCode.trim().length > 0) {
           resumenValueParts.push(`EAN ${manualLabelCode.trim()}`)
         }
       }
@@ -2727,6 +2786,9 @@ function LabelsDashboard({
               { label: 'Tipo de etiqueta', value: getLabelTypeLabel(labelType) },
               { label: 'Producto', value: productName.trim() || 'Sin producto seleccionado' },
               { label: 'Variedad', value: manualVariety.trim() || 'Sin variedad' },
+              ...(isWhiteLabel
+                ? [{ label: 'Categoría', value: manualCategory.trim() || 'Sin categoría' }]
+                : []),
             ]),
         { label: 'Resumen', value: resumenValue },
       ]
@@ -2816,12 +2878,59 @@ function LabelsDashboard({
               helper: 'Verifica la fecha importada automáticamente.',
               onChange: handleFechaChange,
             },
-        {
-          name: 'peso',
-          label: 'Peso',
-          type: 'text',
-          value: manualWeight,
+            {
+              name: 'peso',
+              label: 'Peso',
+              type: 'text',
+              value: manualWeight,
               placeholder: normalizedProductName === 'cilantro' ? '50gr' : 'Ej. 40gr',
+              onChange: handleWeightChange,
+            },
+          ]
+        }
+        if (isWhiteLabel) {
+          return [
+            {
+              name: 'categoria',
+              label: 'Categoría',
+              type: 'text',
+              value: manualCategory,
+              placeholder: DEFAULT_CATEGORY,
+              helper: 'Ej. 1, Extra, Primera…',
+              onChange: handleCategoryChange,
+            },
+            {
+              name: 'variety',
+              label: 'Variedad',
+              type: 'text',
+              value: manualVariety,
+              placeholder: DEFAULT_VARIETY,
+              helper: 'Texto que irá debajo del producto en las etiquetas blancas.',
+              onChange: handleVarietyChange,
+            },
+            {
+              name: 'fecha',
+              label: 'Fecha envasado / carga',
+              type: 'date',
+              value: manualFechaCarga,
+              helper: 'Marca la fecha que aparece en el pedido.',
+              onChange: handleFechaChange,
+            },
+            {
+              name: 'lote',
+              label: 'Lote',
+              type: 'text',
+              value: manualLote,
+              placeholder: '50/09',
+              helper: 'Formato semana/día.',
+              onChange: handleLoteChange,
+            },
+            {
+              name: 'peso',
+              label: 'Peso',
+              type: 'text',
+              value: manualWeight,
+              placeholder: 'Ej. 40gr',
               onChange: handleWeightChange,
             },
           ]

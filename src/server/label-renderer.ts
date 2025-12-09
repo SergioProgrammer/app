@@ -101,17 +101,17 @@ const WHITE_LABEL_CONFIGS: Record<WhiteLabelVariant, WhiteLabelConfig> = {
   'blanca-grande': {
     width: 720,
     height: 360,
-    margin: 40,
-    lineSpacing: 32,
-    titleSize: 30,
+    margin: 36,
+    lineSpacing: 22,
+    titleSize: 32,
     bodySize: 20,
     smallSize: 17,
   },
   'blanca-pequena': {
     width: 480,
     height: 260,
-    margin: 28,
-    lineSpacing: 24,
+    margin: 26,
+    lineSpacing: 18,
     titleSize: 22,
     bodySize: 15,
     smallSize: 13,
@@ -129,11 +129,10 @@ const LIDL_CENTERED_10X5_CONFIG: WhiteLabelConfig = {
 }
 
 const WHITE_LABEL_COMPANY_NAME = 'Montaña Roja Herbs Sat 536/05 OPFH 1168'
-const WHITE_LABEL_COMPANY_ADDRESS = 'C/La Constitución 53, Arico Viejo'
 export const WHITE_LABEL_ORIGIN_LINE = 'Origen: España (Canarias) · CoC: 4063061581198'
-const WHITE_LABEL_SMALL_PRODUCER_LINE = 'Producido en España/Islas Canarias por'
-const WHITE_LABEL_SMALL_PRODUCER_NAME = 'MONTAÑA ROJA HERBS OPFH 1186'
-const WHITE_LABEL_SMALL_ADDRESS = 'C/Castillo 68, piso 6, Santa Cruz de Tenerife'
+const WHITE_LABEL_DEFAULT_CATEGORY = '1'
+const WHITE_LABEL_SIMPLE_COMPANY_LINE = 'Montaña Roja Herbs OPFH SAT536/05'
+const WHITE_LABEL_SIMPLE_ORIGIN_LINE = 'Origen: España (Canarias)'
 
 let cachedTemplateBuffer: Buffer | null = null
 let cachedTemplatePath: string | null = null
@@ -518,12 +517,19 @@ export async function renderWhiteLabelDocument(
   const page = pdfDoc.addPage([config.width, config.height])
   const labelFont = await resolveLabelFont(pdfDoc)
   const lines = options?.lines ?? buildWhiteLabelLines(variant, fields)
-  let cursorY = config.height - config.margin
-
-  for (const line of lines) {
+  const defaultAlign = options?.defaultAlign ?? 'left'
+  const contentHeight = lines.reduce((height, line, index) => {
     const fontSize = line.size ?? config.bodySize
-    const align = line.align ?? options?.defaultAlign ?? 'left'
+    const spacing = index < lines.length - 1 ? line.spacing ?? config.lineSpacing : 0
+    return height + fontSize + spacing
+  }, 0)
+
+  let cursorY = (config.height + contentHeight) / 2
+
+  lines.forEach((line, index) => {
+    const fontSize = line.size ?? config.bodySize
     cursorY -= fontSize
+    const align = line.align ?? defaultAlign
     const y = Math.max(cursorY, config.margin / 2)
     const textWidth = measureTextWidth(line.text, fontSize, labelFont)
     const centeredX = Math.max(config.margin, (config.width - textWidth) / 2)
@@ -534,6 +540,7 @@ export async function renderWhiteLabelDocument(
         : align === 'right'
         ? rightAlignedX
         : config.margin
+
     page.drawText(line.text, {
       x,
       y,
@@ -541,8 +548,12 @@ export async function renderWhiteLabelDocument(
       color: DEFAULT_FONT_COLOR,
       font: labelFont,
     })
-    cursorY -= line.spacing ?? config.lineSpacing
-  }
+
+    const spacing = index < lines.length - 1 ? line.spacing ?? config.lineSpacing : 0
+    if (spacing > 0) {
+      cursorY -= spacing
+    }
+  })
 
   const pdfBytes = await pdfDoc.save()
   return {
@@ -665,32 +676,34 @@ function buildWhiteLabelLines(
   fields: LabelRenderFields,
 ): WhiteLabelLine[] {
   const product = formatProductText(fields.productName)
-  const variety = formatVarietyText(fields.variety)
+  const variety = normalizeFieldValue(fields.variety, { preserveFormat: true }) ?? 'Sin variedad'
   const date = formatWhiteLabelDate(fields.fechaEnvasado)
   const lot = formatLotText(fields.lote)
   const config = WHITE_LABEL_CONFIGS[variant]
-
-  if (variant === 'blanca-grande') {
-    return [
-      { text: product, size: config.titleSize },
-      { text: `Categoría 1 · Variedad: ${variety} · Sin/SEM` },
-      { text: 'Calibre 3' },
-      { text: `Envasado: ${date} · Lote: ${lot}` },
-      { text: WHITE_LABEL_COMPANY_NAME },
-      { text: WHITE_LABEL_COMPANY_ADDRESS },
-      { text: WHITE_LABEL_ORIGIN_LINE },
-    ]
-  }
+  const weight = formatWeightText(fields.weight)
+  const coc =
+    normalizeFieldValue(fields.codigoCoc, { preserveFormat: true }) ??
+    WHITE_LABEL_ORIGIN_LINE.split('CoC:').pop()?.trim() ??
+    '4063061581198'
+  const headingSpacing = Math.max(config.lineSpacing - 6, 12)
+  const companySpacing = Math.max(config.lineSpacing - 4, config.lineSpacing / 2)
+  const categoryValue =
+    normalizeFieldValue(fields.category, { preserveFormat: true }) ?? WHITE_LABEL_DEFAULT_CATEGORY
+  const categoryText = `Categoría ${categoryValue}`
 
   return [
-    { text: product, size: config.titleSize },
-    { text: `Variedad: ${variety}` },
-    { text: `Envasado: ${date}` },
-    { text: `Lote: ${lot}` },
-    { text: WHITE_LABEL_SMALL_PRODUCER_LINE, size: config.smallSize },
-    { text: WHITE_LABEL_SMALL_PRODUCER_NAME },
-    { text: WHITE_LABEL_SMALL_ADDRESS, size: config.smallSize },
-    { text: 'Origen: España (Canarias)', size: config.smallSize },
+    { text: product, size: config.titleSize, align: 'center', spacing: headingSpacing },
+    { text: `${categoryText}   Variedad: ${variety}`, size: config.bodySize, align: 'center' },
+    { text: `Peso aprox: ${weight}`, size: config.bodySize, align: 'center' },
+    { text: `Envasado: ${date} LOTE: ${lot}`, size: config.bodySize, align: 'center' },
+    {
+      text: WHITE_LABEL_SIMPLE_COMPANY_LINE,
+      size: config.bodySize,
+      align: 'center',
+      spacing: companySpacing,
+    },
+    { text: `CoC: ${coc}`, size: config.smallSize, align: 'center' },
+    { text: WHITE_LABEL_SIMPLE_ORIGIN_LINE, size: config.smallSize, align: 'center' },
   ]
 }
 

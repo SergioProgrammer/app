@@ -10,6 +10,7 @@ export interface LabelRenderFields {
   labelType?: LabelType | null
   productName?: string | null
   variety?: string | null
+  category?: string | null
 }
 
 export interface LabelRenderResult {

@@ -85,16 +85,17 @@ export async function POST(request: NextRequest) {
     const manualWeight = formData.get('manualWeight')
     const manualLabelType = formData.get('labelType')
     const manualProductName = formData.get('productName')
-  const manualVariety = formData.get('variety')
-  const userEmailValue = formData.get('userEmail')
-  const fechaEnvasadoValue = getOptionalString(manualFechaEnvasado)
-  const fechaCargaValue = getOptionalString(manualFechaCarga)
+    const manualVariety = formData.get('variety')
+    const manualCategory = formData.get('category')
+    const userEmailValue = formData.get('userEmail')
+    const fechaEnvasadoValue = getOptionalString(manualFechaEnvasado)
+    const fechaCargaValue = getOptionalString(manualFechaCarga)
     const manualLabelTypeValue = getOptionalString(manualLabelType)
-  const isManualPlaceholder =
-    typeof file.name === 'string' &&
-    file.name.startsWith(MANUAL_ORDER_FILE_PREFIX) &&
-    file.type === 'text/plain'
-  const skipSourceUpload = isManualPlaceholder
+    const isManualPlaceholder =
+      typeof file.name === 'string' &&
+      file.name.startsWith(MANUAL_ORDER_FILE_PREFIX) &&
+      file.type === 'text/plain'
+    const skipSourceUpload = isManualPlaceholder
 
     let detectedFechaCarga: string | null = null
     try {
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
       codigoCoc: getOptionalString(manualCodigoCoc),
       codigoR: getOptionalString(manualCodigoR),
       weight: getOptionalString(manualWeight),
+      category: getOptionalString(manualCategory),
     }
 
     if (!manualFields.fechaEnvasado && manualFields.fechaCarga) {
