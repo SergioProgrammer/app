@@ -37,18 +37,28 @@ const ALDI_TEMPLATE_CANDIDATES = [
 ]
 
 const ALDI_SPECIAL_TEMPLATE_MAP: Record<string, string> = {
+  acelgas: 'acelgasaldi.pdf',
   hojasfrescasacelga: 'acelgasaldi.pdf',
   albahaca: 'albahacasaldi.pdf',
   cebollino: 'cebollinosaldi.pdf',
   cilantro: 'cilantrosaldi.pdf',
   eneldo: 'eneldosaldi.pdf',
   pakchoi: 'pakchoialdi.pdf',
+  hierbabuena: 'hierbahuertoaldi.pdf',
   hierbahuerto: 'hierbahuertoaldi.pdf',
   perejil: 'perejilaldi.pdf',
   romero: 'romeroaldi.pdf',
 }
 
 const ALDI_SPECIAL_LAYOUT = {
+  acelgas: {
+    loteXmm: 33.84,
+    loteYmmFromBottom: 19,
+    pesoXmm: 24,
+    pesoOffset: 0.8,
+    codeXmm: 15,
+    codeYmmFromBottom: 18,
+  },
   hojasfrescasacelga: {
     loteXmm: 33.84,
     loteYmmFromBottom: 19,
@@ -69,7 +79,7 @@ const ALDI_SPECIAL_LAYOUT = {
     loteXmm: 34.84,
     loteYmmFromBottom: 11.48,
     pesoXmm: 44.22,
-    pesoOffset: 0.45,
+    pesoOffset: 1.8,
     codeXmm: 16,
     codeYmmFromBottom: 11.48,
   },
@@ -89,6 +99,14 @@ const ALDI_SPECIAL_LAYOUT = {
     codeXmm: 16,
     codeYmmFromBottom: 11.48,
   },
+  hierbabuena: {
+    loteXmm: 34.84,
+    loteYmmFromBottom: 11.48,
+    pesoXmm: 44.22,
+    pesoOffset: 0.55,
+    codeXmm: 16,
+    codeYmmFromBottom: 11.48,
+  },
   hierbahuerto: {
     loteXmm: 34.84,
     loteYmmFromBottom: 11.48,
@@ -101,7 +119,7 @@ const ALDI_SPECIAL_LAYOUT = {
     loteXmm: 34.84,
     loteYmmFromBottom: 11.48,
     pesoXmm: 44.22,
-    pesoOffset: 0.6,
+    pesoOffset: 1.8,
     codeXmm: 16,
     codeYmmFromBottom: 11.48,
   },

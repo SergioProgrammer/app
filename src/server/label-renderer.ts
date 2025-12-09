@@ -426,7 +426,7 @@ export async function renderLabelPdf({
           : isEneldo
           ? pageHeight / 2 - mmToPageYDelta(pxToMmY(25), pageHeight)
           : isCebollino
-          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(15), pageHeight)
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(25), pageHeight)
           : isHierbahuerto
           ? pageHeight / 2 - mmToPageYDelta(pxToMmY(40), pageHeight)
           : isPerejil
@@ -1201,6 +1201,7 @@ function isKanaliLabel(value?: LabelType | null): boolean {
 }
 
 const ALDI_SPECIAL_TEMPLATE_MAP: Record<string, string> = {
+  acelgas: 'acelgasaldi.pdf',
   hojasfrescasacelga: 'acelgasaldi.pdf',
   albahaca: 'albahacasaldi.pdf',
   cebollino: 'cebollinosaldi.pdf',
@@ -1225,11 +1226,19 @@ const ALDI_SPECIAL_LAYOUT: Record<
 > = {
   // All distances are expressed in millimeters from the bottom-left corner of the label.
   // pesoOffset keeps using the body font size as a multiplier to preserve existing spacing.
+  acelgas: {
+    loteXmm: 32.83,
+    loteYmmFromBottom: 11.6,
+    pesoXmm: 44.22,
+    pesoOffset: 1.8,
+    codeXmm: 14,
+    codeYmmFromBottom: 11.48,
+  },
   hojasfrescasacelga: {
     loteXmm: 32.83,
     loteYmmFromBottom: 11.6,
     pesoXmm: 44.22,
-    pesoOffset: 0.9,
+    pesoOffset: 1.8,
     codeXmm: 14,
     codeYmmFromBottom: 11.48,
   },
@@ -1237,7 +1246,7 @@ const ALDI_SPECIAL_LAYOUT: Record<
     loteXmm: 32.83,
     loteYmmFromBottom: 11.48,
     pesoXmm: 44.22,
-    pesoOffset: 0.9,
+    pesoOffset: 1.8,
     codeXmm: 15,
     codeYmmFromBottom: 11.27,
   },
@@ -1245,7 +1254,7 @@ const ALDI_SPECIAL_LAYOUT: Record<
     loteXmm: 34.84,
     loteYmmFromBottom: 11.07,
     pesoXmm: 44.22,
-    pesoOffset: 0.9,
+    pesoOffset: 1.8,
     codeXmm: 15,
     codeYmmFromBottom: 11.07,
   },
@@ -1253,7 +1262,7 @@ const ALDI_SPECIAL_LAYOUT: Record<
     loteXmm: 34.84,
     loteYmmFromBottom: 11.18,
     pesoXmm: 44.22,
-    pesoOffset: 0.7,
+    pesoOffset: 1.8,
     codeXmm: 16,
     codeYmmFromBottom: 11.18,
   },
@@ -1261,23 +1270,24 @@ const ALDI_SPECIAL_LAYOUT: Record<
     loteXmm: 36.18,
     loteYmmFromBottom: 11.18,
     pesoXmm: 46.9,
-    pesoOffset: 0.7,
+    pesoOffset: 1.8,
     codeXmm: 15,
     codeYmmFromBottom: 10.66,
   },
+  
   hierbahuerto: {
     loteXmm: 34.84,
-    loteYmmFromBottom: 11.48,
+    loteYmmFromBottom: 11.18,
     pesoXmm: 44.22,
-    pesoOffset: 0.45,
+    pesoOffset: 1.8,
     codeXmm: 16,
-    codeYmmFromBottom: 11.48,
+    codeYmmFromBottom: 11.18,
   },
   pakchoi: {
     loteXmm: 34.84,
     loteYmmFromBottom: 11.48,
     pesoXmm: 44.22,
-    pesoOffset: 0.6,
+    pesoOffset: 1.8,
     codeXmm: 16,
     codeYmmFromBottom: 11.48,
   },
@@ -1285,16 +1295,16 @@ const ALDI_SPECIAL_LAYOUT: Record<
     loteXmm: 36,
     loteYmmFromBottom: 11.6,
     pesoXmm: 44.22,
-    pesoOffset: 0.55,
+    pesoOffset: 1.8,
     codeXmm: 15.2,
     codeYmmFromBottom: 11.48,
   },
   romero: {
-    loteXmm: 38.6,
+    loteXmm: 39,
     loteYmmFromBottom: 11.6,
     pesoXmm: 44.22,
-    pesoOffset: 0.9,
-    codeXmm: 14,
+    pesoOffset: 1.6,
+    codeXmm: 15.2,
     codeYmmFromBottom: 11.48,
   },
 }
