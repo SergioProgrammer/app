@@ -428,7 +428,7 @@ export async function renderLabelPdf({
           : isCebollino
           ? pageHeight / 2 - mmToPageYDelta(pxToMmY(25), pageHeight)
           : isHierbahuerto
-          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(40), pageHeight)
+          ? pageHeight / 2 - mmToPageYDelta(pxToMmY(50), pageHeight)
           : isPerejil
           ? pageHeight / 2 - mmToPageYDelta(pxToMmY(30), pageHeight)
           : isRomero
@@ -471,7 +471,7 @@ export async function renderLabelPdf({
             : isPerejil
             ? y + mmToPageYDelta(pxToMmY(65), pageHeight)
             : isHierbahuerto
-            ? y + mmToPageYDelta(pxToMmY(55), pageHeight)
+            ? y + mmToPageYDelta(pxToMmY(65), pageHeight)
             : isRomero
             ? y + mmToPageYDelta(pxToMmY(65), pageHeight)
             : y + mmToPageYDelta(pxToMmY(55), pageHeight)
