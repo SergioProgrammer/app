@@ -2826,7 +2826,7 @@ function LabelsDashboard({
         })
       }
 
-      const summaryEditableFields: Array<{
+      type SummaryEditableField = {
         name: string
         label: string
         type: 'text' | 'date'
@@ -2834,7 +2834,9 @@ function LabelsDashboard({
         placeholder?: string
         helper?: string
         onChange: (value: string) => void
-      }> = (() => {
+      }
+
+      const summaryEditableFields: SummaryEditableField[] = (() => {
         if (isLidlLotOnly) {
           const lidlWeightPlaceholder =
             normalizedProductName === 'eneldo'
@@ -2848,15 +2850,7 @@ function LabelsDashboard({
               : normalizedProductName === 'albahaca'
               ? 'Valor por defecto 60gr.'
               : undefined
-          const lidlFields: Array<{
-            name: string
-            label: string
-            type: 'text' | 'date'
-            value: string
-            placeholder?: string
-            helper?: string
-            onChange: (value: string) => void
-          }> = [
+          const lidlFields: SummaryEditableField[] = [
             {
               name: 'lote',
               label: 'Lote',
