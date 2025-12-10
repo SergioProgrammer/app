@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type FormEvent,
 } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
@@ -112,6 +111,7 @@ interface LabelUploadMeta {
   variety?: string
   category?: string
   boxWeight?: string
+  units?: number
 }
 
 interface UploadedFileAutomationFields {
@@ -127,6 +127,7 @@ interface UploadedFileAutomationFields {
   labelType?: string | null
   category?: string | null
   boxWeight?: string | null
+  units?: number | null
 }
 
 interface UploadedFileAutomation {
@@ -1628,6 +1629,9 @@ const nonLabelPlans = useMemo(
         if (meta?.category) {
           formData.append('category', meta.category)
         }
+        if (meta?.units) {
+          formData.append('unitsSold', String(meta.units))
+        }
         if (userEmail.length > 0) {
           formData.append('userEmail', userEmail)
         }
@@ -2143,6 +2147,7 @@ function LabelsDashboard({
   const [manualCodigoR, setManualCodigoR] = useState('')
   const [manualWeight, setManualWeight] = useState(DEFAULT_WEIGHT)
   const [manualBoxWeight, setManualBoxWeight] = useState('')
+  const [manualUnits, setManualUnits] = useState(1)
   const [weightManuallyEdited, setWeightManuallyEdited] = useState(false)
   const [manualVariety, setManualVariety] = useState(DEFAULT_VARIETY)
   const [manualCategory, setManualCategory] = useState(DEFAULT_CATEGORY)
@@ -2157,7 +2162,6 @@ function LabelsDashboard({
   const [labelCodeManuallyEdited, setLabelCodeManuallyEdited] = useState(false)
   const [activeStep, setActiveStep] = useState(1)
   const [visionPrefillApplied, setVisionPrefillApplied] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const hasResetAfterSuccessRef = useRef(false)
   const visionPrefillAppliedRef = useRef(false)
 
@@ -2210,6 +2214,12 @@ function LabelsDashboard({
       }
       if (typeof parsed?.category === 'string' && parsed.category.trim().length > 0) {
         setManualCategory(parsed.category)
+      }
+      if (typeof (parsed as { units?: unknown })?.units === 'number') {
+        const parsedUnits = (parsed as { units?: unknown }).units as number
+        if (Number.isFinite(parsedUnits) && parsedUnits > 0) {
+          setManualUnits(Math.round(parsedUnits))
+        }
       }
     } catch {
       // ignore malformed storage values
@@ -2413,6 +2423,7 @@ function LabelsDashboard({
       variety: manualVariety,
       category: manualCategory,
       boxWeight: manualBoxWeight,
+      units: manualUnits,
     }
     try {
       window.localStorage.setItem('labels:manual-fields', JSON.stringify(payload))
@@ -2429,6 +2440,7 @@ function LabelsDashboard({
     manualVariety,
     manualCategory,
     manualBoxWeight,
+    manualUnits,
   ])
 
   const stepsInfo = useMemo(
@@ -2476,12 +2488,10 @@ function LabelsDashboard({
     setLabelCodeManuallyEdited(false)
     setManualWeight(DEFAULT_WEIGHT)
     setManualBoxWeight('')
+    setManualUnits(1)
     setWeightManuallyEdited(false)
     setManualVariety(DEFAULT_VARIETY)
     setManualCategory(DEFAULT_CATEGORY)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
   }, [labelType, productName])
 
   useEffect(() => {
@@ -2494,19 +2504,6 @@ function LabelsDashboard({
       hasResetAfterSuccessRef.current = false
     }
   }, [resetForm, successMessage, uploading])
-
-  const handleFileChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      const nextFile = event.target.files?.[0] ?? null
-      setFile(nextFile)
-      if (nextFile) {
-        setLocalError(null)
-        const generatedLot = generateLotValue(labelType, manualFechaCarga)
-        setManualLote(generatedLot)
-      }
-    },
-    [labelType, manualFechaCarga, setManualLote, setLocalError],
-  )
 
   const handleFechaChange = useCallback(
     (value: string) => {
@@ -2654,6 +2651,9 @@ function LabelsDashboard({
       if (manualCategory.trim().length > 0) {
         meta.category = manualCategory.trim()
       }
+      if (manualUnits && Number.isFinite(manualUnits)) {
+        meta.units = manualUnits
+      }
 
       await onUpload(uploadFile, meta)
       if (labelType === 'aldi') {
@@ -2677,6 +2677,7 @@ function LabelsDashboard({
       manualVariety,
       manualWeight,
       manualBoxWeight,
+      manualUnits,
       productName,
       buildManualUploadFile,
       onUpload,
@@ -2927,6 +2928,15 @@ function LabelsDashboard({
               onChange: handleWeightChange,
             },
             {
+              name: 'units',
+              label: 'Unidades a descontar (stock)',
+              type: 'text',
+              value: String(manualUnits ?? 1),
+              placeholder: '1',
+              helper: 'Se restarán del inventario al generar.',
+              onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+            },
+            {
               name: 'pesoCaja',
               label: 'Peso caja (solo etiqueta caja 2)',
               type: 'text',
@@ -2973,6 +2983,15 @@ function LabelsDashboard({
               value: manualWeight,
               placeholder: normalizedProductName === 'cilantro' ? '50gr' : 'Ej. 40gr',
               onChange: handleWeightChange,
+            },
+            {
+              name: 'units',
+              label: 'Unidades a descontar (stock)',
+              type: 'text',
+              value: String(manualUnits ?? 1),
+              placeholder: '1',
+              helper: 'Se restarán del inventario al generar.',
+              onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
             },
           ] satisfies SummaryEditableField[]
         }
@@ -3021,6 +3040,15 @@ function LabelsDashboard({
               placeholder: 'Ej. 40gr',
               onChange: handleWeightChange,
             },
+            {
+              name: 'units',
+              label: 'Unidades a descontar (stock)',
+              type: 'text',
+              value: String(manualUnits ?? 1),
+              placeholder: '1',
+              helper: 'Se restarán del inventario al generar.',
+              onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+            },
           ] satisfies SummaryEditableField[]
         }
         if (isHiperdino) {
@@ -3042,6 +3070,15 @@ function LabelsDashboard({
                 helper: 'Verifica la fecha importada automáticamente.',
                 onChange: handleFechaChange,
               },
+              {
+                name: 'units',
+                label: 'Unidades a descontar (stock)',
+                type: 'text',
+                value: String(manualUnits ?? 1),
+                placeholder: '1',
+                helper: 'Se restarán del inventario al generar.',
+                onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+              },
             ] satisfies SummaryEditableField[]
           }
           return [
@@ -3052,20 +3089,29 @@ function LabelsDashboard({
               value: manualLote,
               placeholder: '48/25',
               onChange: handleLoteChange,
-            },
-            {
-              name: 'fecha',
-              label: 'Fecha envasado / carga',
-              type: 'date',
-              value: manualFechaCarga,
-              helper: 'Verifica la fecha importada automáticamente.',
-              onChange: handleFechaChange,
-            },
-            {
-              name: 'peso',
-              label: 'Peso',
-              type: 'text',
-              value: manualWeight,
+              },
+              {
+                name: 'fecha',
+                label: 'Fecha envasado / carga',
+                type: 'date',
+                value: manualFechaCarga,
+                helper: 'Verifica la fecha importada automáticamente.',
+                onChange: handleFechaChange,
+              },
+              {
+                name: 'units',
+                label: 'Unidades a descontar (stock)',
+                type: 'text',
+                value: String(manualUnits ?? 1),
+                placeholder: '1',
+                helper: 'Se restarán del inventario al generar.',
+                onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+              },
+              {
+                name: 'peso',
+                label: 'Peso',
+                type: 'text',
+                value: manualWeight,
               placeholder: normalizedProductName === 'cilantro' ? '50gr' : 'Ej. 40gr',
               onChange: handleWeightChange,
             },
@@ -3121,6 +3167,15 @@ function LabelsDashboard({
             placeholder: DEFAULT_VARIETY,
             helper: 'Texto que irá debajo del producto en las etiquetas blancas.',
             onChange: handleVarietyChange,
+          },
+          {
+            name: 'units',
+            label: 'Unidades a descontar (stock)',
+            type: 'text',
+            value: String(manualUnits ?? 1),
+            placeholder: '1',
+            helper: 'Se restarán del inventario al generar.',
+            onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
           },
           {
             name: 'fecha',
@@ -3360,15 +3415,10 @@ function LabelsDashboard({
             </div>
             <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-4">
               
+              <div className="mt-1 text-sm text-gray-600">
+                Si va a subir un pedido hágalo en la Sección Registro de Pedidos. Si lo hace manual continúe.
+              </div>
               <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  disabled={uploading}
-                  className="block w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                />
                 <button
                   type="button"
                   onClick={handleContinue}
@@ -3378,13 +3428,6 @@ function LabelsDashboard({
                   Continuar
                 </button>
               </div>
-              {file ? (
-                <p className="mt-2 text-xs text-gray-500">
-                  Archivo seleccionado: <span className="font-medium text-gray-700">{file.name}</span>
-                </p>
-              ) : (
-                <p className="mt-2 text-xs text-gray-500">Sin archivo adjunto (lo generaremos en automático).</p>
-              )}
             </div>
           </div>
         )

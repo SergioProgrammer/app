@@ -3,6 +3,7 @@ import { processLabelAutomation } from '@/server/label-automation'
 import { deriveLabelTypeFromClient, sanitizeProductName, type VisionOrderItem } from '@/lib/vision-orders'
 import type { ManualLabelFields } from '@/server/label-automation'
 import { uploadFileToBucket, type StorageFileDescriptor } from '@/server/supabase-storage'
+import { adjustInventory, parseUnitsFromText } from '@/server/inventory'
 
 export const runtime = 'nodejs'
 
@@ -72,6 +73,19 @@ export async function POST(request: NextRequest) {
           storageBucket: label.storageBucket ?? null,
         })),
       })
+
+      // Ajuste de stock: restamos las unidades indicadas.
+      const unitsToSubtract = parseUnitsFromText(item.quantityText)
+      if (manualFields.productName) {
+        try {
+          await adjustInventory({
+            productName: manualFields.productName,
+            delta: -unitsToSubtract,
+          })
+        } catch (error) {
+          console.error('[api/vision-orders/generate] inventory adjust error', error)
+        }
+      }
     }
 
     return NextResponse.json({ data: results, files: uploadedFiles })

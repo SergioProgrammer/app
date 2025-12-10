@@ -24,7 +24,7 @@ interface SupabaseStorageObject {
 
 let cachedClient: SupabaseClient | null = null
 
-function getSupabaseServiceClient(): SupabaseClient {
+export function getSupabaseServiceClient(): SupabaseClient {
   if (cachedClient) {
     return cachedClient
   }

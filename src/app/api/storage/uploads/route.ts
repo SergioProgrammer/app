@@ -10,6 +10,7 @@ import {
   type ManualLabelFields,
 } from '@/server/label-automation'
 import { extractFechaCargaFromImage } from '@/server/label-ocr'
+import { adjustInventory, parseUnitsFromText } from '@/server/inventory'
 
 export const runtime = 'nodejs'
 
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
     const manualProductName = formData.get('productName')
     const manualVariety = formData.get('variety')
     const manualCategory = formData.get('category')
+    const manualUnitsSold = formData.get('unitsSold')
     const userEmailValue = formData.get('userEmail')
     const fechaEnvasadoValue = getOptionalString(manualFechaEnvasado)
     const fechaCargaValue = getOptionalString(manualFechaCarga)
@@ -124,6 +126,10 @@ export async function POST(request: NextRequest) {
       manualFields.fechaEnvasado = manualFields.fechaCarga
     }
     const userEmail = userEmailValue ? String(userEmailValue) : null
+    const unitsSold =
+      typeof manualUnitsSold === 'string'
+        ? parseUnitsFromText(manualUnitsSold)
+        : parseUnitsFromText(null)
 
     const sanitizedFileName = sanitizeFileName(file.name)
     const targetPath = buildStoragePath(folderPath, sanitizedFileName)
@@ -209,6 +215,18 @@ export async function POST(request: NextRequest) {
           ? automationResult.automation.error ?? 'No se pudo completar la automatización de etiquetas.'
           : null
       automation = automationResult.automation
+
+      // Ajuste de stock tras generar etiqueta manual.
+      if (automation?.status === 'completed' && manualFields.productName) {
+        try {
+          await adjustInventory({
+            productName: manualFields.productName,
+            delta: -unitsSold,
+          })
+        } catch (error) {
+          console.error('[storage/uploads] inventory adjust error', error)
+        }
+      }
     } catch (error) {
       automationError =
         error instanceof Error

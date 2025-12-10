@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { uploadFileToBucket, listFilesFromBucket } from '@/server/supabase-storage'
+import { uploadFileToBucket, listFilesFromBucket, deleteFileFromBucket } from '@/server/supabase-storage'
 
 export const runtime = 'nodejs'
 
@@ -110,5 +110,30 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[pedidos-subidos] POST error', error)
     return NextResponse.json({ error: 'No se pudo subir el pedido.' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}))
+    const paths = Array.isArray(body?.paths) ? body.paths : []
+    if (paths.length === 0) {
+      return NextResponse.json({ error: 'No se recibieron rutas para eliminar.' }, { status: 400 })
+    }
+
+    for (const rawPath of paths) {
+      const path = typeof rawPath === 'string' ? rawPath : ''
+      if (!path) continue
+      try {
+        await deleteFileFromBucket(PEDIDOS_BUCKET, path)
+      } catch (error) {
+        console.error('[pedidos-subidos] DELETE error removing file', { path, error })
+      }
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('[pedidos-subidos] DELETE error', error)
+    return NextResponse.json({ error: 'No se pudieron eliminar los pedidos.' }, { status: 500 })
   }
 }
