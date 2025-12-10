@@ -17,6 +17,7 @@ export default function StockPage() {
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -85,16 +86,20 @@ export default function StockPage() {
   )
 
   const rows = useMemo(
-    () =>
-      items.map((item) => ({
+    () => {
+      const filtered = items.filter((item) =>
+        item.product_name.toLowerCase().includes(search.trim().toLowerCase()),
+      )
+      return filtered.map((item) => ({
         ...item,
         updatedLabel: item.updated_at
           ? new Date(item.updated_at).toLocaleString()
           : item.created_at
           ? new Date(item.created_at).toLocaleString()
           : '—',
-      })),
-    [items],
+      }))
+    },
+    [items, search],
   )
 
   return (
@@ -107,14 +112,23 @@ export default function StockPage() {
               Control de inventario por producto. Los productos nuevos arrancan con 1000 unidades.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50"
-            disabled={loading}
-          >
-            Actualizar
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar producto"
+              className="w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
+            />
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50"
+              disabled={loading}
+            >
+              Actualizar
+            </button>
+          </div>
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
