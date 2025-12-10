@@ -13,10 +13,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Falta el path del archivo.' }, { status: 400 })
     }
     const { buffer, contentType } = await downloadFileFromBucket(PEDIDOS_BUCKET, filePath)
-    return new NextResponse(buffer, {
+    const body =
+      buffer instanceof ArrayBuffer
+        ? buffer
+        : buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+    return new NextResponse(body, {
       status: 200,
       headers: {
-        'Content-Type': contentType,
+        'Content-Type': contentType || 'application/octet-stream',
         'Content-Disposition': `inline; filename="${path.basename(filePath)}"`,
       },
     })
