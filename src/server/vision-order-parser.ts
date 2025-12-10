@@ -60,17 +60,38 @@ async function callOpenAiVision({
   if (!parsed) {
     throw new Error('No se pudo parsear la respuesta de la API de visión')
   }
+  const client =
+    typeof parsed.client === 'string'
+      ? parsed.client
+      : typeof parsed.cliente === 'string'
+      ? parsed.cliente
+      : ''
+  const rawText =
+    typeof parsed.raw_text === 'string'
+      ? parsed.raw_text
+      : typeof parsed.rawText === 'string'
+      ? parsed.rawText
+      : content
   return {
-    client: parsed.client ?? parsed.cliente ?? '',
+    client,
     items: Array.isArray(parsed.items) ? parsed.items : [],
-    rawText: parsed.raw_text ?? parsed.rawText ?? content,
+    rawText,
   }
 }
 
-function safeJsonParse(content: string): Record<string, unknown> | null {
+type ParsedVisionOrder = {
+  client?: string
+  cliente?: string
+  items?: unknown
+  raw_text?: string
+  rawText?: string
+  [key: string]: unknown
+}
+
+function safeJsonParse(content: string): ParsedVisionOrder | null {
   try {
     const cleaned = content.replace(/```json|```/g, '').trim()
-    return JSON.parse(cleaned)
+    return JSON.parse(cleaned) as ParsedVisionOrder
   } catch {
     return null
   }

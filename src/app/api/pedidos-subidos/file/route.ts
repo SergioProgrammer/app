@@ -13,11 +13,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Falta el path del archivo.' }, { status: 400 })
     }
     const { buffer, contentType } = await downloadFileFromBucket(PEDIDOS_BUCKET, filePath)
-    const body =
-      buffer instanceof ArrayBuffer
-        ? buffer
-        : buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
-    return new NextResponse(body, {
+
+    // Aseguramos un tipo binario único aceptado por BodyInit.
+    const binary: Uint8Array =
+      buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer as ArrayBufferLike)
+
+    return new NextResponse(binary as unknown as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': contentType || 'application/octet-stream',

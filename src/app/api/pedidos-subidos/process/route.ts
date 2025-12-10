@@ -15,10 +15,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Falta el path del pedido.' }, { status: 400 })
     }
     const bucket = PEDIDOS_BUCKET
-    const { buffer, contentType } = await downloadFileFromBucket(bucket, filePath)
+    const { buffer: downloadedBuffer, contentType } = await downloadFileFromBucket(bucket, filePath)
     const mimeType = contentType || inferMime(filePath)
+    const nodeBuffer = Buffer.from(downloadedBuffer)
 
-    const parseResult = await parseVisionOrderFromFile(buffer, mimeType, filePath)
+    const parseResult = await parseVisionOrderFromFile(nodeBuffer, mimeType, filePath)
 
     // Marcamos el pedido como procesado actualizando metadata
     const metadata = {
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     await uploadFileToBucket({
       bucket,
       path: filePath,
-      buffer,
+      buffer: nodeBuffer,
       contentType: mimeType,
       metadata,
     })

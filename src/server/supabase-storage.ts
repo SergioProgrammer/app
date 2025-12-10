@@ -84,7 +84,12 @@ export async function uploadFileToBucket({
   return buildFallbackDescriptor(bucket, path, buffer.length, contentType, metadata)
 }
 
-export async function downloadFileFromBucket(bucket: string, path: string): Promise<{ buffer: Buffer; contentType: string }> {
+export type DownloadedFile = { buffer: Uint8Array; contentType: string | null }
+
+export async function downloadFileFromBucket(
+  bucket: string,
+  path: string,
+): Promise<DownloadedFile> {
   const client = getSupabaseServiceClient()
   const normalizedPath = path.replace(/^\/+/, '')
   const { data, error } = await client.storage.from(bucket).download(normalizedPath)
@@ -95,8 +100,8 @@ export async function downloadFileFromBucket(bucket: string, path: string): Prom
   }
 
   const arrayBuffer = await data.arrayBuffer()
-  const contentType = data.type || 'application/octet-stream'
-  return { buffer: Buffer.from(arrayBuffer), contentType }
+  const contentType: string | null = data.type || null
+  return { buffer: new Uint8Array(arrayBuffer), contentType }
 }
 
 export async function listFilesFromBucket(bucket: string, folder?: string | null) {
