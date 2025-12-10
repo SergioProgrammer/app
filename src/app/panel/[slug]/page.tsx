@@ -2156,8 +2156,10 @@ function LabelsDashboard({
   )
   const [labelCodeManuallyEdited, setLabelCodeManuallyEdited] = useState(false)
   const [activeStep, setActiveStep] = useState(1)
+  const [visionPrefillApplied, setVisionPrefillApplied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const hasResetAfterSuccessRef = useRef(false)
+  const visionPrefillAppliedRef = useRef(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2211,6 +2213,57 @@ function LabelsDashboard({
       }
     } catch {
       // ignore malformed storage values
+    }
+  }, [])
+
+  useEffect(() => {
+    if (visionPrefillAppliedRef.current) return
+    const params =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams()
+    if (params.get('vision') !== '1') return
+    visionPrefillAppliedRef.current = true
+    setVisionPrefillApplied(true)
+
+    const prefillProduct = params.get('product') ?? ''
+    const prefillQuantity = params.get('quantity') ?? ''
+    const prefillClientRaw = params.get('client') ?? ''
+    const normalizedClient = prefillClientRaw.toLowerCase().trim()
+    const prefillLabelTypeParam = params.get('labelType') ?? ''
+    const prefillLot = params.get('lote') ?? ''
+    const prefillDate = params.get('fecha') ?? ''
+
+    if (prefillProduct) {
+      setProductName(prefillProduct)
+    }
+    if (prefillQuantity) {
+      setManualWeight(prefillQuantity)
+      setWeightManuallyEdited(true)
+    }
+    if (prefillLot) {
+      setManualLote(prefillLot.toUpperCase())
+    }
+    if (prefillDate) {
+      setManualFechaCarga(prefillDate)
+    }
+    // Usamos la variedad como campo visible para destino/cliente en el resumen.
+    setManualVariety(prefillClientRaw || '')
+
+    const clientLabelMap: Record<string, LabelType> = {
+      mercadona: 'mercadona',
+      aldi: 'aldi',
+      lidl: 'lidl',
+      hiperdino: 'hiperdino',
+      kanali: 'kanali',
+    }
+    const matchedClientKey = Object.keys(clientLabelMap).find((key) =>
+      normalizedClient.includes(key),
+    )
+    if (prefillLabelTypeParam && clientLabelMap[prefillLabelTypeParam]) {
+      setLabelType(clientLabelMap[prefillLabelTypeParam])
+    } else if (matchedClientKey) {
+      setLabelType(clientLabelMap[matchedClientKey])
     }
   }, [])
 
@@ -2388,6 +2441,11 @@ function LabelsDashboard({
 
   const summaryStep = stepsInfo.length + 1
   const allStepsCompleted = stepsInfo.every((step) => step.completed)
+
+  useEffect(() => {
+    if (!visionPrefillAppliedRef.current && !visionPrefillApplied) return
+    setActiveStep(summaryStep)
+  }, [summaryStep, visionPrefillApplied])
   const isWhiteLabelSelected = labelType === 'blanca-grande' || labelType === 'blanca-pequena'
   const canSubmit =
     manualLote.trim().length > 0 &&

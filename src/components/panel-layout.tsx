@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import type { User } from '@supabase/supabase-js'
-import { History, Layers, LogOut, Menu, X, ChevronRight, Search } from 'lucide-react'
+import { History, Layers, LogOut, Menu, X, ChevronRight, Search, Eye } from 'lucide-react'
 import { getPanelSlugForUser } from '@/lib/panel-config'
 
 interface PanelLayoutProps {
@@ -22,6 +22,16 @@ const navItems = [
     label: 'Plantillas',
     href: '/plantillas',
     icon: Layers,
+  },
+  {
+    label: 'Registro de Pedidos',
+    href: '/pedidos-vision',
+    icon: Eye,
+  },
+  {
+    label: 'Pedidos subidos',
+    href: '/panel/pedidos-subidos',
+    icon: History,
   },
 ]
 
@@ -99,7 +109,7 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
     <div className="min-h-screen bg-[#f9f8f6] text-gray-900">
       {/* Sidebar desktop */}
       <aside className="hidden md:flex fixed top-0 left-0 w-72 h-screen bg-white border-r shadow-[0_10px_30px_-12px_rgba(15,23,42,0.2)] flex-col z-40">
-        <div className="px-6 pt-8 pb-6 bg-gradient-to-br from-gray-900 via-emerald-900 to-gray-800 text-white rounded-br-3xl">
+        <div className="px-6 pt-8 pb-6 bg-linear-to-br from-gray-900 via-emerald-900 to-gray-800 text-white rounded-br-3xl">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center font-semibold text-white">
               AG

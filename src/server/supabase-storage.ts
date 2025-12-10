@@ -84,6 +84,21 @@ export async function uploadFileToBucket({
   return buildFallbackDescriptor(bucket, path, buffer.length, contentType, metadata)
 }
 
+export async function downloadFileFromBucket(bucket: string, path: string): Promise<{ buffer: Buffer; contentType: string }> {
+  const client = getSupabaseServiceClient()
+  const normalizedPath = path.replace(/^\/+/, '')
+  const { data, error } = await client.storage.from(bucket).download(normalizedPath)
+
+  if (error || !data) {
+    console.error('[supabase-storage] Error descargando archivo', { bucket, path, error })
+    throw new Error(error?.message || 'No se pudo descargar el archivo.')
+  }
+
+  const arrayBuffer = await data.arrayBuffer()
+  const contentType = data.type || 'application/octet-stream'
+  return { buffer: Buffer.from(arrayBuffer), contentType }
+}
+
 export async function listFilesFromBucket(bucket: string, folder?: string | null) {
   const client = getSupabaseServiceClient()
   const folderPrefix = normalizeFolderPath(folder)
