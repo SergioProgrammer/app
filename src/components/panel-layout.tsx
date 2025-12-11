@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
@@ -41,19 +41,38 @@ const navItems = [
 ]
 
 export default function PanelLayout({ children }: PanelLayoutProps) {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const pathname = usePathname()
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [isOpen, setIsOpen] = useState(false)
   const [lotQuery, setLotQuery] = useState('')
   const [lotError, setLotError] = useState<string | null>(null)
+  const [pendingUploads, setPendingUploads] = useState<number | null>(null)
   const userEmail = user?.email ?? ''
   const userDisplayName = useMemo(() => {
     const atIndex = userEmail.indexOf('@')
     return atIndex === -1 ? userEmail : userEmail.slice(0, atIndex)
   }, [userEmail])
   const defaultPanelSlug = useMemo(() => getPanelSlugForUser(user), [user])
+
+  const fetchPendingUploads = useCallback(async () => {
+    try {
+      const { count, error } = await supabase
+        .from('pedidos_subidos')
+        .select('id', { count: 'exact', head: true })
+        .in('estado', ['Pendiente', 'pendiente'])
+
+      if (error) {
+        throw error
+      }
+
+      setPendingUploads(typeof count === 'number' ? count : 0)
+    } catch (error) {
+      console.error('[panel-layout] error fetching pending uploads', error)
+      setPendingUploads((current) => current ?? null)
+    }
+  }, [supabase])
 
   useEffect(() => {
     async function loadUser() {
@@ -70,6 +89,20 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
 
     loadUser()
   }, [supabase])
+
+  useEffect(() => {
+    void fetchPendingUploads()
+    const channel = supabase
+      .channel('pedidos-subidos-counter')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos_subidos' }, () => {
+        void fetchPendingUploads()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [fetchPendingUploads, supabase])
 
   const handleLotInputChange = (value: string) => {
     setLotQuery(value)
@@ -108,6 +141,16 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
       return pathname === '/dashboard'
     }
     return pathname.startsWith(href)
+  }
+
+  const renderPendingBadge = (href: string) => {
+    if (href !== '/panel/pedidos-subidos') return null
+    if (pendingUploads == null) return null
+    return (
+      <span className="ml-2 inline-flex min-w-[26px] items-center justify-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+        {pendingUploads}
+      </span>
+    )
   }
 
   return (
@@ -154,7 +197,10 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
                   >
                     <Icon className="h-4 w-4" />
                   </span>
-                  {item.label}
+                  <span className="flex items-center gap-2">
+                    {item.label}
+                    {renderPendingBadge(item.href)}
+                  </span>
                 </span>
                 <ChevronRight
                   className={`h-4 w-4 transition ${active ? 'opacity-80' : 'opacity-0 group-hover:opacity-50'}`}
@@ -264,7 +310,10 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
                 onClick={() => setIsOpen(false)}
               >
                 <Icon className="h-4 w-4" />
-                {item.label}
+                <span className="flex items-center gap-2">
+                  {item.label}
+                  {renderPendingBadge(item.href)}
+                </span>
               </Link>
             )
           })}

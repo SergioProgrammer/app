@@ -130,10 +130,13 @@ export default function VisionOrdersPage() {
     if (!pedidoPath || pedidoPathLoaded) return
     setPedidoPathLoaded(true)
     const clientFromQuery = searchParams?.get('client') ?? ''
+    const pedidoId = searchParams?.get('pedidoId') ?? ''
     ;(async () => {
       try {
         setParseStatus('loading')
-        const response = await fetch(`/api/pedidos-subidos/process?path=${encodeURIComponent(pedidoPath)}`, {
+        const params = new URLSearchParams({ path: pedidoPath })
+        if (pedidoId) params.set('id', pedidoId)
+        const response = await fetch(`/api/pedidos-subidos/process?${params.toString()}`, {
           method: 'POST',
         })
         if (!response.ok) {

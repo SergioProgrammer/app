@@ -2,38 +2,93 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import PanelLayout from '@/components/panel-layout'
+import { createClient } from '@/utils/supabase/client'
 
 interface PedidoSubido {
   id?: string | null
-  name: string
+  name?: string
   path: string
   bucket?: string | null
-  status: string
-  client: string
-  uploadedAt: string | null
-  originalName: string
+  status?: string | null
+  estado?: string | null
+  client?: string | null
+  cliente?: string | null
+  destino?: string | null
+  created_at?: string | null
+  uploaded_at?: string | null
+  uploadedAt?: string | null
+  originalName?: string | null
+  original_name?: string | null
+  nombre_archivo?: string | null
+  archivo?: string | null
   webViewLink?: string | null
   webContentLink?: string | null
 }
 
+type PedidoRow = PedidoSubido & {
+  estado: string
+  fecha: string
+  displayClient: string
+  displayName: string
+  uploadedAt: string | null
+}
+
+function normalizeEstado(value?: string | null): string {
+  if (!value) return 'Pendiente'
+  const normalized = value.trim()
+  if (!normalized) return 'Pendiente'
+  const lower = normalized.toLowerCase()
+  if (lower === 'pendiente') return 'Pendiente'
+  if (lower === 'procesado' || lower === 'procesada') return 'Procesado'
+  return normalized
+}
+
+function normalizePedidoRow(pedido: PedidoSubido): PedidoRow {
+  const estado = normalizeEstado(pedido.estado ?? pedido.status)
+  const uploadedAt = pedido.uploadedAt ?? pedido.uploaded_at ?? pedido.created_at ?? null
+  const client = pedido.client ?? pedido.cliente ?? pedido.destino ?? ''
+  const basePath = pedido.path || ''
+  const displayName =
+    pedido.originalName ??
+    pedido.original_name ??
+    pedido.nombre_archivo ??
+    pedido.archivo ??
+    pedido.name ??
+    (basePath ? basePath.split('/').pop() ?? basePath : '') ??
+    basePath
+  return {
+    ...pedido,
+    estado,
+    status: estado,
+    client,
+    uploadedAt,
+    fecha: uploadedAt ? new Date(uploadedAt).toLocaleString() : '-',
+    displayClient: client || '—',
+    displayName,
+  }
+}
+
 export default function PedidosSubidosPage() {
-  const [pedidos, setPedidos] = useState<PedidoSubido[]>([])
+  const supabase = useMemo(() => createClient(), [])
+  const [pedidos, setPedidos] = useState<PedidoRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [deleting, setDeleting] = useState(false)
+  const [processingId, setProcessingId] = useState<string | null>(null)
 
   const loadPedidos = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch('/api/pedidos-subidos')
+      const response = await fetch('/api/pedidos-subidos', { cache: 'no-store' })
       if (!response.ok) {
         throw new Error('No se pudieron cargar los pedidos subidos.')
       }
       const payload = (await response.json()) as { files?: PedidoSubido[] }
-      setPedidos(payload.files ?? [])
+      const normalized = (payload.files ?? []).map((pedido) => normalizePedidoRow(pedido))
+      setPedidos(normalized)
       setSelected({})
     } catch (err) {
       setError('No se pudieron cargar los pedidos subidos.')
@@ -62,7 +117,8 @@ export default function PedidosSubidosPage() {
           throw new Error('No se pudo subir el pedido.')
         }
         const payload = (await response.json()) as { file: PedidoSubido }
-        setPedidos((current) => [payload.file, ...current])
+        const normalized = normalizePedidoRow(payload.file)
+        setPedidos((current) => [normalized, ...current])
       } catch (err) {
         setError('No se pudo subir el pedido.')
         console.error(err)
@@ -83,22 +139,46 @@ export default function PedidosSubidosPage() {
     [handleUpload],
   )
 
-  const handleProcesar = useCallback((pedido: PedidoSubido) => {
-    const target = `/pedidos-vision?pedidoPath=${encodeURIComponent(pedido.path)}&client=${encodeURIComponent(
-      pedido.client || '',
-    )}`
-    window.location.href = target
-  }, [])
+  const handleProcesar = useCallback(
+    async (pedido: PedidoRow) => {
+      if (!pedido.path) return
+      const identifier = pedido.id ?? pedido.path
+      const params = new URLSearchParams()
+      params.set('pedidoPath', pedido.path)
+      if (pedido.id) params.set('pedidoId', pedido.id)
+      if (pedido.client) params.set('client', pedido.client)
+      const targetUrl = `/pedidos-vision?${params.toString()}`
 
-  const rows = useMemo(
-    () =>
-      pedidos.map((pedido) => ({
-        ...pedido,
-        fecha: pedido.uploadedAt ? new Date(pedido.uploadedAt).toLocaleString() : '-',
-        estado: pedido.status || 'pendiente',
-      })),
-    [pedidos],
+      setProcessingId(identifier)
+      setError(null)
+      try {
+        const targetEstado = 'Procesado'
+        const update = supabase.from('pedidos_subidos').update({ estado: targetEstado })
+        const { error: updateError } = pedido.id ? await update.eq('id', pedido.id) : await update.eq('path', pedido.path)
+        if (updateError) {
+          console.error(updateError)
+          setError('No se pudo actualizar el estado del pedido.')
+        } else {
+          setPedidos((current) =>
+            current.map((item) =>
+              (pedido.id && item.id === pedido.id) || (!pedido.id && item.path === pedido.path)
+                ? { ...item, estado: targetEstado, status: targetEstado }
+                : item,
+            ),
+          )
+        }
+      } catch (err) {
+        console.error(err)
+        setError('No se pudo actualizar el estado del pedido.')
+      } finally {
+        setProcessingId(null)
+        window.location.href = targetUrl
+      }
+    },
+    [supabase],
   )
+
+  const rows = useMemo(() => pedidos, [pedidos])
 
   const toggleSelected = useCallback((id: string) => {
     setSelected((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -208,6 +288,7 @@ export default function PedidosSubidosPage() {
                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
                   <input type="checkbox" checked={areAllSelected} onChange={toggleSelectAll} />
                 </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ID</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Fecha</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Cliente / destino</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Archivo</th>
@@ -218,14 +299,14 @@ export default function PedidosSubidosPage() {
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-3 py-4 text-center text-sm text-gray-500">
                     Cargando pedidos...
                   </td>
                 </tr>
               )}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-3 py-4 text-center text-sm text-gray-500">
                     No hay pedidos subidos todavía.
                   </td>
                 </tr>
@@ -240,9 +321,10 @@ export default function PedidosSubidosPage() {
                         onChange={() => toggleSelected(pedido.id ?? pedido.path)}
                       />
                     </td>
+                    <td className="px-3 py-2 text-xs text-gray-500">{pedido.id ?? '—'}</td>
                     <td className="px-3 py-2">{pedido.fecha}</td>
-                    <td className="px-3 py-2">{pedido.client || '—'}</td>
-                    <td className="px-3 py-2">{pedido.originalName || pedido.name}</td>
+                    <td className="px-3 py-2">{pedido.displayClient}</td>
+                    <td className="px-3 py-2">{pedido.displayName}</td>
                     <td className="px-3 py-2 capitalize">{pedido.estado}</td>
                     <td className="px-3 py-2 space-x-2">
                       <a
@@ -255,10 +337,11 @@ export default function PedidosSubidosPage() {
                       </a>
                       <button
                         type="button"
-                        className="text-sm font-semibold text-gray-900 underline hover:text-black"
+                        className="text-sm font-semibold text-gray-900 underline hover:text-black disabled:opacity-50"
                         onClick={() => handleProcesar(pedido)}
+                        disabled={processingId === (pedido.id ?? pedido.path)}
                       >
-                        Procesar
+                        {processingId === (pedido.id ?? pedido.path) ? 'Actualizando…' : 'Procesar'}
                       </button>
                     </td>
                   </tr>

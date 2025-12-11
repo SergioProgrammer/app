@@ -30,6 +30,7 @@ const CLIENT_LABEL_MAP: Record<string, LabelType> = {
   aldi: 'aldi',
   lidl: 'lidl',
   hiperdino: 'hiperdino',
+  dinosol: 'hiperdino',
   kanali: 'kanali',
 }
 
@@ -39,6 +40,7 @@ export function deriveLabelTypeFromClient(rawClient?: string): LabelType {
   if (direct) return direct
   if (normalized.includes('aldi')) return 'aldi'
   if (normalized.includes('lidl')) return 'lidl'
+  if (normalized.includes('dino')) return 'hiperdino'
   if (normalized.includes('hiper')) return 'hiperdino'
   if (normalized.includes('kanali')) return 'kanali'
   return 'mercadona'

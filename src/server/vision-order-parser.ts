@@ -309,13 +309,14 @@ function parseSpreadsheet(buffer: Buffer, fileName: string, mimeType: string): V
   const { items, client } = buildItemsFromRecords(records)
   if (items.length === 0 && !table) return null
 
-  const resolvedClient = client || 'mercadona'
+  const resolvedClient = client || (isExcel ? 'Lidl' : 'mercadona')
+  const resolvedLabelType = isExcel ? 'lidl' : deriveLabelTypeFromClient(resolvedClient)
   return {
     client: resolvedClient,
     items: items.map((item, index) => ({
       ...item,
       client: resolvedClient,
-      labelType: deriveLabelTypeFromClient(resolvedClient),
+      labelType: resolvedLabelType,
       id: buildVisionOrderItemId(item.productName, index),
     })),
     rawText: 'Pedido procesado desde hoja de cálculo.',
@@ -325,6 +326,7 @@ function parseSpreadsheet(buffer: Buffer, fileName: string, mimeType: string): V
 }
 
 export async function parseVisionOrderFromFile(buffer: Buffer, mimeType: string, fileName: string): Promise<VisionOrderParseResult> {
+  const isXlsxUpload = /\.xlsx$/i.test(fileName)
   try {
     const spreadsheetResult = parseSpreadsheet(buffer, fileName, mimeType)
     if (spreadsheetResult) {
@@ -333,13 +335,14 @@ export async function parseVisionOrderFromFile(buffer: Buffer, mimeType: string,
 
     const parsed = await callOpenAiVision({ buffer, mimeType, fileName })
     const items = buildItems(parsed.items)
-    const client = parsed.client ?? ''
+    const parsedClient = parsed.client ?? ''
+    const resolvedClient = isXlsxUpload ? parsedClient || 'Lidl' : parsedClient
     return {
-      client,
+      client: resolvedClient,
       items: items.map((item, index) => ({
         ...item,
-        client,
-        labelType: deriveLabelTypeFromClient(client || item.client),
+        client: resolvedClient || item.client,
+        labelType: isXlsxUpload ? 'lidl' : deriveLabelTypeFromClient(resolvedClient || item.client),
         id: buildVisionOrderItemId(item.productName, index),
       })),
       rawText: parsed.rawText ?? '',
@@ -347,15 +350,17 @@ export async function parseVisionOrderFromFile(buffer: Buffer, mimeType: string,
     }
   } catch (error) {
     console.error('[vision-order-parser] Vision failed, returning fallback data', error)
+    const fallbackClient = isXlsxUpload ? 'Lidl' : 'mercadona'
+    const fallbackLabel = isXlsxUpload ? 'lidl' : deriveLabelTypeFromClient('mercadona')
     return {
-      client: 'mercadona',
+      client: fallbackClient,
       items: [
         {
           id: 'fallback-1',
           productName: 'Producto ejemplo',
           quantityText: '1 ud',
-          client: 'mercadona',
-          labelType: deriveLabelTypeFromClient('mercadona'),
+          client: fallbackClient,
+          labelType: fallbackLabel,
           include: true,
         },
       ],
