@@ -196,9 +196,6 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
         <div className="px-6 pb-6">
           <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-4">
             <p className="text-sm font-semibold text-gray-900">¿Necesitas ayuda inmediata?</p>
-            <p className="mt-1 text-xs text-gray-600">
-              Ajustamos flujos para agronomía, almacén y logística según tus prioridades.
-            </p>
             <a
               href="https://wa.me/34655689827"
               target="_blank"
