@@ -10,6 +10,17 @@ import { getPanelSlugForUser } from '@/lib/panel-config'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 type ParseStatus = 'idle' | 'loading' | 'done' | 'error'
+const VISION_LAST_ORDER_KEY = 'vision:last-order'
+
+function parseUnits(value: string | undefined | null): number {
+  if (!value) return 1
+  const match = value.match(/([0-9]+(?:[.,][0-9]+)?)/)
+  if (!match) return 1
+  const parsed = Number.parseFloat(match[1].replace(',', '.'))
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1
+  return Math.round(parsed)
+}
+
 export default function VisionOrdersPage() {
   const [file, setFile] = useState<File | null>(null)
   const [parseStatus, setParseStatus] = useState<ParseStatus>('idle')
@@ -18,6 +29,8 @@ export default function VisionOrdersPage() {
   const [client, setClient] = useState('')
   const [rawText, setRawText] = useState('')
   const [notes, setNotes] = useState('')
+  const [tableData, setTableData] = useState<VisionOrderParseResult['table']>(null)
+  const [visibleRowIndexes, setVisibleRowIndexes] = useState<Set<number>>(new Set())
   const [panelSlug, setPanelSlug] = useState('general')
   const hiddenFileInputRef = useRef<HTMLInputElement | null>(null)
   const router = useRouter()
@@ -48,6 +61,8 @@ export default function VisionOrdersPage() {
       setClient('')
       setRawText('')
       setNotes('')
+      setTableData(null)
+      setVisibleRowIndexes(new Set())
 
       const formData = new FormData()
       formData.append('file', selectedFile)
@@ -57,10 +72,26 @@ export default function VisionOrdersPage() {
           throw new Error('No se pudo leer el pedido')
         }
         const payload = (await response.json()) as { data: VisionOrderParseResult }
-        setItems(payload.data.items ?? [])
+        const parsedItems = payload.data.items ?? []
+        setItems(parsedItems)
         setClient(payload.data.client ?? '')
         setRawText(payload.data.rawText ?? '')
         setNotes(payload.data.notes ?? '')
+        setTableData(payload.data.table ?? null)
+        setVisibleRowIndexes(new Set())
+        try {
+          const persisted = {
+            client: payload.data.client ?? '',
+            rawText: payload.data.rawText ?? '',
+            notes: payload.data.notes ?? '',
+            table: payload.data.table ?? null,
+            items: parsedItems,
+            visibleRows: [],
+          }
+          window.localStorage.setItem(VISION_LAST_ORDER_KEY, JSON.stringify(persisted))
+        } catch {
+          // ignore persistence errors
+        }
         setParseStatus('done')
       } catch (error) {
         console.error(error)
@@ -86,7 +117,7 @@ export default function VisionOrdersPage() {
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault()
       if (!file) {
-        setParseError('Selecciona un archivo PDF/PNG/JPG.')
+        setParseError('Selecciona un archivo PDF, imagen o Excel (XLSX/CSV).')
         return
       }
       void parseFile(file)
@@ -109,10 +140,26 @@ export default function VisionOrdersPage() {
           throw new Error('No se pudo procesar el pedido.')
         }
         const payload = (await response.json()) as { data: VisionOrderParseResult }
-        setItems(payload.data.items ?? [])
+        const parsedItems = payload.data.items ?? []
+        setItems(parsedItems)
         setClient(clientFromQuery || payload.data.client || '')
         setRawText(payload.data.rawText ?? '')
         setNotes(payload.data.notes ?? '')
+        setTableData(payload.data.table ?? null)
+        setVisibleRowIndexes(new Set())
+        try {
+          const persisted = {
+            client: clientFromQuery || payload.data.client || '',
+            rawText: payload.data.rawText ?? '',
+            notes: payload.data.notes ?? '',
+            table: payload.data.table ?? null,
+            items: parsedItems,
+            visibleRows: [],
+          }
+          window.localStorage.setItem(VISION_LAST_ORDER_KEY, JSON.stringify(persisted))
+        } catch {
+          // ignore persistence errors
+        }
         setParseStatus('done')
       } catch (err) {
         console.error(err)
@@ -144,12 +191,17 @@ export default function VisionOrdersPage() {
       params.set('vision', '1')
       params.set('product', item.productName)
       params.set('quantity', item.quantityText)
+      const rawCantidad = item.quantityText
+      const parsedUnits = Number(String(rawCantidad ?? '').replace(/[^\d]/g, ''))
+      console.log('[pedidos-vision] rawCantidad', rawCantidad, 'parsedUnits', parsedUnits)
+      params.set('units', String(parsedUnits))
       if (item.client || client) {
         params.set('client', item.client || client)
       }
       if (item.labelType) {
         params.set('labelType', item.labelType)
       }
+      params.set('returnTo', '/pedidos-vision')
       const target = `/panel/${panelSlug}?${params.toString()}`
       router.push(target)
     },
@@ -165,26 +217,98 @@ export default function VisionOrdersPage() {
     [],
   )
 
+  const handleRowVisibilityToggle = useCallback((rowIndex: number) => {
+    setVisibleRowIndexes((current) => {
+      const next = new Set(current)
+      if (next.has(rowIndex)) {
+        next.delete(rowIndex)
+      } else {
+        next.add(rowIndex)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSelectAllRows = useCallback(() => {
+    setVisibleRowIndexes(new Set(items.map((_, index) => index)))
+  }, [items])
+
+  const handleClearSelection = useCallback(() => {
+    setVisibleRowIndexes(new Set())
+  }, [])
+
+  const displayedItems = useMemo(() => {
+    if (!tableData) return items
+    if (visibleRowIndexes.size === 0) return []
+    return items.filter((_, index) => visibleRowIndexes.has(index))
+  }, [items, tableData, visibleRowIndexes])
+
+  useEffect(() => {
+    if (parseStatus !== 'idle') return
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(VISION_LAST_ORDER_KEY)
+    if (!stored) return
+    try {
+      const parsed = JSON.parse(stored) as {
+        client?: string
+        rawText?: string
+        notes?: string
+        table?: VisionOrderParseResult['table'] | null
+        items?: VisionOrderItem[]
+        visibleRows?: number[]
+      }
+      const persistedItems = Array.isArray(parsed.items) ? parsed.items : []
+      if (persistedItems.length === 0) return
+      setItems(persistedItems)
+      setClient(parsed.client ?? '')
+      setRawText(parsed.rawText ?? '')
+      setNotes(parsed.notes ?? '')
+      setTableData(parsed.table ?? null)
+      setVisibleRowIndexes(new Set(Array.isArray(parsed.visibleRows) ? parsed.visibleRows : []))
+      setParseStatus('done')
+    } catch {
+      // ignore malformed cache
+    }
+  }, [parseStatus])
+
+  useEffect(() => {
+    if (parseStatus !== 'done') return
+    if (typeof window === 'undefined') return
+    try {
+      const persisted = {
+        client,
+        rawText,
+        notes,
+        table: tableData,
+        items,
+        visibleRows: Array.from(visibleRowIndexes),
+      }
+      window.localStorage.setItem(VISION_LAST_ORDER_KEY, JSON.stringify(persisted))
+    } catch {
+      // ignore persistence errors
+    }
+  }, [client, items, notes, parseStatus, rawText, tableData, visibleRowIndexes])
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-gray-900">Registro de Pedidos</h1>
         <p className="text-sm text-gray-600">
-          Sube un pedido en PDF/PNG/JPG, lo registramos y confirma los datos antes de generar etiquetas.
+          Sube un pedido en PDF, imagen o Excel (XLSX/CSV), lo registramos y confirma los datos antes de generar etiquetas.
         </p>
       </header>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Paso 1. Subir pedido</h2>
-          <span className="text-xs font-medium text-gray-500">Formatos: PDF, PNG, JPG</span>
+          <span className="text-xs font-medium text-gray-500">Formatos: PDF, imagen o Excel/CSV</span>
         </div>
         <form onSubmit={handleParse} className="space-y-3">
           <div className="flex items-center gap-3">
             <input
               ref={hiddenFileInputRef}
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg"
+              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.xlsm,.csv,.tsv,.ods"
               className="hidden"
               onChange={handleFileChange}
             />
@@ -197,7 +321,12 @@ export default function VisionOrdersPage() {
             </button>
             {file && <span className="text-sm text-gray-700">Archivo: {file.name}</span>}
           </div>
-          <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange} className="block w-full text-sm" />
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.xlsm,.csv,.tsv,.ods"
+            onChange={handleFileChange}
+            className="block w-full text-sm"
+          />
           {file && <p className="text-sm text-gray-700">Archivo seleccionado: {file.name}</p>}
           <button
             type="submit"
@@ -240,6 +369,81 @@ export default function VisionOrdersPage() {
         </div>
 
         <div className="overflow-x-auto">
+          {tableData && tableData.headers.length > 0 && (
+            <div className="mb-5 rounded-xl border border-gray-200">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Tabla leída del pedido</p>
+                  <p className="text-xs text-gray-600">
+                    Mostramos las columnas tal como vienen en la hoja de cálculo.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-500">
+                    {tableData.headers.length} columnas · {tableData.rows.length} filas
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllRows}
+                      className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                    >
+                      Seleccionar todo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearSelection}
+                      className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-white">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Mostrar</th>
+                      {tableData.headers.map((header) => (
+                        <th key={header} className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
+                          {header}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {tableData.rows.map((row, rowIndex) => (
+                      <tr key={`row-${rowIndex}`} className="hover:bg-gray-50">
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={visibleRowIndexes.has(rowIndex)}
+                            onChange={() => handleRowVisibilityToggle(rowIndex)}
+                          />
+                        </td>
+                        {row.map((cell, cellIndex) => (
+                          <td key={`cell-${rowIndex}-${cellIndex}`} className="px-3 py-2 text-sm text-gray-700">
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                    {tableData.rows.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={(tableData.headers.length || 1) + 1}
+                          className="px-3 py-4 text-center text-sm text-gray-500"
+                        >
+                          No se pudieron leer filas de la hoja de cálculo.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead>
               <tr className="bg-gray-50">
@@ -252,7 +456,7 @@ export default function VisionOrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items.map((item) => (
+              {displayedItems.map((item) => (
                 <tr key={item.id} className={!item.include ? 'bg-gray-50' : undefined}>
                   <td className="px-3 py-2">
                     <input
@@ -302,12 +506,12 @@ export default function VisionOrdersPage() {
                       className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
                       disabled={!item.include}
                     >
-                      Revisar y generar
+                      Generar esta etiqueta
                     </button>
                   </td>
                 </tr>
               ))}
-              {items.length === 0 && (
+              {displayedItems.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-6 text-center text-sm text-gray-500">
                     Sube un pedido y pulsa “Leer pedido con visión” para ver las líneas detectadas.

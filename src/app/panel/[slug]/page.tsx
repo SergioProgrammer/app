@@ -520,6 +520,11 @@ export default function PanelPage() {
   const [uploadedFilesFolder, setUploadedFilesFolder] = useState<string | null>(null)
   const searchParams = useSearchParams()
   const lotQueryParamRaw = searchParams?.get('lote') ?? ''
+  const returnUrl = useMemo(() => {
+    const raw = searchParams?.get('returnTo') ?? ''
+    if (typeof raw === 'string' && raw.startsWith('/')) return raw
+    return null
+  }, [searchParams])
   const normalizedLotQuery = useMemo(() => {
     const trimmed = lotQueryParamRaw.trim()
     if (!trimmed) return ''
@@ -1565,8 +1570,29 @@ const nonLabelPlans = useMemo(
         'image/heic',
         'image/heif',
         'image/gif',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'application/vnd.ms-excel.sheet.macroenabled.12',
+        'text/csv',
+        'application/csv',
+        'text/tab-separated-values',
+        'application/vnd.oasis.opendocument.spreadsheet',
       ])
-      const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.heic', '.heif']
+      const allowedExtensions = [
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.webp',
+        '.gif',
+        '.heic',
+        '.heif',
+        '.xlsx',
+        '.xls',
+        '.xlsm',
+        '.csv',
+        '.tsv',
+        '.ods',
+      ]
       const isManualOrderFile = file.name.startsWith(MANUAL_ORDER_FILE_PREFIX) && mimeType === 'text/plain'
       const isAllowed =
         isManualOrderFile ||
@@ -1575,7 +1601,7 @@ const nonLabelPlans = useMemo(
 
       if (!isAllowed) {
         setLabelUploadError(
-          'Solo se admiten imágenes (PNG, JPG, WebP, HEIC, GIF). Convierte el albarán a imagen antes de subirlo o continúa sin archivo.',
+          'Solo se admiten imágenes (PNG, JPG, WebP, HEIC, GIF) o hojas de cálculo (XLSX, XLS, CSV, ODS). Usa uno de estos formatos o continúa sin archivo.',
         )
         return
       }
@@ -1873,6 +1899,7 @@ const nonLabelPlans = useMemo(
             highlightedHistoryId={highlightedHistoryId}
             onReloadUploads={() => loadUploadedFiles()}
             onDeleteUpload={handleDeleteUploadedFile}
+            returnUrl={returnUrl}
           />
         )}
 
@@ -2117,6 +2144,7 @@ function LabelsDashboard({
   highlightedHistoryId,
   onReloadUploads,
   onDeleteUpload,
+  returnUrl,
 }: {
   data: LabelRecord[]
   loading: boolean
@@ -2138,6 +2166,7 @@ function LabelsDashboard({
   highlightedHistoryId: string | null
   onReloadUploads: () => void | Promise<void>
   onDeleteUpload: (file: UploadedFileRecord) => void | Promise<void>
+  returnUrl?: string | null
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -2162,8 +2191,9 @@ function LabelsDashboard({
   const [labelCodeManuallyEdited, setLabelCodeManuallyEdited] = useState(false)
   const [activeStep, setActiveStep] = useState(1)
   const [visionPrefillApplied, setVisionPrefillApplied] = useState(false)
-  const hasResetAfterSuccessRef = useRef(false)
   const visionPrefillAppliedRef = useRef(false)
+  const lastVisionQueryRef = useRef<string | null>(null)
+  const lastSuccessMessageRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2227,17 +2257,23 @@ function LabelsDashboard({
   }, [])
 
   useEffect(() => {
-    if (visionPrefillAppliedRef.current) return
-    const params =
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search)
-        : new URLSearchParams()
-    if (params.get('vision') !== '1') return
+    const params = new URLSearchParams(
+      typeof window !== 'undefined' ? window.location.search : '',
+    )
+    const visionQuery = params.toString()
+    const hasVisionFlag = params.get('vision') === '1'
+    if (!hasVisionFlag) return
+    if (visionPrefillAppliedRef.current && lastVisionQueryRef.current === visionQuery) return
+    lastVisionQueryRef.current = visionQuery
     visionPrefillAppliedRef.current = true
     setVisionPrefillApplied(true)
 
     const prefillProduct = params.get('product') ?? ''
     const prefillQuantity = params.get('quantity') ?? ''
+    const unitsFromQuery = params.get('units')
+    console.log('[panel slug] unitsFromQuery', unitsFromQuery)
+    const prefillUnitsParam = Number.parseInt(unitsFromQuery ?? '', 10)
+    const prefillUnits = Number.isFinite(prefillUnitsParam) && prefillUnitsParam > 0 ? prefillUnitsParam : null
     const prefillClientRaw = params.get('client') ?? ''
     const normalizedClient = prefillClientRaw.toLowerCase().trim()
     const prefillLabelTypeParam = params.get('labelType') ?? ''
@@ -2250,6 +2286,10 @@ function LabelsDashboard({
     if (prefillQuantity) {
       setManualWeight(prefillQuantity)
       setWeightManuallyEdited(true)
+    }
+    if (typeof prefillUnits === 'number' && Number.isFinite(prefillUnits) && prefillUnits > 0) {
+      setManualUnits(prefillUnits)
+      console.log('[panel slug] set manualUnits from query', prefillUnits)
     }
     if (prefillLot) {
       setManualLote(prefillLot.toUpperCase())
@@ -2275,7 +2315,7 @@ function LabelsDashboard({
     } else if (matchedClientKey) {
       setLabelType(clientLabelMap[matchedClientKey])
     }
-  }, [])
+  }, [visionPrefillApplied])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2289,10 +2329,13 @@ function LabelsDashboard({
       }
     }
 
-    applyStoredSelection(window.localStorage.getItem(PRODUCT_SELECTION_STORAGE_KEY))
+    if (!visionPrefillAppliedRef.current && !visionPrefillApplied) {
+      applyStoredSelection(window.localStorage.getItem(PRODUCT_SELECTION_STORAGE_KEY))
+    }
 
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== PRODUCT_SELECTION_STORAGE_KEY) return
+      if (visionPrefillAppliedRef.current || visionPrefillApplied) return
       applyStoredSelection(event.newValue)
     }
 
@@ -2300,11 +2343,14 @@ function LabelsDashboard({
     return () => {
       window.removeEventListener('storage', handleStorage)
     }
-  }, [])
+  }, [visionPrefillApplied])
 
   useEffect(() => {
     const allowFreeText = labelType === 'blanca-grande' || labelType === 'blanca-pequena'
     setProductName((current) => {
+      if (visionPrefillAppliedRef.current && current.trim().length > 0) {
+        return current
+      }
       const options = LABEL_TYPE_PRODUCTS[labelType]
       if (allowFreeText) {
         return current
@@ -2455,6 +2501,12 @@ function LabelsDashboard({
   const allStepsCompleted = stepsInfo.every((step) => step.completed)
 
   useEffect(() => {
+    if (!successMessage) {
+      lastSuccessMessageRef.current = null
+    }
+  }, [successMessage])
+
+  useEffect(() => {
     if (!visionPrefillAppliedRef.current && !visionPrefillApplied) return
     setActiveStep(summaryStep)
   }, [summaryStep, visionPrefillApplied])
@@ -2495,14 +2547,12 @@ function LabelsDashboard({
   }, [labelType, productName])
 
   useEffect(() => {
-    if (successMessage && !uploading && !hasResetAfterSuccessRef.current) {
-      hasResetAfterSuccessRef.current = true
-      resetForm()
-      setActiveStep(1)
-    }
-    if (!successMessage) {
-      hasResetAfterSuccessRef.current = false
-    }
+    if (!successMessage || uploading) return
+    if (successMessage === lastSuccessMessageRef.current) return
+    lastSuccessMessageRef.current = successMessage
+
+    resetForm()
+    setActiveStep(1)
   }, [resetForm, successMessage, uploading])
 
   const handleFechaChange = useCallback(
@@ -3608,6 +3658,16 @@ function LabelsDashboard({
             Etiquetas Generadas
           </button>
         </header>
+        {returnUrl && (
+          <div className="flex justify-end">
+            <a
+              href={returnUrl}
+              className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+            >
+              Volver al pedido leído
+            </a>
+          </div>
+        )}
 
         <div className="mt-6 space-y-5">
           <div className="flex flex-wrap gap-2">
@@ -3970,7 +4030,7 @@ function LabelsDashboard({
               </p>
             ) : data.length === 0 ? (
               <p className="text-sm text-gray-600">
-                Aún no hay etiquetas registradas. Sube tu primer albarán en imagen para iniciar el flujo.
+                Aún no hay etiquetas registradas. Sube tu primer albarán en imagen o hoja de cálculo para iniciar el flujo.
               </p>
             ) : (
               <div className="overflow-x-auto">

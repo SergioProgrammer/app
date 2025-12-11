@@ -190,7 +190,12 @@ export default function PedidosSubidosPage() {
               Eliminar todo
             </button>
             <label className="inline-flex items-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50 cursor-pointer">
-              <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={handleFileChange} />
+              <input
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.xlsm,.csv,.tsv,.ods"
+                className="hidden"
+                onChange={handleFileChange}
+              />
               {uploading ? 'Subiendo…' : 'Subir pedido'}
             </label>
           </div>

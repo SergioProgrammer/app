@@ -4,9 +4,17 @@ export interface VisionOrderItem {
   id: string
   productName: string
   quantityText: string
+  quantity?: string
+  cantidad?: number
+  units?: number
   client: string
   labelType: LabelType
   include: boolean
+}
+
+export interface VisionOrderTable {
+  headers: string[]
+  rows: string[][]
 }
 
 export interface VisionOrderParseResult {
@@ -14,6 +22,7 @@ export interface VisionOrderParseResult {
   items: VisionOrderItem[]
   rawText: string
   notes?: string
+  table?: VisionOrderTable | null
 }
 
 const CLIENT_LABEL_MAP: Record<string, LabelType> = {
