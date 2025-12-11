@@ -299,11 +299,11 @@ export async function DELETE(request: NextRequest) {
     await deleteFromPedidosTable(normalizedPaths)
 
     await Promise.all(
-      normalizedPaths.map(async (path) => {
+      normalizedPaths.map(async (filePath: string) => {
         try {
-          await deleteFileFromBucket(PEDIDOS_BUCKET, path)
+          await deleteFileFromBucket(PEDIDOS_BUCKET, filePath)
         } catch (error) {
-          console.error('[pedidos-subidos] DELETE error removing file', { path, error })
+          console.error('[pedidos-subidos] DELETE error removing file', { path: filePath, error })
         }
       }),
     )
