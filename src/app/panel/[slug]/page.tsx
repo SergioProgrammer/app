@@ -2194,6 +2194,20 @@ function LabelsDashboard({
   const visionPrefillAppliedRef = useRef(false)
   const lastVisionQueryRef = useRef<string | null>(null)
   const lastSuccessMessageRef = useRef<string | null>(null)
+  const unitsAppliedRef = useRef(false)
+  const unitsFromQueryInitial = useMemo(() => {
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+    const raw = params?.get('units')
+    const parsed = raw ? Number(raw) : NaN
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }, [])
+
+  useEffect(() => {
+    if (unitsFromQueryInitial && Number.isFinite(unitsFromQueryInitial) && unitsFromQueryInitial > 0) {
+      setManualUnits(unitsFromQueryInitial)
+      console.log('[panel slug] apply initial units from query', unitsFromQueryInitial)
+    }
+  }, [unitsFromQueryInitial])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2245,10 +2259,12 @@ function LabelsDashboard({
       if (typeof parsed?.category === 'string' && parsed.category.trim().length > 0) {
         setManualCategory(parsed.category)
       }
-      if (typeof (parsed as { units?: unknown })?.units === 'number') {
-        const parsedUnits = (parsed as { units?: unknown }).units as number
-        if (Number.isFinite(parsedUnits) && parsedUnits > 0) {
-          setManualUnits(Math.round(parsedUnits))
+      if (!unitsAppliedRef.current) {
+        if (typeof (parsed as { units?: unknown })?.units === 'number') {
+          const parsedUnits = (parsed as { units?: unknown }).units as number
+          if (Number.isFinite(parsedUnits) && parsedUnits > 0) {
+            setManualUnits(Math.round(parsedUnits))
+          }
         }
       }
     } catch {
@@ -2272,8 +2288,6 @@ function LabelsDashboard({
     const prefillQuantity = params.get('quantity') ?? ''
     const unitsFromQuery = params.get('units')
     console.log('[panel slug] unitsFromQuery', unitsFromQuery)
-    const prefillUnitsParam = Number.parseInt(unitsFromQuery ?? '', 10)
-    const prefillUnits = Number.isFinite(prefillUnitsParam) && prefillUnitsParam > 0 ? prefillUnitsParam : null
     const prefillClientRaw = params.get('client') ?? ''
     const normalizedClient = prefillClientRaw.toLowerCase().trim()
     const prefillLabelTypeParam = params.get('labelType') ?? ''
@@ -2287,9 +2301,14 @@ function LabelsDashboard({
       setManualWeight(prefillQuantity)
       setWeightManuallyEdited(true)
     }
-    if (typeof prefillUnits === 'number' && Number.isFinite(prefillUnits) && prefillUnits > 0) {
-      setManualUnits(prefillUnits)
-      console.log('[panel slug] set manualUnits from query', prefillUnits)
+    if (!unitsAppliedRef.current) {
+      const unitsFromQuery = params.get('units')
+      const parsedUnits = unitsFromQuery ? Number(unitsFromQuery) : NaN
+      if (Number.isFinite(parsedUnits) && parsedUnits > 0) {
+        unitsAppliedRef.current = true
+        setManualUnits(parsedUnits)
+        console.log('[panel slug] apply initial units from query', parsedUnits)
+      }
     }
     if (prefillLot) {
       setManualLote(prefillLot.toUpperCase())
@@ -2704,6 +2723,8 @@ function LabelsDashboard({
       if (manualUnits && Number.isFinite(manualUnits)) {
         meta.units = manualUnits
       }
+
+      console.log('[panel slug] unidades que se envían a backend', meta.units)
 
       await onUpload(uploadFile, meta)
       if (labelType === 'aldi') {

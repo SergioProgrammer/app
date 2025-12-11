@@ -131,6 +131,8 @@ export async function POST(request: NextRequest) {
         ? parseUnitsFromText(manualUnitsSold)
         : parseUnitsFromText(null)
 
+    console.log('[storage/uploads] unitsSold raw', manualUnitsSold, 'parsed', unitsSold)
+
     const sanitizedFileName = sanitizeFileName(file.name)
     const targetPath = buildStoragePath(folderPath, sanitizedFileName)
 
