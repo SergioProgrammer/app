@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import PanelLayout from '@/components/panel-layout'
 
 type InventoryItem = {
   id: string
@@ -103,101 +102,99 @@ export default function StockPage() {
   )
 
   return (
-    <PanelLayout>
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Stock</h1>
-            <p className="text-sm text-gray-600">
-              Control de inventario por producto. Los productos nuevos arrancan con 1000 unidades.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar producto"
-              className="w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
-            />
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50"
-              disabled={loading}
-            >
-              Actualizar
-            </button>
-          </div>
+    <div className="space-y-6 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Stock</h1>
+          <p className="text-sm text-gray-600">
+            Control de inventario por producto. Los productos nuevos arrancan con 1000 unidades.
+          </p>
         </div>
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Producto</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Stock</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Última actualización</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-4 text-center text-sm text-gray-500">
-                    Cargando inventario…
-                  </td>
-                </tr>
-              )}
-              {!loading && rows.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-4 text-center text-sm text-gray-500">
-                    No hay productos aún. Se crearán automáticamente al procesar un pedido.
-                  </td>
-                </tr>
-              )}
-              {!loading &&
-                rows.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-3 py-2 font-semibold text-gray-900">{item.product_name}</td>
-                    <td className="px-3 py-2">{item.units_available}</td>
-                    <td className="px-3 py-2 text-gray-600">{item.updatedLabel}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="number"
-                          min={0}
-                          value={editing[item.id] ?? ''}
-                          onChange={(e) => handleChange(item.id, e.target.value)}
-                          placeholder="Unidades"
-                          className="w-28 rounded-lg border border-gray-300 px-2 py-1 text-sm"
-                        />
-                        <button
-                          type="button"
-                          disabled={saving}
-                          onClick={() => void handleAdjust(item, 'add')}
-                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-                        >
-                          Añadir stock
-                        </button>
-                        <button
-                          type="button"
-                          disabled={saving}
-                          onClick={() => void handleAdjust(item, 'set')}
-                          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          Sobrescribir
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar producto"
+            className="w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
+          />
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50"
+            disabled={loading}
+          >
+            Actualizar
+          </button>
         </div>
       </div>
-    </PanelLayout>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Producto</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Stock</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Última actualización</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {loading && (
+              <tr>
+                <td colSpan={4} className="px-3 py-4 text-center text-sm text-gray-500">
+                  Cargando inventario…
+                </td>
+              </tr>
+            )}
+            {!loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-3 py-4 text-center text-sm text-gray-500">
+                  No hay productos aún. Se crearán automáticamente al procesar un pedido.
+                </td>
+              </tr>
+            )}
+            {!loading &&
+              rows.map((item) => (
+                <tr key={item.id}>
+                  <td className="px-3 py-2 font-semibold text-gray-900">{item.product_name}</td>
+                  <td className="px-3 py-2">{item.units_available}</td>
+                  <td className="px-3 py-2 text-gray-600">{item.updatedLabel}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        value={editing[item.id] ?? ''}
+                        onChange={(e) => handleChange(item.id, e.target.value)}
+                        placeholder="Unidades"
+                        className="w-28 rounded-lg border border-gray-300 px-2 py-1 text-sm"
+                      />
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void handleAdjust(item, 'add')}
+                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                      >
+                        Añadir stock
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void handleAdjust(item, 'set')}
+                        className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Sobrescribir
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }

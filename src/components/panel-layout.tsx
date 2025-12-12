@@ -361,16 +361,13 @@ export default function PanelLayout({ children }: PanelLayoutProps) {
       <main className="md:ml-72 min-h-screen overflow-x-hidden">
         <div className="px-4 sm:px-6 lg:px-10 py-4 sm:py-6 lg:py-10">
           {/* Mobile topbar */}
-          <div className="md:hidden flex items-center justify-between mb-6">
+          <div className="md:hidden flex items-center justify-start gap-3 mb-6">
             <button
               onClick={() => setIsOpen(true)}
               className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <span className="text-sm text-gray-600 truncate max-w-[60%] text-right">
-              {userDisplayName || user.email}
-            </span>
           </div>
 
           <div className={containerClass}>{children}</div>

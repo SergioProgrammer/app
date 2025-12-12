@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import PanelLayout from '@/components/panel-layout'
 import { createClient } from '@/utils/supabase/client'
 
 interface PedidoSubido {
@@ -245,111 +244,109 @@ export default function PedidosSubidosPage() {
   }, [handleDelete, rows])
 
   return (
-    <PanelLayout>
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Pedidos subidos</h1>
-            <p className="text-sm text-gray-600">Gestiona los pedidos que llegan a logística.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleDeleteSelected}
-              disabled={deleting}
-              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
-            >
-              Eliminar seleccionados
-            </button>
-            <button
-              type="button"
-              onClick={handleDeleteAll}
-              disabled={deleting || rows.length === 0}
-              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
-            >
-              Eliminar todo
-            </button>
-            <label className="inline-flex items-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50 cursor-pointer">
-              <input
-                type="file"
-                accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.xlsm,.csv,.tsv,.ods"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-              {uploading ? 'Subiendo…' : 'Subir pedido'}
-            </label>
-          </div>
+    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8 w-full max-w-none ml-0 mr-0">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold text-gray-900">Pedidos subidos</h1>
+          <p className="text-sm text-gray-600">Gestiona los pedidos que llegan a logística.</p>
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
-                  <input type="checkbox" checked={areAllSelected} onChange={toggleSelectAll} />
-                </th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ID</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Fecha</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Cliente / destino</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Archivo</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Estado</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && (
-                <tr>
-                  <td colSpan={7} className="px-3 py-4 text-center text-sm text-gray-500">
-                    Cargando pedidos...
-                  </td>
-                </tr>
-              )}
-              {!loading && rows.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-3 py-4 text-center text-sm text-gray-500">
-                    No hay pedidos subidos todavía.
-                  </td>
-                </tr>
-              )}
-              {!loading &&
-                rows.map((pedido) => (
-                  <tr key={pedido.id ?? pedido.path}>
-                    <td className="px-3 py-2">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(selected[pedido.id ?? pedido.path])}
-                        onChange={() => toggleSelected(pedido.id ?? pedido.path)}
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-xs text-gray-500">{pedido.id ?? '—'}</td>
-                    <td className="px-3 py-2">{pedido.fecha}</td>
-                    <td className="px-3 py-2">{pedido.displayClient}</td>
-                    <td className="px-3 py-2">{pedido.displayName}</td>
-                    <td className="px-3 py-2 capitalize">{pedido.estado}</td>
-                    <td className="px-3 py-2 space-x-2">
-                      <a
-                        href={`/api/pedidos-subidos/file?path=${encodeURIComponent(pedido.path)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-emerald-700 hover:text-emerald-900 font-semibold"
-                      >
-                        Ver original
-                      </a>
-                      <button
-                        type="button"
-                        className="text-sm font-semibold text-gray-900 underline hover:text-black disabled:opacity-50"
-                        onClick={() => handleProcesar(pedido)}
-                        disabled={processingId === (pedido.id ?? pedido.path)}
-                      >
-                        {processingId === (pedido.id ?? pedido.path) ? 'Actualizando…' : 'Procesar'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <button
+            type="button"
+            onClick={handleDeleteSelected}
+            disabled={deleting}
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+          >
+            Eliminar seleccionados
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteAll}
+            disabled={deleting || rows.length === 0}
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+          >
+            Eliminar todo
+          </button>
+          <label className="inline-flex items-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50 cursor-pointer">
+            <input
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.xlsm,.csv,.tsv,.ods"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            {uploading ? 'Subiendo…' : 'Subir pedido'}
+          </label>
         </div>
       </div>
-    </PanelLayout>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
+                <input type="checkbox" checked={areAllSelected} onChange={toggleSelectAll} />
+              </th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ID</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Fecha</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Cliente / destino</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Archivo</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Estado</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {loading && (
+              <tr>
+                <td colSpan={7} className="px-3 py-4 text-center text-sm text-gray-500">
+                  Cargando pedidos...
+                </td>
+              </tr>
+            )}
+            {!loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-4 text-center text-sm text-gray-500">
+                  No hay pedidos subidos todavía.
+                </td>
+              </tr>
+            )}
+            {!loading &&
+              rows.map((pedido) => (
+                <tr key={pedido.id ?? pedido.path}>
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(selected[pedido.id ?? pedido.path])}
+                      onChange={() => toggleSelected(pedido.id ?? pedido.path)}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{pedido.id ?? '—'}</td>
+                  <td className="px-3 py-2">{pedido.fecha}</td>
+                  <td className="px-3 py-2">{pedido.displayClient}</td>
+                  <td className="px-3 py-2">{pedido.displayName}</td>
+                  <td className="px-3 py-2 capitalize">{pedido.estado}</td>
+                  <td className="px-3 py-2 space-x-2">
+                    <a
+                      href={`/api/pedidos-subidos/file?path=${encodeURIComponent(pedido.path)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-700 hover:text-emerald-900 font-semibold"
+                    >
+                      Ver original
+                    </a>
+                    <button
+                      type="button"
+                      className="text-sm font-semibold text-gray-900 underline hover:text-black disabled:opacity-50"
+                      onClick={() => handleProcesar(pedido)}
+                      disabled={processingId === (pedido.id ?? pedido.path)}
+                    >
+                      {processingId === (pedido.id ?? pedido.path) ? 'Actualizando…' : 'Procesar'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
