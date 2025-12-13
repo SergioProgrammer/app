@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LabelType } from '@/lib/product-selection'
 import { LABEL_TYPE_OPTIONS } from '@/lib/product-selection'
 import type { VisionOrderItem, VisionOrderParseResult } from '@/lib/vision-orders'
@@ -12,17 +12,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 type ParseStatus = 'idle' | 'loading' | 'done' | 'error'
 const VISION_LAST_ORDER_KEY = 'vision:last-order'
 
-function parseUnits(value: string | undefined | null): number {
-  if (!value) return 1
-  const match = value.match(/([0-9]+(?:[.,][0-9]+)?)/)
-  if (!match) return 1
-  const parsed = Number.parseFloat(match[1].replace(',', '.'))
-  if (!Number.isFinite(parsed) || parsed <= 0) return 1
-  return Math.round(parsed)
-}
-
 export default function VisionOrdersPage() {
-  const [file, setFile] = useState<File | null>(null)
   const [parseStatus, setParseStatus] = useState<ParseStatus>('idle')
   const [parseError, setParseError] = useState<string | null>(null)
   const [items, setItems] = useState<VisionOrderItem[]>([])
@@ -32,7 +22,7 @@ export default function VisionOrdersPage() {
   const [tableData, setTableData] = useState<VisionOrderParseResult['table']>(null)
   const [visibleRowIndexes, setVisibleRowIndexes] = useState<Set<number>>(new Set())
   const [panelSlug, setPanelSlug] = useState('general')
-  const hiddenFileInputRef = useRef<HTMLInputElement | null>(null)
+  const [pedidoPath, setPedidoPath] = useState<string | null>(null)
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const searchParams = useSearchParams()
@@ -53,88 +43,24 @@ export default function VisionOrdersPage() {
     void resolvePanelSlug()
   }, [supabase])
 
-  const parseFile = useCallback(
-    async (selectedFile: File) => {
-      setParseStatus('loading')
-      setParseError(null)
-      setItems([])
-      setClient('')
-      setRawText('')
-      setNotes('')
-      setTableData(null)
-      setVisibleRowIndexes(new Set())
-
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      try {
-        const response = await fetch('/api/vision-orders/parse', { method: 'POST', body: formData })
-        if (!response.ok) {
-          throw new Error('No se pudo leer el pedido')
-        }
-        const payload = (await response.json()) as { data: VisionOrderParseResult }
-        const parsedItems = payload.data.items ?? []
-        setItems(parsedItems)
-        setClient(payload.data.client ?? '')
-        setRawText(payload.data.rawText ?? '')
-        setNotes(payload.data.notes ?? '')
-        setTableData(payload.data.table ?? null)
-        setVisibleRowIndexes(new Set())
-        try {
-          const persisted = {
-            client: payload.data.client ?? '',
-            rawText: payload.data.rawText ?? '',
-            notes: payload.data.notes ?? '',
-            table: payload.data.table ?? null,
-            items: parsedItems,
-            visibleRows: [],
-          }
-          window.localStorage.setItem(VISION_LAST_ORDER_KEY, JSON.stringify(persisted))
-        } catch {
-          // ignore persistence errors
-        }
-        setParseStatus('done')
-      } catch (error) {
-        console.error(error)
-        setParseError('No se pudo leer el pedido. Intenta de nuevo o rellena manualmente.')
-        setParseStatus('error')
-      }
-    },
-    [],
-  )
-
-  const handleFileChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      const next = event.target.files?.[0]
-      setFile(next ?? null)
-      if (next) {
-        void parseFile(next)
-      }
-    },
-    [parseFile],
-  )
-
-  const handleParse = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      if (!file) {
-        setParseError('Selecciona un archivo PDF, imagen o Excel (XLSX/CSV).')
-        return
-      }
-      void parseFile(file)
-    },
-    [file, parseFile],
-  )
-
   useEffect(() => {
-    const pedidoPath = searchParams?.get('pedidoPath')
-    if (!pedidoPath || pedidoPathLoaded) return
+    const pedidoPathParam = searchParams?.get('pedidoPath')
+    if (!pedidoPathParam || pedidoPathLoaded) return
     setPedidoPathLoaded(true)
+    setPedidoPath(pedidoPathParam)
     const clientFromQuery = searchParams?.get('client') ?? ''
     const pedidoId = searchParams?.get('pedidoId') ?? ''
     ;(async () => {
       try {
         setParseStatus('loading')
-        const params = new URLSearchParams({ path: pedidoPath })
+        setParseError(null)
+        setItems([])
+        setClient('')
+        setRawText('')
+        setNotes('')
+        setTableData(null)
+        setVisibleRowIndexes(new Set())
+        const params = new URLSearchParams({ path: pedidoPathParam })
         if (pedidoId) params.set('id', pedidoId)
         const response = await fetch(`/api/pedidos-subidos/process?${params.toString()}`, {
           method: 'POST',
@@ -158,6 +84,7 @@ export default function VisionOrdersPage() {
             table: payload.data.table ?? null,
             items: parsedItems,
             visibleRows: [],
+            pedidoPath: pedidoPathParam,
           }
           window.localStorage.setItem(VISION_LAST_ORDER_KEY, JSON.stringify(persisted))
         } catch {
@@ -246,6 +173,25 @@ export default function VisionOrdersPage() {
     return items.filter((_, index) => visibleRowIndexes.has(index))
   }, [items, tableData, visibleRowIndexes])
 
+  const persistableState = useMemo(
+    () => ({
+      client,
+      rawText,
+      notes,
+      table: tableData,
+      items,
+      visibleRows: Array.from(visibleRowIndexes),
+      pedidoPath,
+    }),
+    [client, items, notes, pedidoPath, rawText, tableData, visibleRowIndexes],
+  )
+
+  const originalOrderUrl = useMemo(() => {
+    if (!pedidoPath) return null
+    const params = new URLSearchParams({ path: pedidoPath })
+    return `/api/pedidos-subidos/file?${params.toString()}`
+  }, [pedidoPath])
+
   useEffect(() => {
     if (parseStatus !== 'idle') return
     if (typeof window === 'undefined') return
@@ -259,6 +205,7 @@ export default function VisionOrdersPage() {
         table?: VisionOrderParseResult['table'] | null
         items?: VisionOrderItem[]
         visibleRows?: number[]
+        pedidoPath?: string | null
       }
       const persistedItems = Array.isArray(parsed.items) ? parsed.items : []
       if (persistedItems.length === 0) return
@@ -268,6 +215,7 @@ export default function VisionOrdersPage() {
       setNotes(parsed.notes ?? '')
       setTableData(parsed.table ?? null)
       setVisibleRowIndexes(new Set(Array.isArray(parsed.visibleRows) ? parsed.visibleRows : []))
+      setPedidoPath(parsed.pedidoPath ?? null)
       setParseStatus('done')
     } catch {
       // ignore malformed cache
@@ -278,75 +226,45 @@ export default function VisionOrdersPage() {
     if (parseStatus !== 'done') return
     if (typeof window === 'undefined') return
     try {
-      const persisted = {
-        client,
-        rawText,
-        notes,
-        table: tableData,
-        items,
-        visibleRows: Array.from(visibleRowIndexes),
-      }
-      window.localStorage.setItem(VISION_LAST_ORDER_KEY, JSON.stringify(persisted))
+      window.localStorage.setItem(VISION_LAST_ORDER_KEY, JSON.stringify(persistableState))
     } catch {
       // ignore persistence errors
     }
-  }, [client, items, notes, parseStatus, rawText, tableData, visibleRowIndexes])
+  }, [parseStatus, persistableState])
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-gray-900">Registro de Pedidos</h1>
         <p className="text-sm text-gray-600">
-          Sube un pedido en PDF, imagen o Excel (XLSX/CSV), lo registramos y confirma los datos antes de generar etiquetas.
+          Los pedidos se suben desde “Pedidos subidos”. Aquí los procesamos automáticamente para que revises los datos
+          antes de generar etiquetas.
         </p>
       </header>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Paso 1. Subir pedido</h2>
-          <span className="text-xs font-medium text-gray-500">Formatos: PDF, imagen o Excel/CSV</span>
-        </div>
-        <form onSubmit={handleParse} className="space-y-3">
-          <div className="flex items-center gap-3">
-            <input
-              ref={hiddenFileInputRef}
-              type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.xlsm,.csv,.tsv,.ods"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            <button
-              type="button"
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50"
-              onClick={() => hiddenFileInputRef.current?.click()}
-            >
-              Subir archivo
-            </button>
-            {file && <span className="text-sm text-gray-700">Archivo: {file.name}</span>}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm text-gray-600">
+              Revisa los datos detectados y selecciona las líneas que quieres procesar.
+            </p>
+            {pedidoPath && (
+              <p className="text-xs text-gray-500">
+                Archivo: <span className="font-semibold text-gray-700">{pedidoPath.split('/').pop() ?? pedidoPath}</span>
+              </p>
+            )}
+            {parseStatus === 'loading' && <p className="text-sm text-gray-700">Procesando pedido…</p>}
+            {parseError && <p className="text-sm text-red-600">{parseError}</p>}
+            {notes && <p className="text-xs text-gray-500">{notes}</p>}
           </div>
-          <input
-            type="file"
-            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.xlsm,.csv,.tsv,.ods"
-            onChange={handleFileChange}
-            className="block w-full text-sm"
-          />
-          {file && <p className="text-sm text-gray-700">Archivo seleccionado: {file.name}</p>}
           <button
-            type="submit"
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
-            disabled={!file || parseStatus === 'loading'}
+            type="button"
+            onClick={() => originalOrderUrl && window.open(originalOrderUrl, '_blank', 'noopener,noreferrer')}
+            className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+            disabled={!originalOrderUrl}
           >
-            {parseStatus === 'loading' ? 'Leyendo pedido…' : 'Leer pedido con visión'}
+            Ver pedido original
           </button>
-          {parseError && <p className="text-sm text-red-600">{parseError}</p>}
-          {notes && <p className="text-xs text-gray-500">{notes}</p>}
-        </form>
-      </section>
-
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Paso 2. Revisar y confirmar</h2>
-          <span className="text-xs font-medium text-gray-500">Completa o corrige los datos antes de generar</span>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -517,7 +435,7 @@ export default function VisionOrdersPage() {
               {displayedItems.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-6 text-center text-sm text-gray-500">
-                    Sube un pedido y pulsa “Leer pedido con visión” para ver las líneas detectadas.
+                    Procesa un pedido desde “Pedidos subidos” para ver aquí las líneas detectadas.
                   </td>
                 </tr>
               )}
@@ -526,11 +444,7 @@ export default function VisionOrdersPage() {
         </div>
 
         <div className="space-y-1">
-          <p className="text-sm font-semibold text-gray-900">Paso 3. Revisar antes de generar</p>
-          <p className="text-xs text-gray-600">
-            Usa el botón “Revisar y generar” en cada línea para abrir la pantalla de datos editables con los campos
-            pre-rellenos. La generación y guardado se harán allí.
-          </p>
+          <p className="text-sm font-semibold text-gray-900">Revisa antes de generar</p>
         </div>
       </section>
     </div>
