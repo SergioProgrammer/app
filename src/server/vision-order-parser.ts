@@ -3,17 +3,45 @@ import { buildVisionOrderItemId, deriveLabelTypeFromClient, sanitizeProductName 
 import type { VisionOrderTable } from '@/lib/vision-orders'
 import * as XLSX from 'xlsx'
 
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
+const OPENAI_API_URL = 'https://api.openai.com/v1/responses'
 const OPENAI_MODEL = process.env.OPENAI_VISION_MODEL ?? 'gpt-4o-mini'
 const QUANTITY_COLUMN_INDEX = 27
 const PRODUCT_COLUMN_INDEX = 5
 
+async function convertPdfToPngBuffers(pdfBuffer: Buffer, maxPages = 2): Promise<Buffer[]> {
+  try {
+    const pdfjs = (await import('pdfjs-dist')) as typeof import('pdfjs-dist')
+    const { createCanvas } = (await import('@napi-rs/canvas')) as typeof import('@napi-rs/canvas')
+    const loadingTask = pdfjs.getDocument({
+      data: pdfBuffer,
+      useWorkerFetch: false,
+      isEvalSupported: false,
+      disableFontFace: true,
+    })
+    const pdf = await loadingTask.promise
+    const pageCount = Math.min(pdf.numPages, maxPages)
+    const buffers: Buffer[] = []
+    for (let pageIndex = 1; pageIndex <= pageCount; pageIndex++) {
+      const page = await pdf.getPage(pageIndex)
+      const viewport = page.getViewport({ scale: 1.6 })
+      const canvas = createCanvas(viewport.width, viewport.height)
+      const context = canvas.getContext('2d')
+      await page.render({ canvasContext: context as never, viewport }).promise
+      buffers.push(canvas.toBuffer('image/png'))
+    }
+    return buffers
+  } catch (error) {
+    console.error('[vision-order-parser] PDF to PNG conversion error', error)
+    return []
+  }
+}
+
 async function callOpenAiVision({
-  buffer,
+  buffers,
   mimeType,
   fileName,
 }: {
-  buffer: Buffer
+  buffers: Buffer[]
   mimeType: string
   fileName: string
 }): Promise<{ client: string; items: Array<{ product: string; quantity: string }>; rawText?: string }> {
@@ -21,8 +49,10 @@ async function callOpenAiVision({
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY no está configurada')
   }
-  // Enviamos tanto imágenes como PDFs como data URL; los modelos de visión aceptan image_url con application/pdf.
-  const imageUrl = `data:${mimeType || 'application/pdf'};base64,${buffer.toString('base64')}`
+  if (!buffers || buffers.length === 0) {
+    throw new Error('No hay buffers para enviar a visión')
+  }
+  const imageUrls = buffers.map((buffer) => `data:${mimeType};base64,${buffer.toString('base64')}`)
 
   const response = await fetch(OPENAI_API_URL, {
     method: 'POST',
@@ -32,34 +62,59 @@ async function callOpenAiVision({
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      messages: [
+      input: [
         {
           role: 'system',
-          content:
-            'Eres un asistente que lee albaranes o pedidos y devuelve solo JSON. Extrae productos, cantidades y la empresa/cliente.',
+          content: [
+            {
+              type: 'input_text',
+              text: 'Eres un asistente que lee albaranes o pedidos y devuelve solo JSON. Extrae productos, cantidades y la empresa/cliente.',
+            },
+          ],
         },
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Devuelve JSON con {client, items: [{product, quantity}], raw_text}' },
-            { type: 'text', text: `Archivo: ${fileName}` },
-            { type: 'image_url', image_url: { url: imageUrl } },
+            { type: 'input_text', text: 'Devuelve SOLO JSON con {client, items: [{product, quantity}], raw_text}' },
+            { type: 'input_text', text: `Archivo: ${fileName}` },
+            ...imageUrls.map((url) => ({ type: 'input_image', image_url: url })),
           ],
         },
       ],
       temperature: 0,
+      max_output_tokens: 800,
     }),
   })
 
   if (!response.ok) {
     const text = await response.text()
+    console.error('[openai] status', response.status)
+    console.error('[openai] body', text.slice(0, 1500))
+    console.error('[openai] request-id', response.headers.get('x-request-id'))
+    console.error('[openai] model', OPENAI_MODEL)
     throw new Error(`OpenAI Vision error: ${response.status} ${text}`)
   }
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>
+  const data = (await response.json()) as Record<string, unknown>
+
+  const content =
+    typeof data.output_text === 'string'
+      ? data.output_text
+      : Array.isArray(data.output)
+      ? (data.output as unknown[])
+          .flatMap((o) => {
+            const contentArr = (o as { content?: unknown }).content
+            return Array.isArray(contentArr) ? contentArr : []
+          })
+          .filter((c) => (c as { type?: string }).type === 'output_text' && typeof (c as { text?: unknown }).text === 'string')
+          .map((c) => (c as { text: string }).text)
+          .join('\n')
+      : ''
+
+  if (!content) {
+    throw new Error(`Responses API returned no output_text. keys=${Object.keys(data).join(',')}`)
   }
-  const content = data.choices?.[0]?.message?.content ?? ''
+
   const parsed = safeJsonParse(content)
   if (!parsed) {
     throw new Error('No se pudo parsear la respuesta de la API de visión')
@@ -119,10 +174,6 @@ function buildItems(parsedItems: Array<{ product?: string; quantity?: string }>)
 
 type SpreadsheetRecord = Record<string, unknown>
 
-function normalizeHeader(value: string): string {
-  return value.toLowerCase().trim()
-}
-
 function pickFirstKey(headers: string[], candidates: string[]): string | null {
   const normalized = headers.map((header) => normalizeHeader(header))
   for (const candidate of candidates) {
@@ -163,60 +214,188 @@ function parseUnitsFromValue(value: unknown): number | null {
   return null
 }
 
+function coerceMercadonaQuantity(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return `${value}`
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return '0'
+    return trimmed
+  }
+  return '0'
+}
+
+function normalizeHeader(header: string): string {
+  return header
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function findHeader(headers: string[], normalizedHeaders: string[], candidates: string[]): string | null {
+  for (const candidate of candidates) {
+    const idx = normalizedHeaders.indexOf(candidate)
+    if (idx >= 0) return headers[idx]
+  }
+  return null
+}
+
+function isNumericProduct(value: string): boolean {
+  const normalized = value.trim()
+  return normalized !== '' && /^[\d\s.,-]+$/.test(normalized)
+}
+
 function buildItemsFromRecords(records: SpreadsheetRecord[]): { items: VisionOrderItem[]; client: string } {
   if (records.length === 0) {
     return { items: [], client: '' }
   }
 
   const headers = Object.keys(records[0] ?? {})
+  const normalizedHeaders = headers.map(normalizeHeader)
+  const headerByNormalized = normalizedHeaders.reduce<Record<string, string>>((acc, normalized, index) => {
+    acc[normalized] = headers[index]
+    return acc
+  }, {})
   const forcedProductKey = headers[PRODUCT_COLUMN_INDEX] ?? null
   const forcedQuantityKey = headers[QUANTITY_COLUMN_INDEX] ?? null
+
+  const clientKey = pickFirstKey(headers, ['cliente', 'client', 'destino'])
+  const clientValue = clientKey ? records[0]?.[clientKey] : null
+  const clientString =
+    typeof clientValue === 'string'
+      ? clientValue
+      : typeof clientValue === 'number'
+      ? String(clientValue)
+      : ''
+  const lowerClient = clientString.toLowerCase()
+
+  const tableText = `${headers.join(' ')} ${records
+    .map((row) => Object.values(row).join(' '))
+    .join(' ')}`.toLowerCase()
+  const isMercadona = lowerClient.includes('mercadona') || tableText.includes('mercadona')
+  const isHiperdino = lowerClient.includes('hiperdino') || lowerClient.includes('dinosol') || tableText.includes('hiperdino')
+
   const productKey =
     forcedProductKey ??
-    pickFirstKey(headers, ['producto', 'product', 'descripcion', 'description', 'articulo', 'item', 'nombre']) ??
+    (isMercadona
+      ? findHeader(headers, normalizedHeaders, ['descripcion'])
+      : null) ??
+    findHeader(headers, normalizedHeaders, ['producto', 'product', 'descripcion', 'description', 'articulo', 'item', 'nombre']) ??
     headers[0] ??
     ''
+
   const quantityKey =
     forcedQuantityKey ??
-    pickFirstKey(headers, ['cantidad', 'qty', 'unidades', 'uds', 'cantidad_pedida', 'cant']) ??
+    (isMercadona
+      ? findHeader(headers, normalizedHeaders, ['cantidad'])
+      : isHiperdino
+      ? findHeader(headers, normalizedHeaders, ['pedido']) ?? headers[5] ?? null
+      : null) ??
+    findHeader(headers, normalizedHeaders, ['cantidad', 'qty', 'unidades', 'uds', 'cantidad pedida', 'cantidad_pedida', 'cant']) ??
     headers[1] ??
     ''
-  const clientKey = pickFirstKey(headers, ['cliente', 'client', 'destino'])
+
+  const unidadKey = findHeader(headers, normalizedHeaders, ['unidad de medida', 'unidad de medida.', 'unidad_medida', 'udm'])
 
   const items: VisionOrderItem[] = []
 
   for (let index = 0; index < records.length; index++) {
     const row = records[index]
+    const getByNormalized = (candidates: string[]): unknown => {
+      for (const candidate of candidates) {
+        const key = headerByNormalized[candidate]
+        if (key && key in row) return row[key]
+      }
+      return undefined
+    }
     const productRaw = row?.[productKey]
-    const productName = sanitizeProductName(
+    let productName = sanitizeProductName(
       typeof productRaw === 'string' ? productRaw : productRaw != null ? String(productRaw) : '',
     )
-    if (!productName) continue
+
+    if (isMercadona) {
+      if (!productName || isNumericProduct(productName)) {
+        productName = 'Albahaca'
+      }
+    } else {
+      if (!productName || isNumericProduct(productName)) {
+        const altProductKey = findHeader(headers, normalizedHeaders, ['producto', 'product', 'articulo', 'nombre', 'descripcion'])
+        if (altProductKey && altProductKey !== productKey) {
+          const altRaw = row?.[altProductKey]
+          const altName = sanitizeProductName(typeof altRaw === 'string' ? altRaw : altRaw != null ? String(altRaw) : '')
+          if (altName && !isNumericProduct(altName)) {
+            productName = altName
+          }
+        }
+        if (!productName || isNumericProduct(productName)) {
+          const firstText = Object.values(row ?? {}).find(
+            (value) => typeof value === 'string' && /[a-zA-Z]/.test(value) && !isNumericProduct(value),
+          )
+          if (firstText && typeof firstText === 'string') {
+            productName = sanitizeProductName(firstText)
+          }
+        }
+      }
+    }
+
+    if (!productName || isNumericProduct(productName)) continue
+
     const quantityValue = row?.[quantityKey]
-    const quantityText = coerceQuantity(quantityValue)
+    const quantityText = isMercadona ? coerceMercadonaQuantity(quantityValue) : coerceQuantity(quantityValue)
     const units = parseUnitsFromValue(quantityValue) ?? parseUnitsFromValue(quantityText)
+    const unidadMedida = unidadKey ? String(row?.[unidadKey] ?? '').trim().toLowerCase() : null
+    const shouldTrustUnits = unidadMedida ? unidadMedida === 'un' || unidadMedida === 'unidad' || unidadMedida === 'unidades' : true
+    let resolvedUnits = shouldTrustUnits ? units : units
+
+    // Mercadona: si no hay unidades o es 0, intenta multiplicar columnas "Cantidad de U. Exp" x "Unidades de Consumo por U. Exp"
+    if (isMercadona && (!resolvedUnits || resolvedUnits <= 0)) {
+      const expedUnitsRaw = getByNormalized([
+        'cantidad de u. exp',
+        'cantidad u exp',
+        'cantidad de u exp',
+        'cantidad u. exp',
+        'cantidad u.exp',
+      ])
+      const consumoUnitsRaw = getByNormalized([
+        'unidades de consumo por u. exp',
+        'unidades de consumo por u exp',
+        'unidades consumo u exp',
+        'ud consumo u exp',
+        'uds consumo u exp',
+      ])
+      const expedUnits = parseUnitsFromValue(expedUnitsRaw)
+      const consumoUnits = parseUnitsFromValue(consumoUnitsRaw)
+      if (expedUnits && consumoUnits) {
+        resolvedUnits = expedUnits * consumoUnits
+      } else if (expedUnits) {
+        resolvedUnits = expedUnits
+      } else if (consumoUnits) {
+        resolvedUnits = consumoUnits
+      }
+    }
+    if (isMercadona && (resolvedUnits == null || resolvedUnits <= 0)) {
+      resolvedUnits = 0
+    }
 
     const item: VisionOrderItem = {
       id: buildVisionOrderItemId(productName, index),
       productName,
       quantityText,
-      units: units ?? undefined,
-      cantidad: units ?? undefined,
-      client: '',
-      labelType: deriveLabelTypeFromClient(),
+      units: resolvedUnits ?? undefined,
+      cantidad: resolvedUnits ?? undefined,
+      client: clientString,
+      labelType: deriveLabelTypeFromClient(clientString),
       include: true,
     }
 
     items.push(item)
   }
 
-  const clientValue = clientKey ? records[0]?.[clientKey] : null
-  const client =
-    typeof clientValue === 'string'
-      ? clientValue
-      : typeof clientValue === 'number'
-      ? String(clientValue)
-      : ''
+  const client = clientString || (isMercadona ? 'mercadona' : '')
 
   return { items, client }
 }
@@ -333,7 +512,19 @@ export async function parseVisionOrderFromFile(buffer: Buffer, mimeType: string,
       return spreadsheetResult
     }
 
-    const parsed = await callOpenAiVision({ buffer, mimeType, fileName })
+    let buffersForVision: Buffer[] = [buffer]
+    let visionMime = mimeType
+
+    if (mimeType === 'application/pdf') {
+      const converted = await convertPdfToPngBuffers(buffer)
+      if (converted.length === 0) {
+        throw new Error('PDF conversion failed')
+      }
+      buffersForVision = converted
+      visionMime = 'image/png'
+    }
+
+    const parsed = await callOpenAiVision({ buffers: buffersForVision, mimeType: visionMime, fileName })
     const items = buildItems(parsed.items)
     const parsedClient = parsed.client ?? ''
     const resolvedClient = isXlsxUpload ? parsedClient || 'Lidl' : parsedClient

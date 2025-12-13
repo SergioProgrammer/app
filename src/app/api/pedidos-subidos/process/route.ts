@@ -38,7 +38,18 @@ export async function POST(request: NextRequest) {
     const mimeType = contentType || inferMime(resolvedPath)
     const nodeBuffer = Buffer.from(downloadedBuffer)
 
-    const parseResult = await parseVisionOrderFromFile(nodeBuffer, mimeType, resolvedPath)
+    let parseResult
+    try {
+      parseResult = await parseVisionOrderFromFile(nodeBuffer, mimeType, resolvedPath)
+    } catch (error) {
+      console.error('[pedidos-subidos/process] parseVisionOrderFromFile error', error)
+      parseResult = {
+        client: '',
+        items: [],
+        rawText: 'No se pudo procesar el pedido con visión.',
+        notes: `Error de lectura automática. Revisa manualmente. ${(error as Error)?.message ?? ''}`,
+      }
+    }
 
     await markPedidoProcesado({ id: pedidoId, filePath: resolvedPath })
 
