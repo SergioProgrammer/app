@@ -17,6 +17,7 @@ const VISION_LAST_ORDER_KEY = 'vision:last-order'
 interface QuickItem {
   id: string
   productName: string
+  displayName: string
   units: number
   selected: boolean
 }
@@ -34,6 +35,14 @@ function isNumericProductName(value: string | undefined | null): boolean {
   const normalized = (value ?? '').trim()
   if (!normalized) return true
   return /^[\d\s.,-]+$/.test(normalized)
+}
+
+function toQuickDisplayName(value: string): string {
+  const normalized = value.trim()
+  if (!normalized) return ''
+  const match = normalized.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/)
+  const base = match ? match[0] : normalized
+  return base.charAt(0).toUpperCase() + base.slice(1).toLowerCase()
 }
 
 export default function VisionOrdersPage() {
@@ -110,10 +119,19 @@ export default function VisionOrdersPage() {
           .map((item) => ({
             id: item.id,
             productName: item.productName,
+            displayName: toQuickDisplayName(item.productName),
             units: parseUnits(item.quantityText),
             selected: false,
           }))
-        setItems(parsedItems)
+        const quickMap = parsedQuickItems.reduce<Record<string, string>>((acc, item) => {
+          acc[item.id] = item.displayName || item.productName
+          return acc
+        }, {})
+        const parsedItemsWithDisplay = parsedItems.map((item) => ({
+          ...item,
+          productName: quickMap[item.id] ?? item.productName,
+        }))
+        setItems(parsedItemsWithDisplay)
         setClient(clientFromQuery || payload.data.client || '')
         setRawText(payload.data.rawText ?? '')
         setNotes(payload.data.notes ?? '')
@@ -155,7 +173,10 @@ export default function VisionOrdersPage() {
         current.map((item) => (item.id === id ? { ...item, [field]: field === 'labelType' ? (value as LabelType) : value } : item)),
       )
       if (field === 'productName') {
-        setQuickItems((current) => current.map((quick) => (quick.id === id ? { ...quick, productName: value } : quick)))
+        const displayName = toQuickDisplayName(value)
+        setQuickItems((current) =>
+          current.map((quick) => (quick.id === id ? { ...quick, productName: value, displayName } : quick)),
+        )
       }
       if (field === 'quantityText') {
         const units = parseUnits(value)
@@ -335,16 +356,26 @@ export default function VisionOrdersPage() {
             ...item,
             selected: Boolean(item.selected),
             units: Number.isFinite(item.units) ? item.units : parseUnits(persistedItems.find((it) => it.id === item.id)?.quantityText),
+            displayName: item.displayName || toQuickDisplayName(item.productName),
           }))
         : persistedItems
             .filter((item) => !isNumericProductName(item.productName))
             .map((item) => ({
               id: item.id,
               productName: item.productName,
+              displayName: toQuickDisplayName(item.productName),
               units: parseUnits(item.quantityText),
               selected: false,
             }))
-      setItems(persistedItems)
+      const quickMap = persistedQuickItems.reduce<Record<string, string>>((acc, item) => {
+        acc[item.id] = item.displayName || item.productName
+        return acc
+      }, {})
+      const itemsWithDisplay = persistedItems.map((item) => ({
+        ...item,
+        productName: quickMap[item.id] ?? item.productName,
+      }))
+      setItems(itemsWithDisplay)
       setClient(parsed.client ?? '')
       setRawText(parsed.rawText ?? '')
       setNotes(parsed.notes ?? '')
@@ -568,7 +599,7 @@ export default function VisionOrdersPage() {
             >
               <div className="flex items-center gap-2">
                 <input type="checkbox" checked={item.selected} readOnly className="h-4 w-4" />
-                <span className="font-semibold text-gray-900">{item.productName}</span>
+                <span className="font-semibold text-gray-900">{item.displayName || item.productName}</span>
               </div>
               <span className="text-sm font-semibold text-gray-700">{item.units} ud</span>
             </button>
