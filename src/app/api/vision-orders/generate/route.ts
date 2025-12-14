@@ -83,7 +83,10 @@ export async function POST(request: NextRequest) {
             delta: -unitsToSubtract,
           })
         } catch (error) {
-          console.error('[api/vision-orders/generate] inventory adjust error', error)
+          console.error('[api/vision-orders/generate] inventory adjust error', {
+            error,
+            rawProductName: manualFields.productName,
+          })
         }
       }
     }

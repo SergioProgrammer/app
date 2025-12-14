@@ -11,8 +11,47 @@ export interface InventoryRecord {
 const INVENTORY_TABLE = process.env.SUPABASE_INVENTORY_TABLE ?? 'inventory'
 const DEFAULT_INITIAL_UNITS = 1000
 
-function sanitizeProductName(name: string): string {
-  return name?.trim() ?? ''
+const PRODUCT_STOPWORDS = [
+  'kg',
+  'kilo',
+  'kilos',
+  'unidad',
+  'unidades',
+  'ud',
+  'uds',
+  'bolsa',
+  'bolsas',
+  'cortado',
+  'cortada',
+  'cortados',
+  'cortadas',
+  'manojo',
+  'bandeja',
+  'gr',
+  'g',
+  'l',
+  'litro',
+  'litros',
+  'paquete',
+  'paquetes',
+]
+
+export function canonicalizeProductName(rawName: string): string {
+  const normalized = (rawName ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[()]/g, ' ')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .toLowerCase()
+  const tokens = normalized
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .filter((token) => !PRODUCT_STOPWORDS.includes(token))
+
+  const base = tokens.find((token) => /[a-z]/i.test(token)) ?? ''
+  if (!base) return ''
+  return base.charAt(0).toUpperCase() + base.slice(1)
 }
 
 async function fetchInventoryRecord(productName: string): Promise<InventoryRecord | null> {
@@ -20,7 +59,7 @@ async function fetchInventoryRecord(productName: string): Promise<InventoryRecor
   const { data, error } = await supabase
     .from(INVENTORY_TABLE)
     .select('*')
-    .eq('product_name', productName)
+    .ilike('product_name', productName)
     .maybeSingle()
 
   if (error) {
@@ -89,19 +128,16 @@ export async function adjustInventory({
   setTo?: number
   initialUnits?: number
 }): Promise<InventoryRecord | null> {
-  const sanitizedName = sanitizeProductName(productName)
-  if (!sanitizedName) return null
+  const canonical = canonicalizeProductName(productName)
+  if (!canonical) {
+    console.warn('[inventory] producto no reconocible, sin canonical', { raw: productName })
+    return null
+  }
 
-  const existing = await fetchInventoryRecord(sanitizedName)
+  const existing = await fetchInventoryRecord(canonical)
   if (!existing) {
-    const startingUnits = Number.isFinite(initialUnits) ? initialUnits : DEFAULT_INITIAL_UNITS
-    const nextUnits =
-      typeof setTo === 'number'
-        ? setTo
-        : typeof delta === 'number'
-        ? startingUnits + delta
-        : startingUnits
-    return insertInventoryRecord(sanitizedName, Math.max(0, Math.round(nextUnits)))
+    console.warn('[inventory] producto no encontrado, no se insertará nuevo', { raw: productName, canonical })
+    return null
   }
 
   const currentUnits = Number(existing.units_available) || 0
