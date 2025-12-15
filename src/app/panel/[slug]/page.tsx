@@ -2176,7 +2176,7 @@ function LabelsDashboard({
   const [manualCodigoR, setManualCodigoR] = useState('')
   const [manualWeight, setManualWeight] = useState(DEFAULT_WEIGHT)
   const [manualBoxWeight, setManualBoxWeight] = useState('')
-  const [manualUnits, setManualUnits] = useState(1)
+  const [manualUnits, setManualUnits] = useState<number | ''>(1)
   const [weightManuallyEdited, setWeightManuallyEdited] = useState(false)
   const [manualVariety, setManualVariety] = useState(DEFAULT_VARIETY)
   const [manualCategory, setManualCategory] = useState(DEFAULT_CATEGORY)
@@ -2488,7 +2488,7 @@ function LabelsDashboard({
       variety: manualVariety,
       category: manualCategory,
       boxWeight: manualBoxWeight,
-      units: manualUnits,
+      units: typeof manualUnits === 'number' ? manualUnits : undefined,
     }
     try {
       window.localStorage.setItem('labels:manual-fields', JSON.stringify(payload))
@@ -3059,10 +3059,17 @@ function LabelsDashboard({
               name: 'units',
               label: 'Unidades a descontar (stock)',
               type: 'text',
-              value: String(manualUnits ?? 1),
+              value: manualUnits === '' ? '' : String(manualUnits),
               placeholder: '1',
               helper: 'Se restarán del inventario al generar.',
-              onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+              onChange: (value: string) => {
+                const parsed = Number.parseInt(value, 10)
+                if (Number.isNaN(parsed)) {
+                  setManualUnits('')
+                } else {
+                  setManualUnits(Math.max(1, parsed))
+                }
+              },
             },
           ] satisfies SummaryEditableField[]
         }
@@ -3115,10 +3122,17 @@ function LabelsDashboard({
               name: 'units',
               label: 'Unidades a descontar (stock)',
               type: 'text',
-              value: String(manualUnits ?? 1),
+              value: manualUnits === '' ? '' : String(manualUnits),
               placeholder: '1',
               helper: 'Se restarán del inventario al generar.',
-              onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+              onChange: (value: string) => {
+                const parsed = Number.parseInt(value, 10)
+                if (Number.isNaN(parsed)) {
+                  setManualUnits('')
+                } else {
+                  setManualUnits(Math.max(1, parsed))
+                }
+              },
             },
           ] satisfies SummaryEditableField[]
         }
@@ -3145,10 +3159,17 @@ function LabelsDashboard({
                 name: 'units',
                 label: 'Unidades a descontar (stock)',
                 type: 'text',
-                value: String(manualUnits ?? 1),
+                value: manualUnits === '' ? '' : String(manualUnits),
                 placeholder: '1',
                 helper: 'Se restarán del inventario al generar.',
-                onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+                onChange: (value: string) => {
+                  const parsed = Number.parseInt(value, 10)
+                  if (Number.isNaN(parsed)) {
+                    setManualUnits('')
+                  } else {
+                    setManualUnits(Math.max(1, parsed))
+                  }
+                },
               },
             ] satisfies SummaryEditableField[]
           }
@@ -3243,10 +3264,17 @@ function LabelsDashboard({
             name: 'units',
             label: 'Unidades a descontar (stock)',
             type: 'text',
-            value: String(manualUnits ?? 1),
+            value: manualUnits === '' ? '' : String(manualUnits),
             placeholder: '1',
             helper: 'Se restarán del inventario al generar.',
-            onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+            onChange: (value: string) => {
+              const parsed = Number.parseInt(value, 10)
+              if (Number.isNaN(parsed)) {
+                setManualUnits('')
+              } else {
+                setManualUnits(Math.max(1, parsed))
+              }
+            },
           },
           {
             name: 'fecha',
@@ -3442,7 +3470,7 @@ function LabelsDashboard({
             <div>
               <p className="text-sm font-semibold text-gray-900">Tipo de etiqueta</p>
               
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {(Object.keys(LABEL_TYPE_OPTIONS) as LabelType[]).map((optionKey) => {
                   const option = LABEL_TYPE_OPTIONS[optionKey]
                   const isActive = labelType === optionKey
@@ -3482,22 +3510,21 @@ function LabelsDashboard({
                     </button>
                   )
                 })}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-4">
-              
-              <div className="mt-1 text-sm text-gray-600">
-                Si va a subir un pedido hágalo en la Sección Registro de Pedidos. Si lo hace manual continúe.
-              </div>
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <button
-                  type="button"
-                  onClick={handleContinue}
-                  className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-                  disabled={uploading}
-                >
-                  Continuar
-                </button>
+                <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-4 flex flex-col justify-between">
+                  <div className="text-sm text-gray-600">
+                    Si va a subir un pedido hágalo en la Sección Registro de Pedidos. Si lo hace manual continúe.
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleContinue}
+                      className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+                      disabled={uploading}
+                    >
+                      Continuar
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
