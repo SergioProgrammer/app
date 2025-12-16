@@ -419,10 +419,11 @@ function persistAldiTrace(value: string): void {
 }
 
 function buildCodigoRForLabelType(labelType: LabelType, referenceDate?: string | null): string {
-  if (labelType === 'aldi') {
-    return getLastAldiTrace()
+  if (labelType === 'mercadona') {
+    return buildCodigoRFromDate(referenceDate ?? getTodayIsoDate())
   }
-  return buildCodigoRFromDate(referenceDate ?? getTodayIsoDate())
+  // Para el resto de etiquetas usamos el esquema de trazabilidad tipo Aldi (E + 5 dígitos).
+  return getLastAldiTrace()
 }
 
 function resolveCodigoRForLabelType(
@@ -430,16 +431,16 @@ function resolveCodigoRForLabelType(
   value?: string | null,
   referenceDate?: string | null,
 ): string | null {
-  if (labelType === 'aldi') {
-    const normalized = normalizeAldiTrace(value)
-    return normalized ?? getLastAldiTrace()
+  if (labelType === 'mercadona') {
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    if (trimmed.length > 0) {
+      return trimmed
+    }
+    const fallback = buildCodigoRFromDate(referenceDate ?? getTodayIsoDate())
+    return fallback.length > 0 ? fallback : null
   }
-  const trimmed = typeof value === 'string' ? value.trim() : ''
-  if (trimmed.length > 0) {
-    return trimmed
-  }
-  const fallback = buildCodigoRFromDate(referenceDate ?? getTodayIsoDate())
-  return fallback.length > 0 ? fallback : null
+  const normalized = normalizeAldiTrace(value)
+  return normalized ?? getLastAldiTrace()
 }
 
 function getDefaultLabelCodeForProduct(productName?: string | null): string {
@@ -2982,6 +2983,15 @@ function LabelsDashboard({
               : undefined
           const lidlFields: SummaryEditableField[] = [
             {
+              name: 'variety',
+              label: 'Variedad',
+              type: 'text',
+              value: manualVariety,
+              placeholder: DEFAULT_VARIETY,
+              helper: 'Texto que irá debajo del producto.',
+              onChange: handleVarietyChange,
+            },
+            {
               name: 'lote',
               label: 'Lote',
               type: 'text',
@@ -3002,10 +3012,17 @@ function LabelsDashboard({
               name: 'units',
               label: 'Unidades a descontar (stock)',
               type: 'text',
-              value: String(manualUnits ?? 1),
+              value: manualUnits === '' ? '' : String(manualUnits),
               placeholder: '1',
               helper: 'Se restarán del inventario al generar.',
-              onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+              onChange: (value: string) => {
+                const parsed = Number.parseInt(value, 10)
+                if (Number.isNaN(parsed)) {
+                  setManualUnits('')
+                } else {
+                  setManualUnits(Math.max(0, parsed))
+                }
+              },
             },
             {
               name: 'pesoCaja',
@@ -3017,16 +3034,41 @@ function LabelsDashboard({
               onChange: handleBoxWeightChange,
             },
           ]
-          if (isLidlAlbahaca) {
-            lidlFields.push({
-              name: 'fecha',
-              label: 'Fecha envasado / carga',
-              type: 'date',
-              value: manualFechaCarga,
-              helper: 'Verifica la fecha importada automáticamente.',
-              onChange: handleFechaChange,
-            })
-          }
+          lidlFields.push({
+            name: 'fecha',
+            label: 'Fecha envasado / carga',
+            type: 'date',
+            value: manualFechaCarga,
+            helper: 'Verifica la fecha importada automáticamente.',
+            onChange: handleFechaChange,
+          })
+          lidlFields.push({
+            name: 'codigoCoc',
+            label: 'Código COC',
+            type: 'text',
+            value: manualCodigoCoc,
+            placeholder: '4063061581198',
+            helper: 'Código fijo proporcionado por la central.',
+            onChange: handleCodigoCocChange,
+          })
+          lidlFields.push({
+            name: 'labelCode',
+            label: 'Código de barras',
+            type: 'text',
+            value: manualLabelCode,
+            placeholder: derivedLabelCode || '8437018336005',
+            helper: 'Asignado al producto por la central.',
+            onChange: handleLabelCodeChange,
+          })
+          lidlFields.push({
+            name: 'codigoR',
+            label: 'Código E',
+            type: 'text',
+            value: manualCodigoR,
+            placeholder: derivedCodigoR || 'E35578',
+            helper: 'Código de trazabilidad (E + 5 dígitos).',
+            onChange: handleCodigoRInputChange,
+          })
           return lidlFields
         }
         if (isKanali) {
@@ -3067,7 +3109,7 @@ function LabelsDashboard({
                 if (Number.isNaN(parsed)) {
                   setManualUnits('')
                 } else {
-                  setManualUnits(Math.max(1, parsed))
+                  setManualUnits(Math.max(0, parsed))
                 }
               },
             },
@@ -3125,15 +3167,15 @@ function LabelsDashboard({
               value: manualUnits === '' ? '' : String(manualUnits),
               placeholder: '1',
               helper: 'Se restarán del inventario al generar.',
-              onChange: (value: string) => {
-                const parsed = Number.parseInt(value, 10)
-                if (Number.isNaN(parsed)) {
-                  setManualUnits('')
-                } else {
-                  setManualUnits(Math.max(1, parsed))
-                }
-              },
+            onChange: (value: string) => {
+              const parsed = Number.parseInt(value, 10)
+              if (Number.isNaN(parsed)) {
+                setManualUnits('')
+              } else {
+                setManualUnits(Math.max(0, parsed))
+              }
             },
+          },
           ] satisfies SummaryEditableField[]
         }
         if (isHiperdino) {
@@ -3163,14 +3205,14 @@ function LabelsDashboard({
                 placeholder: '1',
                 helper: 'Se restarán del inventario al generar.',
                 onChange: (value: string) => {
-                  const parsed = Number.parseInt(value, 10)
-                  if (Number.isNaN(parsed)) {
-                    setManualUnits('')
-                  } else {
-                    setManualUnits(Math.max(1, parsed))
-                  }
-                },
+                const parsed = Number.parseInt(value, 10)
+                if (Number.isNaN(parsed)) {
+                  setManualUnits('')
+                } else {
+                  setManualUnits(Math.max(0, parsed))
+                }
               },
+            },
             ] satisfies SummaryEditableField[]
           }
           return [
@@ -3194,10 +3236,17 @@ function LabelsDashboard({
                 name: 'units',
                 label: 'Unidades a descontar (stock)',
                 type: 'text',
-                value: String(manualUnits ?? 1),
+                value: manualUnits === '' ? '' : String(manualUnits),
                 placeholder: '1',
                 helper: 'Se restarán del inventario al generar.',
-                onChange: (value: string) => setManualUnits(Math.max(1, Number.parseInt(value, 10) || 1)),
+                onChange: (value: string) => {
+                  const parsed = Number.parseInt(value, 10)
+                  if (Number.isNaN(parsed)) {
+                    setManualUnits('')
+                  } else {
+                    setManualUnits(Math.max(0, parsed))
+                  }
+                },
               },
               {
                 name: 'peso',
@@ -3214,6 +3263,39 @@ function LabelsDashboard({
           productName.trim().toLowerCase() === 'hojas frescas acelga'
         ) {
           return [
+            {
+              name: 'variety',
+              label: 'Variedad',
+              type: 'text',
+              value: manualVariety,
+              placeholder: DEFAULT_VARIETY,
+              helper: 'Texto que irá debajo del producto en las etiquetas.',
+              onChange: handleVarietyChange,
+            },
+            {
+              name: 'fecha',
+              label: 'Fecha envasado / carga',
+              type: 'date',
+              value: manualFechaCarga,
+              helper: 'Verifica la fecha importada automáticamente.',
+              onChange: handleFechaChange,
+            },
+            {
+              name: 'units',
+              label: 'Unidades a descontar (stock)',
+              type: 'text',
+              value: manualUnits === '' ? '' : String(manualUnits),
+              placeholder: '1',
+              helper: 'Se restarán del inventario al generar.',
+              onChange: (value: string) => {
+                const parsed = Number.parseInt(value, 10)
+                if (Number.isNaN(parsed)) {
+                  setManualUnits('')
+                } else {
+                  setManualUnits(Math.max(0, parsed))
+                }
+              },
+            },
             {
               name: 'lote',
               label: 'Lote',
@@ -3238,6 +3320,15 @@ function LabelsDashboard({
               placeholder: 'Ej. 1 kg',
               helper: 'Se imprime en KG CAJA.',
               onChange: handleBoxWeightChange,
+            },
+            {
+              name: 'codigoCoc',
+              label: 'Código COC',
+              type: 'text',
+              value: manualCodigoCoc,
+              placeholder: '4063061581198',
+              helper: 'Código fijo proporcionado por la central.',
+              onChange: handleCodigoCocChange,
             },
             {
               name: 'codigoR',
@@ -3272,7 +3363,7 @@ function LabelsDashboard({
               if (Number.isNaN(parsed)) {
                 setManualUnits('')
               } else {
-                setManualUnits(Math.max(1, parsed))
+                setManualUnits(Math.max(0, parsed))
               }
             },
           },
@@ -4000,9 +4091,20 @@ function LabelsDashboard({
                               {extractedFields?.codigoCoc && (
                                 <span className="rounded-full bg-gray-100 px-2 py-0.5">COC {extractedFields.codigoCoc}</span>
                               )}
-                              {extractedFields?.codigoR && (
-                                <span className="rounded-full bg-gray-100 px-2 py-0.5">R {extractedFields.codigoR}</span>
-                              )}
+                              {extractedFields?.codigoR && (() => {
+                                const code = extractedFields.codigoR.trim()
+                                const isECode = code.toUpperCase().startsWith('E')
+                                const label = isECode
+                                  ? `E ${code.replace(/^E/i, '')}`
+                                  : code.toUpperCase().startsWith('R')
+                                  ? `R ${code.replace(/^R[-\s]?/i, '')}`
+                                  : code
+                                return (
+                                  <span className="rounded-full bg-gray-100 px-2 py-0.5">
+                                    {label}
+                                  </span>
+                                )
+                              })()}
                             </p>
                           )}
                         </div>
