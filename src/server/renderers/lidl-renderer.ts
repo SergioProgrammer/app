@@ -163,6 +163,14 @@ async function renderCaja2TemplateLabel(
     normalizeFieldValue(fields.weight, { preserveFormat: true }) ??
     '-'
 
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[lidl-renderer] caja2 variedad', {
+      fileName,
+      product: fields.productName,
+      variedad: fields.variety,
+    })
+  }
+
   const boldOffsets: Array<[number, number]> = [
     [0, 0],
     [0.35, 0],
@@ -389,13 +397,14 @@ export async function renderLidlLabelSet({
   fileName: string
   templatePath?: string
 }): Promise<LabelRenderResult[]> {
+  const sharedFields = { ...fields, variety: null }
   const baseLabel = await renderLabelPdf({
-    fields,
+    fields: sharedFields,
     fileName,
     templatePath,
     options: { hideCodigoR: true },
   })
-  const summaryLabel = await renderCenteredNameWeightLabel(fields, fileName, {
+  const summaryLabel = await renderCenteredNameWeightLabel(sharedFields, fileName, {
     variantSuffix: 'lidl-10x5-peso',
   })
   const detailedLabel = await renderLidlCajaDetailLabel(fields, fileName, {

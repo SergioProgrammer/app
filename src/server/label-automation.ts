@@ -212,10 +212,11 @@ function prepareLabelFields(fields: ManualLabelFields, fileName: string): LabelR
   const resolvedLabelType = normalizeLabelType(fields.labelType ?? DEFAULT_LABEL_TYPE)
   const resolvedProduct = normalizeProductForLabelType(resolvedLabelType, fields.productName)
   const referenceDate = fields.fechaCarga ?? fields.fechaEnvasado
+  const includeVariety = resolvedLabelType === 'lidl' || resolvedLabelType === 'aldi'
   return {
     labelType: resolvedLabelType,
     productName: resolvedProduct,
-    variety: normalizeField(fields.variety),
+    variety: includeVariety ? normalizeField(fields.variety) : null,
     fechaEnvasado: normalizeField(referenceDate ?? fields.fechaEnvasado),
     lote: resolveLot(fields.lote, fileName, resolvedLabelType, referenceDate),
     labelCode: normalizeField(fields.labelCode),

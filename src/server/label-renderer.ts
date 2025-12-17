@@ -572,13 +572,14 @@ export async function renderLidlLabelSet({
   fileName: string
   templatePath?: string
 }): Promise<LabelRenderResult[]> {
+  const sharedFields = { ...fields, variety: null }
   const baseLabel = await renderLabelPdf({
-    fields,
+    fields: sharedFields,
     fileName,
     templatePath,
     options: { hideCodigoR: true },
   })
-  const summaryLabel = await renderCenteredNameWeightLabel(fields, fileName, {
+  const summaryLabel = await renderCenteredNameWeightLabel(sharedFields, fileName, {
     variantSuffix: 'lidl-10x5-peso',
   })
   const detailedLabel = await renderLidlCajaDetailLabel(fields, fileName, {
@@ -596,12 +597,13 @@ export async function renderAldiLabelSet({
   fileName: string
   templatePath?: string
 }): Promise<LabelRenderResult[]> {
+  const sharedFields = { ...fields, variety: null }
   const baseLabel = await renderLabelPdf({
-    fields,
+    fields: sharedFields,
     fileName,
     templatePath,
   })
-  const summaryLabel = await renderCenteredNameWeightLabel(fields, fileName, {
+  const summaryLabel = await renderCenteredNameWeightLabel(sharedFields, fileName, {
     variantSuffix: 'aldi-10x5-peso',
   })
   const detailedLabel = await renderLidlCajaDetailLabel(fields, fileName, {
@@ -676,7 +678,7 @@ function buildWhiteLabelLines(
   fields: LabelRenderFields,
 ): WhiteLabelLine[] {
   const product = formatProductText(fields.productName)
-  const variety = normalizeFieldValue(fields.variety, { preserveFormat: true }) ?? 'Sin variedad'
+  const variety = normalizeFieldValue(fields.variety, { preserveFormat: true })
   const date = formatWhiteLabelDate(fields.fechaEnvasado)
   const lot = formatLotText(fields.lote)
   const config = WHITE_LABEL_CONFIGS[variant]
@@ -690,10 +692,11 @@ function buildWhiteLabelLines(
   const categoryValue =
     normalizeFieldValue(fields.category, { preserveFormat: true }) ?? WHITE_LABEL_DEFAULT_CATEGORY
   const categoryText = `Categoría ${categoryValue}`
+  const categoryVarietyLine = variety ? `${categoryText}   Variedad: ${variety}` : categoryText
 
   return [
     { text: product, size: config.titleSize, align: 'center', spacing: headingSpacing },
-    { text: `${categoryText}   Variedad: ${variety}`, size: config.bodySize, align: 'center' },
+    { text: categoryVarietyLine, size: config.bodySize, align: 'center' },
     { text: `Peso aprox: ${weight}`, size: config.bodySize, align: 'center' },
     { text: `Envasado: ${date} LOTE: ${lot}`, size: config.bodySize, align: 'center' },
     {
@@ -724,7 +727,7 @@ export function formatVarietyText(value?: string | null): string {
   if (trimmed && trimmed.length > 0) {
     return trimmed.toUpperCase()
   }
-  return 'SIN VARIEDAD'
+  return ''
 }
 
 export function formatWhiteLabelDate(value?: string | null): string {

@@ -48,6 +48,7 @@ import {
   normalizeLabelType,
   parseStoredProductSelection,
 } from '@/lib/product-selection'
+import { getDefaultVariedad, isLegacyVariedadDefault } from '@/lib/variedad'
 
 interface PlanRecord {
   id: string
@@ -178,7 +179,7 @@ type TurnosDownloadRange = 'day' | 'week' | 'month' | 'year'
 
 const TURNOS_RECENT_LIMIT = 8
 const DEFAULT_WEIGHT = '40gr'
-const DEFAULT_VARIETY = 'RED JASPER'
+const DEFAULT_VARIETY = ''
 const DEFAULT_CATEGORY = '1'
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const LOT_PREFIX_LENGTH = 2
@@ -2180,6 +2181,7 @@ function LabelsDashboard({
   const [manualUnits, setManualUnits] = useState<number | ''>(1)
   const [weightManuallyEdited, setWeightManuallyEdited] = useState(false)
   const [manualVariety, setManualVariety] = useState(DEFAULT_VARIETY)
+  const [varietyManuallyEdited, setVarietyManuallyEdited] = useState(false)
   const [manualCategory, setManualCategory] = useState(DEFAULT_CATEGORY)
   const [codigoRManuallyEdited, setCodigoRManuallyEdited] = useState(false)
   const [labelType, setLabelType] = useState<LabelType>(DEFAULT_LABEL_TYPE)
@@ -2196,6 +2198,7 @@ function LabelsDashboard({
   const lastVisionQueryRef = useRef<string | null>(null)
   const lastSuccessMessageRef = useRef<string | null>(null)
   const unitsAppliedRef = useRef(false)
+  const storedVarietyRef = useRef<string | null>(null)
   const unitsFromQueryInitial = useMemo(() => {
     const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
     const raw = params?.get('units')
@@ -2255,7 +2258,7 @@ function LabelsDashboard({
         setManualBoxWeight(parsed.boxWeight)
       }
       if (typeof parsed?.variety === 'string' && parsed.variety.trim().length > 0) {
-        setManualVariety(parsed.variety)
+        storedVarietyRef.current = isLegacyVariedadDefault(parsed.variety) ? null : parsed.variety
       }
       if (typeof parsed?.category === 'string' && parsed.category.trim().length > 0) {
         setManualCategory(parsed.category)
@@ -2317,8 +2320,6 @@ function LabelsDashboard({
     if (prefillDate) {
       setManualFechaCarga(prefillDate)
     }
-    // Usamos la variedad como campo visible para destino/cliente en el resumen.
-    setManualVariety(prefillClientRaw || '')
 
     const clientLabelMap: Record<string, LabelType> = {
       mercadona: 'mercadona',
@@ -2385,6 +2386,38 @@ function LabelsDashboard({
   useEffect(() => {
     setWeightManuallyEdited(false)
   }, [labelType, productName])
+
+  useEffect(() => {
+    setVarietyManuallyEdited(false)
+    if (labelType !== 'lidl' && labelType !== 'aldi') {
+      setManualVariety('')
+    }
+  }, [labelType])
+
+  useEffect(() => {
+    const isLidlOrAldi = labelType === 'lidl' || labelType === 'aldi'
+    if (!isLidlOrAldi) return
+    if (varietyManuallyEdited) return
+
+    const storedVariety = storedVarietyRef.current?.trim() ?? ''
+    if (storedVariety.length > 0 && manualVariety.trim().length === 0) {
+      setManualVariety(storedVariety)
+      setVarietyManuallyEdited(true)
+      return
+    }
+
+    const defaultVariedad = getDefaultVariedad(productName)
+    if (!defaultVariedad) return
+    if (!isLegacyVariedadDefault(manualVariety) && defaultVariedad === manualVariety) return
+    setManualVariety(defaultVariedad)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[labels] variedad default aplicada', {
+        labelType,
+        productName,
+        variedad: defaultVariedad,
+      })
+    }
+  }, [labelType, manualVariety, productName, varietyManuallyEdited])
 
   useEffect(() => {
     if (
@@ -2478,6 +2511,10 @@ function LabelsDashboard({
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const storedVariety =
+      storedVarietyRef.current && storedVarietyRef.current.trim().length > 0
+        ? storedVarietyRef.current.trim()
+        : undefined
     const payload: LabelUploadMeta = {
       lote: manualLote,
       fechaEnvasado: manualFechaCarga,
@@ -2486,7 +2523,7 @@ function LabelsDashboard({
       codigoCoc: manualCodigoCoc,
       labelCode: manualLabelCode,
       weight: manualWeight,
-      variety: manualVariety,
+      variety: labelType === 'lidl' || labelType === 'aldi' ? manualVariety : storedVariety,
       category: manualCategory,
       boxWeight: manualBoxWeight,
       units: typeof manualUnits === 'number' ? manualUnits : undefined,
@@ -2497,6 +2534,7 @@ function LabelsDashboard({
       // ignore storage quota issues
     }
   }, [
+    labelType,
     manualCodigoCoc,
     manualCodigoR,
     manualFechaCarga,
@@ -2563,6 +2601,7 @@ function LabelsDashboard({
     setManualUnits(1)
     setWeightManuallyEdited(false)
     setManualVariety(DEFAULT_VARIETY)
+    setVarietyManuallyEdited(false)
     setManualCategory(DEFAULT_CATEGORY)
   }, [labelType, productName])
 
@@ -2628,8 +2667,12 @@ function LabelsDashboard({
 
   const handleVarietyChange = useCallback((value: string) => {
     setLocalError(null)
+    setVarietyManuallyEdited(true)
     setManualVariety(value)
-  }, [])
+    if (labelType === 'lidl' || labelType === 'aldi') {
+      storedVarietyRef.current = value.trim().length > 0 ? value : null
+    }
+  }, [labelType])
 
   const handleCategoryChange = useCallback((value: string) => {
     setLocalError(null)
@@ -2683,6 +2726,14 @@ function LabelsDashboard({
       event.preventDefault()
       const uploadFile = file ?? buildManualUploadFile()
       setLocalError(null)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[labels] submit variedad', {
+          labelType,
+          productName,
+          variedad: manualVariety,
+          varietyManuallyEdited,
+        })
+      }
 
       const meta: LabelUploadMeta = {}
 
@@ -2747,6 +2798,7 @@ function LabelsDashboard({
       manualLote,
       manualCategory,
       manualVariety,
+      varietyManuallyEdited,
       manualWeight,
       manualBoxWeight,
       manualUnits,

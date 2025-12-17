@@ -186,12 +186,13 @@ export async function renderAldiLabelSet({
   fileName: string
   templatePath?: string
 }): Promise<LabelRenderResult[]> {
+  const sharedFields = { ...fields, variety: null }
   const baseLabel = await renderLabelPdf({
-    fields,
+    fields: sharedFields,
     fileName,
     templatePath,
   })
-  const summaryLabel = await renderCenteredNameWeightLabel(fields, fileName, {
+  const summaryLabel = await renderCenteredNameWeightLabel(sharedFields, fileName, {
     variantSuffix: 'aldi-10x5-peso',
   })
   const detailedLabel = await renderLidlCajaDetailLabel(fields, fileName, {
