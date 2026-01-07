@@ -89,7 +89,7 @@ Recuerda validarlo en Google Console antes de que pueda usar Gmail.`,
     <div className="min-h-screen bg-[#f9f8f6] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-[0_30px_70px_-40px_rgba(15,23,42,0.7)]">
         <div className="grid gap-y-10 lg:grid-cols-[1.25fr_1fr]">
-          <aside className="relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 px-10 py-12 text-white">
+          <aside className="relative overflow-hidden from-gray-900 via-gray-900 to-gray-800 px-10 py-12 text-white">
             <div className="absolute right-12 top-8 h-32 w-32 rounded-full bg-white/5 blur-3xl" aria-hidden />
             <div className="relative space-y-10">
               <header className="space-y-4">

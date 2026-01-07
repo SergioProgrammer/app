@@ -1,0 +1,69 @@
+import { createClient } from '@/utils/supabase/client'
+
+export interface UploadInvoiceOptions {
+  invoiceNumber: string
+  invoiceDate: string
+  customerName: string
+  customerTaxId?: string
+  total: number
+  currency?: string
+}
+
+export async function uploadInvoicePdf(bytes: Uint8Array, fileName: string, options: UploadInvoiceOptions) {
+  const supabase = createClient()
+  const parsedDate = options.invoiceDate ? new Date(options.invoiceDate) : null
+  const dateObj = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : new Date()
+  const year = String(dateObj.getFullYear())
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const path = `facturas/${year}/${month}/${fileName}`
+  const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' })
+
+  const { data: uploadData, error: uploadError } = await supabase.storage.from('facturas').upload(path, blob, {
+    contentType: 'application/pdf',
+    upsert: true,
+  })
+  if (uploadError) {
+    throw uploadError
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[invoice-storage] upload ok', { path, bytes: bytes.byteLength, data: uploadData })
+  }
+
+  let publicUrl: string | null = null
+  let signedUrl: string | null = null
+  const { data: publicData } = supabase.storage.from('facturas').getPublicUrl(path)
+  publicUrl = publicData?.publicUrl ?? null
+
+  if (!publicUrl) {
+    const { data: signed, error: signedError } = await supabase.storage
+      .from('facturas')
+      .createSignedUrl(path, 60 * 60 * 24)
+    if (signedError) {
+      throw signedError
+    }
+    signedUrl = signed?.signedUrl ?? null
+  }
+  if (!publicUrl && !signedUrl) {
+    throw new Error('No se pudo obtener URL de acceso para la factura subida.')
+  }
+
+  try {
+    await supabase.from('facturas').insert({
+      invoice_number: options.invoiceNumber,
+      date: options.invoiceDate,
+      customer_name: options.customerName,
+      customer_tax_id: options.customerTaxId ?? null,
+      total: options.total,
+      currency: options.currency ?? 'EUR',
+      file_path: path,
+    })
+  } catch (error) {
+    console.warn('[invoice-storage] No se pudo registrar en tabla facturas (opcional):', error)
+  }
+
+  return {
+    path,
+    publicUrl,
+    signedUrl,
+  }
+}

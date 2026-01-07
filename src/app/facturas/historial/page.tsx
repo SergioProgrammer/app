@@ -1,0 +1,176 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { ArrowLeft, Download, Loader2, RefreshCcw } from 'lucide-react'
+import { createClient } from '@/utils/supabase/client'
+
+type InvoiceRecord = {
+  id: string
+  invoice_number: string
+  date: string
+  customer_name: string
+  customer_tax_id: string | null
+  total: number | null
+  currency: string | null
+  file_path: string | null
+  created_at: string | null
+}
+
+export default function FacturasHistorialPage() {
+  const supabase = useMemo(() => createClient(), [])
+  const [rows, setRows] = useState<InvoiceRecord[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+
+  const fetchRows = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('facturas')
+        .select('id, invoice_number, date, customer_name, customer_tax_id, total, currency, file_path, created_at')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+      if (fetchError) throw fetchError
+      setRows(data ?? [])
+    } catch (err) {
+      console.error('[historial facturas] fetch error', err)
+      const message =
+        err instanceof Error
+          ? `No se pudo cargar el historial de facturas: ${err.message}`
+          : 'No se pudo cargar el historial de facturas.'
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void fetchRows()
+  }, [])
+
+  const openInvoice = async (row: InvoiceRecord) => {
+    if (!row.file_path) return
+    setDownloadingId(row.id)
+    try {
+      const { data: publicData } = supabase.storage.from('facturas').getPublicUrl(row.file_path)
+      let url = publicData?.publicUrl ?? null
+      if (!url) {
+        const { data: signedData, error: signedError } = await supabase
+          .storage
+          .from('facturas')
+          .createSignedUrl(row.file_path, 60 * 60)
+        if (signedError) throw signedError
+        url = signedData?.signedUrl ?? null
+      }
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } else {
+        setError('No se pudo obtener el enlace de descarga.')
+      }
+    } catch (err) {
+      console.error(err)
+      setError('No se pudo descargar la factura.')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm uppercase text-gray-500">Facturación</p>
+          <h1 className="text-2xl font-semibold text-gray-900">Historial de facturas</h1>
+          <p className="text-sm text-gray-600">Consulta facturas previas y descárgalas desde Supabase.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/facturas/nueva"
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Nueva factura
+          </Link>
+          <button
+            type="button"
+            onClick={() => void fetchRows()}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+            Refrescar
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 space-y-1">
+          <p>{error}</p>
+          <p className="text-xs text-amber-700">
+            Si la tabla <code>facturas</code> no existe, aplica la migración incluida en <code>supabase/migrations</code>. Verifica también las políticas RLS de select/insert para el rol authenticated.
+          </p>
+        </div>
+      )}
+
+      <div className="overflow-auto rounded-2xl border border-gray-200 bg-white">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold text-gray-700">Número</th>
+              <th className="px-3 py-2 text-left font-semibold text-gray-700">Fecha</th>
+              <th className="px-3 py-2 text-left font-semibold text-gray-700">Cliente</th>
+              <th className="px-3 py-2 text-left font-semibold text-gray-700">CIF/NIF</th>
+              <th className="px-3 py-2 text-right font-semibold text-gray-700">Total</th>
+              <th className="px-3 py-2 text-left font-semibold text-gray-700">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
+                  {loading ? 'Cargando…' : 'No hay facturas registradas.'}
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id} className="border-t border-gray-100">
+                  <td className="px-3 py-2">{row.invoice_number}</td>
+                  <td className="px-3 py-2">{row.date}</td>
+                  <td className="px-3 py-2">{row.customer_name}</td>
+                  <td className="px-3 py-2">{row.customer_tax_id ?? '—'}</td>
+                  <td className="px-3 py-2 text-right">
+                    {row.total != null
+                      ? `${row.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} ${row.currency ?? 'EUR'}`
+                      : '—'}
+                  </td>
+                  <td className="px-3 py-2">
+                    {row.file_path ? (
+                      <button
+                        type="button"
+                        onClick={() => void openInvoice(row)}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                        disabled={downloadingId === row.id}
+                      >
+                        {downloadingId === row.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                        Abrir
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-500">Sin archivo</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}

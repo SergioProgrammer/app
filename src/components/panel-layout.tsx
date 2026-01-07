@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import type { User } from '@supabase/supabase-js'
-import { History, Layers, LogOut, Menu, X, ChevronRight, Search, Eye, Boxes } from 'lucide-react'
+import { History, Layers, LogOut, Menu, X, ChevronRight, Search, Eye, Boxes, FileText } from 'lucide-react'
 import { getPanelSlugForUser } from '@/lib/panel-config'
 
 interface PanelLayoutProps {
@@ -37,6 +37,16 @@ const navItems = [
     label: 'Stock',
     href: '/panel/stock',
     icon: Boxes,
+  },
+  {
+    label: 'Facturas',
+    href: '/facturas/nueva',
+    icon: FileText,
+  },
+  {
+    label: 'Historial facturas',
+    href: '/facturas/historial',
+    icon: History,
   },
 ]
 
