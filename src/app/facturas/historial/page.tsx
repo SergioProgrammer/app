@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Download, Loader2, RefreshCcw } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, RefreshCcw, Trash2 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 
 type InvoiceRecord = {
@@ -24,6 +24,8 @@ export default function FacturasHistorialPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
 
   const fetchRows = async () => {
     setLoading(true)
@@ -36,6 +38,7 @@ export default function FacturasHistorialPage() {
         .order('created_at', { ascending: false })
       if (fetchError) throw fetchError
       setRows(data ?? [])
+      setSelected(new Set())
     } catch (err) {
       console.error('[historial facturas] fetch error', err)
       const message =
@@ -76,6 +79,56 @@ export default function FacturasHistorialPage() {
     }
   }
 
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    setSelected((prev) => {
+      if (prev.size === rows.length) return new Set()
+      return new Set(rows.map((r) => r.id))
+    })
+  }
+
+  const deleteSelected = async () => {
+    if (selected.size === 0) return
+    setDeleting(true)
+    try {
+      const ids = Array.from(selected)
+      const targets = rows.filter((r) => ids.includes(r.id))
+
+      // Delete DB rows
+      const { error: deleteError } = await supabase.from('facturas').delete().in('id', ids)
+      if (deleteError) throw deleteError
+
+      // Delete storage files (best-effort)
+      const facturaPaths = targets.map((r) => r.file_path).filter(Boolean) as string[]
+      const anexoPaths = targets.map((r) => r.anexo_path).filter(Boolean) as string[]
+      if (facturaPaths.length > 0) {
+        await supabase.storage.from('facturas').remove(facturaPaths)
+      }
+      if (anexoPaths.length > 0) {
+        await supabase.storage.from('informe').remove(anexoPaths)
+      }
+
+      setRows((prev) => prev.filter((r) => !selected.has(r.id)))
+      setSelected(new Set())
+    } catch (err) {
+      console.error('[historial facturas] delete error', err)
+      setError('No se pudieron eliminar algunas facturas.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -101,6 +154,15 @@ export default function FacturasHistorialPage() {
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
             Refrescar
           </button>
+          <button
+            type="button"
+            onClick={() => void deleteSelected()}
+            className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+            disabled={selected.size === 0 || deleting}
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Eliminar seleccionadas
+          </button>
         </div>
       </div>
 
@@ -117,6 +179,14 @@ export default function FacturasHistorialPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-2 py-2">
+                <input
+                  type="checkbox"
+                  aria-label="Seleccionar todas"
+                  checked={rows.length > 0 && selected.size === rows.length}
+                  onChange={toggleAll}
+                />
+              </th>
               <th className="px-3 py-2 text-left font-semibold text-gray-700">Número</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-700">Fecha</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-700">Cliente</th>
@@ -128,13 +198,21 @@ export default function FacturasHistorialPage() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
                   {loading ? 'Cargando…' : 'No hay facturas registradas.'}
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
                 <tr key={row.id} className="border-t border-gray-100">
+                  <td className="px-2 py-2 text-center">
+                    <input
+                      type="checkbox"
+                      aria-label={`Seleccionar ${row.invoice_number}`}
+                      checked={selected.has(row.id)}
+                      onChange={() => toggleSelected(row.id)}
+                    />
+                  </td>
                   <td className="px-3 py-2">{row.invoice_number}</td>
                   <td className="px-3 py-2">{row.date}</td>
                   <td className="px-3 py-2">{row.customer_name}</td>
