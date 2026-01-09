@@ -53,7 +53,7 @@ export default function FacturasHistorialPage() {
 
   useEffect(() => {
     void fetchRows()
-  }, [])
+  },)
 
   const openFromStorage = async (path: string, id: string, label: string, bucket = 'facturas') => {
     if (!path) return
@@ -135,7 +135,6 @@ export default function FacturasHistorialPage() {
         <div>
           <p className="text-sm uppercase text-gray-500">Facturación</p>
           <h1 className="text-2xl font-semibold text-gray-900">Historial de facturas</h1>
-          <p className="text-sm text-gray-600">Consulta facturas previas y descárgalas desde Supabase.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link
