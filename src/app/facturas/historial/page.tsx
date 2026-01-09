@@ -14,6 +14,7 @@ type InvoiceRecord = {
   total: number | null
   currency: string | null
   file_path: string | null
+  anexo_path?: string | null
   created_at: string | null
 }
 
@@ -30,7 +31,7 @@ export default function FacturasHistorialPage() {
     try {
       const { data, error: fetchError } = await supabase
         .from('facturas')
-        .select('id, invoice_number, date, customer_name, customer_tax_id, total, currency, file_path, created_at')
+        .select('*')
         .order('date', { ascending: false })
         .order('created_at', { ascending: false })
       if (fetchError) throw fetchError
@@ -51,17 +52,14 @@ export default function FacturasHistorialPage() {
     void fetchRows()
   }, [])
 
-  const openInvoice = async (row: InvoiceRecord) => {
-    if (!row.file_path) return
-    setDownloadingId(row.id)
+  const openFromStorage = async (path: string, id: string, label: string, bucket = 'facturas') => {
+    if (!path) return
+    setDownloadingId(`${id}:${label}`)
     try {
-      const { data: publicData } = supabase.storage.from('facturas').getPublicUrl(row.file_path)
+      const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path)
       let url = publicData?.publicUrl ?? null
       if (!url) {
-        const { data: signedData, error: signedError } = await supabase
-          .storage
-          .from('facturas')
-          .createSignedUrl(row.file_path, 60 * 60)
+        const { data: signedData, error: signedError } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60)
         if (signedError) throw signedError
         url = signedData?.signedUrl ?? null
       }
@@ -72,7 +70,7 @@ export default function FacturasHistorialPage() {
       }
     } catch (err) {
       console.error(err)
-      setError('No se pudo descargar la factura.')
+      setError('No se pudo descargar el archivo solicitado.')
     } finally {
       setDownloadingId(null)
     }
@@ -147,23 +145,42 @@ export default function FacturasHistorialPage() {
                       : '—'}
                   </td>
                   <td className="px-3 py-2">
-                    {row.file_path ? (
-                      <button
-                        type="button"
-                        onClick={() => void openInvoice(row)}
-                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
-                        disabled={downloadingId === row.id}
-                      >
-                        {downloadingId === row.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Download className="h-4 w-4" />
-                        )}
-                        Abrir
-                      </button>
-                    ) : (
-                      <span className="text-xs text-gray-500">Sin archivo</span>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {row.file_path ? (
+                        <button
+                          type="button"
+                          onClick={() => void openFromStorage(row.file_path!, row.id, 'factura', 'facturas')}
+                          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                          disabled={downloadingId === `${row.id}:factura`}
+                        >
+                          {downloadingId === `${row.id}:factura` ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                          Factura
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-500">Sin factura</span>
+                      )}
+                      {row.anexo_path ? (
+                        <button
+                          type="button"
+                          onClick={() => void openFromStorage(row.anexo_path!, row.id, 'anexo', 'informe')}
+                          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                          disabled={downloadingId === `${row.id}:anexo`}
+                        >
+                          {downloadingId === `${row.id}:anexo` ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                          Anexo IV
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-500">Sin anexo</span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

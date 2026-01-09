@@ -9,16 +9,23 @@ export interface UploadInvoiceOptions {
   currency?: string
 }
 
-export async function uploadInvoicePdf(bytes: Uint8Array, fileName: string, options: UploadInvoiceOptions) {
+async function uploadToStorage(
+  bytes: Uint8Array,
+  fileName: string,
+  invoiceDate: string,
+  bucketName = 'facturas',
+  prefix = bucketName,
+) {
   const supabase = createClient()
-  const parsedDate = options.invoiceDate ? new Date(options.invoiceDate) : null
+  const parsedDate = invoiceDate ? new Date(invoiceDate) : null
   const dateObj = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : new Date()
   const year = String(dateObj.getFullYear())
   const month = String(dateObj.getMonth() + 1).padStart(2, '0')
-  const path = `facturas/${year}/${month}/${fileName}`
+  const safePrefix = prefix.replace(/^\//, '').replace(/\/$/, '')
+  const path = `${safePrefix}/${year}/${month}/${fileName}`
   const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' })
 
-  const { data: uploadData, error: uploadError } = await supabase.storage.from('facturas').upload(path, blob, {
+  const { data: uploadData, error: uploadError } = await supabase.storage.from(bucketName).upload(path, blob, {
     contentType: 'application/pdf',
     upsert: true,
   })
@@ -31,13 +38,11 @@ export async function uploadInvoicePdf(bytes: Uint8Array, fileName: string, opti
 
   let publicUrl: string | null = null
   let signedUrl: string | null = null
-  const { data: publicData } = supabase.storage.from('facturas').getPublicUrl(path)
+  const { data: publicData } = supabase.storage.from(bucketName).getPublicUrl(path)
   publicUrl = publicData?.publicUrl ?? null
 
   if (!publicUrl) {
-    const { data: signed, error: signedError } = await supabase.storage
-      .from('facturas')
-      .createSignedUrl(path, 60 * 60 * 24)
+    const { data: signed, error: signedError } = await supabase.storage.from(bucketName).createSignedUrl(path, 60 * 60 * 24)
     if (signedError) {
       throw signedError
     }
@@ -46,6 +51,17 @@ export async function uploadInvoicePdf(bytes: Uint8Array, fileName: string, opti
   if (!publicUrl && !signedUrl) {
     throw new Error('No se pudo obtener URL de acceso para la factura subida.')
   }
+  return { supabase, path, publicUrl, signedUrl }
+}
+
+export async function uploadInvoicePdf(bytes: Uint8Array, fileName: string, options: UploadInvoiceOptions) {
+  const { supabase, path, publicUrl, signedUrl } = await uploadToStorage(
+    bytes,
+    fileName,
+    options.invoiceDate,
+    'facturas',
+    'facturas',
+  )
 
   try {
     await supabase.from('facturas').insert({
@@ -66,4 +82,9 @@ export async function uploadInvoicePdf(bytes: Uint8Array, fileName: string, opti
     publicUrl,
     signedUrl,
   }
+}
+
+export async function uploadSupplementPdf(bytes: Uint8Array, fileName: string, invoiceDate: string) {
+  const { path, publicUrl, signedUrl } = await uploadToStorage(bytes, fileName, invoiceDate, 'informe', 'informe')
+  return { path, publicUrl, signedUrl, bucket: 'informe' }
 }

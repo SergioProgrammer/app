@@ -39,6 +39,12 @@ export interface InvoicePayload {
     totalKg?: number
     totalBundles?: number
   }
+  grossWeight?: number
+  netWeight?: number
+  awb?: string
+  flightNumber?: string
+  destinationFinal?: string
+  finalConsignee?: string
 }
 
 const FONT_SIZE = {
@@ -79,13 +85,34 @@ function wrapText(line: string, maxWidth: number, font: PDFFont, size: number): 
   return lines
 }
 
+async function embedLogo(pdfDoc: PDFDocument): Promise<{ width: number; height: number; bytes: Uint8Array } | null> {
+  try {
+    const baseUrl =
+      typeof window !== 'undefined'
+        ? ''
+        : process.env.NEXT_PUBLIC_SITE_URL
+        ? process.env.NEXT_PUBLIC_SITE_URL
+        : ''
+    const url = `${baseUrl}/logos/logoycoward.png`
+    const response = await fetch(url)
+    if (!response.ok) return null
+    const buffer = await response.arrayBuffer()
+    const png = await pdfDoc.embedPng(buffer)
+    const dims = png.scale(0.17)
+    return { width: dims.width, height: dims.height, bytes: new Uint8Array(buffer) }
+  } catch {
+    return null
+  }
+}
+
 export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdfBytes: Uint8Array; fileName: string }> {
   const pdfDoc = await PDFDocument.create()
   const page = pdfDoc.addPage([595.28, 841.89]) // A4
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
   const { width, height } = page.getSize()
-  const margin = 32
+  const outerMargin = (15 / 25.4) * 72 // 1.5 cm
+  const margin = outerMargin
   const topY = height - margin
 
   const drawText = (
@@ -118,8 +145,21 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
   let cursorY = topY
 
   // Header emitter + receiver
-  drawText(payload.emitter.name, margin, cursorY, { size: FONT_SIZE.heading, bold: true })
-  cursorY -= 14
+  // Logo
+  const logo = await embedLogo(pdfDoc)
+  if (logo) {
+    const logoImg = await pdfDoc.embedPng(logo.bytes)
+    page.drawImage(logoImg, {
+      x: margin,
+      y: topY - logo.height,
+      width: logo.width,
+      height: logo.height,
+    })
+  }
+
+  const headerTextX = margin + 80
+  drawText(payload.emitter.name, headerTextX, cursorY, { size: 11, bold: true })
+  cursorY -= 13
   const emitterLines = [
     payload.emitter.taxId,
     payload.emitter.address,
@@ -130,11 +170,11 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
   const receiverHeight = 110
   const receiverX = width - margin - receiverWidth
   const receiverTop = topY - 6
-  const emitterMaxWidth = receiverX - margin - 12
+  const emitterMaxWidth = receiverX - headerTextX - 16
   emitterLines.forEach((line) => {
     const wrapped = wrapText(line ?? '', emitterMaxWidth, font, FONT_SIZE.body)
     wrapped.forEach((wrappedLine) => {
-      drawText(wrappedLine, margin, cursorY, { size: FONT_SIZE.body })
+      drawText(wrappedLine, headerTextX, cursorY, { size: FONT_SIZE.body })
       cursorY -= FONT_SIZE.body + 3
     })
   })
@@ -182,9 +222,9 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
   })
 
   // Invoice data box
-  const invoiceBoxHeight = 42
-  const invoiceBoxWidth = 240
-  const invoiceTop = Math.min(emitterBottomY, receiverTop - receiverBoxHeight - 8)
+  const invoiceBoxHeight = 48
+  const invoiceBoxWidth = 230
+  const invoiceTop = Math.min(emitterBottomY, receiverTop - receiverBoxHeight - 4)
   const invoiceBoxY = invoiceTop - invoiceBoxHeight
   page.drawRectangle({
     x: margin,
@@ -194,22 +234,30 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
     borderColor: rgb(0, 0, 0),
     borderWidth: 1,
   })
-  drawText('FACTURA / INVOICE', margin + 8, invoiceTop - 12, { size: FONT_SIZE.body, bold: true })
-  drawLabelValue('Número / Number', payload.invoiceNumber, margin + 8, invoiceTop - 22, 110)
-  drawLabelValue('Fecha / Date', formatDate(payload.invoiceDate), margin + 140, invoiceTop - 22, 90)
-  cursorY = invoiceBoxY - 16
+  drawText('FACTURA / INVOICE', margin + 8, invoiceTop - 14, { size: 9, bold: true })
+
+  const numberBox = { x: margin + 8, y: invoiceBoxY + 10, w: 110, h: 18 }
+  page.drawRectangle({ x: numberBox.x, y: numberBox.y, width: numberBox.w, height: numberBox.h, borderColor: rgb(0, 0, 0), borderWidth: 1 })
+  drawText(payload.invoiceNumber, numberBox.x + 6, numberBox.y + 5, { size: 9 })
+
+  const dateBox = { x: numberBox.x + numberBox.w + 12, y: numberBox.y, w: 70, h: 18 }
+  page.drawRectangle({ x: dateBox.x, y: dateBox.y, width: dateBox.w, height: dateBox.h, borderColor: rgb(0, 0, 0), borderWidth: 1 })
+  drawText(formatDate(payload.invoiceDate), dateBox.x + 6, dateBox.y + 5, { size: 9 })
+
+  cursorY = invoiceBoxY - 12
 
   // Destination / Incoterm
   drawLabelValue('DESTINO / DESTINATION', payload.destination || '—', margin, cursorY, 220)
   drawLabelValue('INCOTERM', payload.incoterm || '—', margin + 240, cursorY, 140)
-  cursorY -= 44
+  cursorY -= 18
 
   // Table header
   const colWidths = [200, 80, 80, 70, 90]
-  const colTitles = ['PRODUCTO / PRODUCT', 'Peso Neto (Kg)', 'Precio/Kg (€)', 'Bultos', 'Importe']
+  const colTitlesTop = ['PRODUCTO', 'Peso Neto', 'Precio/Kg (€)', 'Bultos', 'Importe']
+  const colTitlesBottom = ['PRODUCT', 'Kg Net', 'Price kg (€)', 'Bundles', 'Total due']
   const tableX = margin
   const tableY = cursorY
-  const rowHeight = 20
+  const rowHeight = 28
 
   // Header background
   page.drawRectangle({
@@ -222,8 +270,9 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
     borderWidth: 1,
   })
   let cursorX = tableX + 6
-  colTitles.forEach((title, idx) => {
-    drawText(title, cursorX, tableY - 14, { size: FONT_SIZE.table, bold: true })
+  colTitlesTop.forEach((title, idx) => {
+    drawText(title, cursorX, tableY - 10, { size: 9, bold: true })
+    drawText(colTitlesBottom[idx], cursorX, tableY - 22, { size: 8 })
     cursorX += colWidths[idx]
   })
   cursorY -= rowHeight
@@ -271,47 +320,78 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
   const igicAmount = totals.totalAmount * igicRate
   const totalDue = totals.totalAmount + igicAmount
 
-  // Totals row
-  const totalsY = margin + 220
-  page.drawRectangle({
-    x: tableX,
-    y: totalsY + 28,
-    width: colWidths.reduce((a, b) => a + b, 0),
-    height: 36,
-    borderColor: rgb(0, 0, 0),
-    borderWidth: 1,
-  })
-  drawText('SUMA IMPORTES / BASE IMPONIBLE', tableX + 8, totalsY + 48, { size: FONT_SIZE.small, bold: true })
-  drawText(formatCurrency(totals.totalAmount), tableX + 8, totalsY + 32, { size: FONT_SIZE.body, bold: true })
-  drawText(`IGIC: ${(igicRate * 100).toFixed(0)}%`, tableX + 220, totalsY + 48, { size: FONT_SIZE.small, bold: true })
-  drawText(formatCurrency(igicAmount), tableX + 220, totalsY + 32, { size: FONT_SIZE.body })
-  drawText('TOTAL A PAGAR / PAYMENT DUE', tableX + 360, totalsY + 48, { size: FONT_SIZE.small, bold: true })
-  drawText(formatCurrency(totalDue), tableX + 360, totalsY + 32, { size: FONT_SIZE.body, bold: true })
-
-  // Summary line
-  const summaryY = totalsY + 12
-  const summary = [
-    `Total Kg: ${(payload.totals?.totalKg ?? totals.totalKg).toLocaleString('es-ES')}`,
-    `Total Bultos: ${(payload.totals?.totalBundles ?? totals.totalBundles).toLocaleString('es-ES')}`,
-  ].join('    ')
-  drawText(summary, tableX, summaryY, { size: FONT_SIZE.body })
-
-  // Certification
+  const blockWidth = colWidths.reduce((a, b) => a + b, 0)
+  // GGN
+  const ggnY = margin + 170
   if (payload.ggnOrCoc) {
-    drawText(`GGN / CoC: ${payload.ggnOrCoc}`, tableX, summaryY - 16, { size: FONT_SIZE.body })
+    drawText(`GGN CERTIFIED / CoC_${payload.ggnOrCoc}`, tableX, ggnY, { size: 9 })
   }
 
-  // Footer bank
+  // Economic band
+  const econHeight = 40
+  const econY = ggnY - 55
+  page.drawRectangle({ x: tableX, y: econY, width: blockWidth, height: econHeight, borderColor: rgb(0, 0, 0), borderWidth: 1 })
+  const econColWidth = blockWidth / 3
+  drawText('SUMA IMPORTES / BASE IMPONIBLE', tableX + 8, econY + econHeight - 10, { size: 8, bold: true })
+  drawText(formatCurrency(totals.totalAmount), tableX + 8, econY + econHeight - 24, { size: 9, bold: true })
+
+  drawText(`IGIC: ${(igicRate * 100).toFixed(0)}%`, tableX + econColWidth + 8, econY + econHeight - 10, {
+    size: 8,
+    bold: true,
+  })
+  drawText(formatCurrency(igicAmount), tableX + econColWidth + 8, econY + econHeight - 24, { size: 9 })
+
+  drawText('TOTAL A PAGAR / PAYMENT DUE', tableX + econColWidth * 2 + 8, econY + econHeight - 10, {
+    size: 8,
+    bold: true,
+  })
+  drawText(`${formatCurrency(totalDue)} EUR`.trim(), tableX + econColWidth * 2 + 8, econY + econHeight - 24, {
+    size: 9,
+    bold: true,
+  })
+
+  // Logistics block
+  const logisticsY = econY - 70
+  const leftColX = tableX
+  const grossWeight = payload.grossWeight ?? payload.totals?.totalKg ?? totals.totalKg
+  const netWeight = payload.netWeight ?? payload.totals?.totalKg ?? totals.totalKg
+  const bundles = payload.totals?.totalBundles ?? totals.totalBundles
+  const awb = payload.awb ?? '-'
+  const flight = payload.flightNumber ?? '-'
+  const destination = payload.destination ?? '-'
+  drawText(`Total Kg (Gross Weight): ${grossWeight.toLocaleString('es-ES')}   AWB: ${awb}`, leftColX, logisticsY, {
+    size: 9,
+  })
+  drawText(
+    `Total Kg (Net Weight): ${netWeight.toLocaleString('es-ES')}   Nº de Vuelo: ${flight}`,
+    leftColX,
+    logisticsY - 12,
+    { size: 9 },
+  )
+  drawText(`Total Bundles: ${bundles.toLocaleString('es-ES')}   Destino: ${destination}`, leftColX, logisticsY - 24, {
+    size: 9,
+  })
+
+  // Final consignee
+  const consigneeY = logisticsY - 52
+  drawText('Destinatario Final / Final Consignee:', leftColX, consigneeY, { size: 9 })
+  drawText(payload.finalConsignee ?? payload.receiver.name, leftColX + 200, consigneeY, { size: 9, bold: true })
+
+  // Bank block
   const bankY = margin + 60
+  const bankLineHeight = 12
+  const bankLabelWidth = 50
   if (payload.bankInfo) {
-    drawText('Bank:', tableX, bankY + 32, { size: FONT_SIZE.body, bold: true })
-    drawText(payload.bankInfo.bankName, tableX + 40, bankY + 32, { size: FONT_SIZE.body })
-    drawText(`IBAN: ${payload.bankInfo.iban}`, tableX, bankY + 18, { size: FONT_SIZE.body })
-    drawText(`SWIFT: ${payload.bankInfo.swift}`, tableX, bankY + 4, { size: FONT_SIZE.body })
+    drawText('Bank:', leftColX, bankY + bankLineHeight * 3, { size: 9, bold: true })
+    drawText(payload.bankInfo.bankName, leftColX + bankLabelWidth, bankY + bankLineHeight * 3, { size: 9 })
+    drawText('Account Number IBAN:', leftColX, bankY + bankLineHeight * 2, { size: 9, bold: true })
+    drawText(payload.bankInfo.iban, leftColX + 130, bankY + bankLineHeight * 2, { size: 9 })
+    drawText('Swift Code:', leftColX, bankY + bankLineHeight, { size: 9, bold: true })
+    drawText(payload.bankInfo.swift, leftColX + bankLabelWidth, bankY + bankLineHeight, { size: 9 })
   }
   if (payload.paymentTerms) {
-    drawText(`Payment due: ${payload.paymentTerms}`, tableX, bankY - 10, {
-      size: FONT_SIZE.body,
+    drawText(`Payment due: ${payload.paymentTerms}`, tableX + blockWidth - 140, bankY - 12, {
+      size: 9,
       bold: true,
     })
   }
@@ -320,5 +400,14 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
   const sanitizedDate = (payload.invoiceDate || new Date().toISOString().slice(0, 10)).replace(/[/]/g, '-')
   const randomSuffix = Math.random().toString(36).slice(-4)
   const fileName = `factura_${payload.invoiceNumber}_${sanitizedDate}_${randomSuffix}.pdf`
+  // Outer border
+  page.drawRectangle({
+    x: outerMargin,
+    y: outerMargin,
+    width: width - outerMargin * 2,
+    height: height - outerMargin * 2,
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 1,
+  })
   return { pdfBytes, fileName }
 }

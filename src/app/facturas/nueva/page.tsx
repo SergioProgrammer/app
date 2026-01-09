@@ -1,10 +1,12 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, Loader2, Plus, TableIcon } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Loader2, Plus, TableIcon, Trash2 } from 'lucide-react'
 import { parseExcelPaste, type InvoicePasteRow } from '@/lib/parseExcelPaste'
 import { generateInvoicePdf } from '@/lib/invoicePdf'
-import { uploadInvoicePdf } from '@/lib/supabaseInvoiceUpload'
+import { generateAnexoIVPdf } from '@/lib/anexo-iv-pdf'
+import { uploadInvoicePdf, uploadSupplementPdf } from '@/lib/supabaseInvoiceUpload'
+import { createClient } from '@/utils/supabase/client'
 
 type EditableRow = {
   product: string
@@ -51,13 +53,25 @@ export default function NuevaFacturaPage() {
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [uploadUrl, setUploadUrl] = useState<string | null>(null)
+  const [anexoUrl, setAnexoUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const supabase = useMemo(() => createClient(), [])
 
   const [invoiceNumber, setInvoiceNumber] = useState(() => `FAC-${today.replace(/-/g, '')}`)
   const [invoiceDate, setInvoiceDate] = useState(today)
   const [clientName, setClientName] = useState('ARICO FRUITS SL')
   const [clientTaxId, setClientTaxId] = useState('B24895971')
   const [clientAddress, setClientAddress] = useState('MERCAMADRID NAVE POLIVALENCIA 21/23 · 28053 · MADRID')
+  const [awb, setAwb] = useState('996-13826540')
+  const [flightNumber, setFlightNumber] = useState('UX9117')
+  const [destination, setDestination] = useState('MAD AIRPORT')
+  const [incoterm, setIncoterm] = useState('CPT')
+  const [paymentTerms, setPaymentTerms] = useState('30 days')
+  const [bankName, setBankName] = useState('BANKINTER S.A.')
+  const [bankIban, setBankIban] = useState('ES13 0128 0850 7301 0015 7347')
+  const [bankSwift, setBankSwift] = useState('BKBKESMMXXX')
+  const [productForm, setProductForm] = useState('HOJAS FRESCAS')
+  const [botanicalName, setBotanicalName] = useState('Ocimum basilicum')
 
   const [emitterName, setEmitterName] = useState('YEOWARD DEL CAMPO SDAD COOP LTDA DE VECINDARIO LAS PALMAS')
   const [emitterTaxId, setEmitterTaxId] = useState('F35077700')
@@ -81,6 +95,8 @@ export default function NuevaFacturaPage() {
   }, [rawText])
 
   const addRow = () => setRows((current) => [...current, emptyRow()])
+  const removeRow = (index: number) =>
+    setRows((current) => current.filter((_, idx) => idx !== index))
 
   const updateCell = (index: number, key: keyof EditableRow, value: string) => {
     setRows((current) => {
@@ -153,6 +169,7 @@ export default function NuevaFacturaPage() {
     setStatus(null)
     setError(null)
     setUploadUrl(null)
+    setAnexoUrl(null)
     const { valid, hasErrors } = validateRows()
     if (hasErrors || valid.length === 0) {
       setLoading(false)
@@ -174,10 +191,12 @@ export default function NuevaFacturaPage() {
       const { pdfBytes, fileName } = await generateInvoicePdf({
         invoiceNumber,
         invoiceDate,
-        destination: 'MAD AIRPORT',
-        incoterm: 'CPT',
+        destination,
+        incoterm,
         ggnOrCoc: 'GGN CERTIFIED / CoC 4063061964472',
-        paymentTerms: '30 days',
+        paymentTerms,
+        awb,
+        flightNumber,
         emitter: {
           name: emitterName,
           taxId: emitterTaxId,
@@ -188,7 +207,13 @@ export default function NuevaFacturaPage() {
           taxId: clientTaxId,
           address: clientAddress,
         },
-        bankInfo: undefined,
+        bankInfo: {
+          bankName,
+          iban: bankIban,
+          swift: bankSwift,
+        },
+        grossWeight: totals.totalKg,
+        netWeight: totals.totalKg,
         items: valid.map((row) => ({
           product: row.product,
           netWeightKg: row.netWeightKg ?? 0,
@@ -209,12 +234,52 @@ export default function NuevaFacturaPage() {
         currency: 'EUR',
       })
 
-      const url = upload.publicUrl ?? upload.signedUrl ?? null
-      setUploadUrl(url)
-      setStatus(`Factura generada y subida correctamente. Ruta: ${upload.path}`)
+      const invoiceUrl = upload.publicUrl ?? upload.signedUrl ?? null
+      setUploadUrl(invoiceUrl)
+
+      const anexoData = {
+        companyName: emitterName,
+        companyTaxId: emitterTaxId,
+        signerName: 'ANTONIO GUEDES',
+        signerId: '43278677Z',
+        signerRole: 'PRESIDENTE',
+        productName: valid[0]?.product ?? 'Producto',
+        netWeightKg: totals.totalKg,
+        form: 'HOJAS FRESCAS',
+        botanicalName: 'Ocimum basilicum',
+        packageType: 'CAJAS BOX',
+        packageMark: 'RTDOS',
+        bundles: totals.totalBundles,
+        transportId: `${flightNumber} - AWB ${awb}`,
+        location: 'S/C de TFE',
+        dateText: new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).format(
+          new Date(invoiceDate),
+        ),
+        invoiceNumber,
+        items: valid.map((row) => ({
+          productName: row.product,
+          netWeightKg: row.netWeightKg ?? 0,
+          form: productForm,
+          botanicalName,
+        })),
+      }
+
+      const { pdfBytes: anexoBytes, fileName: anexoFileName } = await generateAnexoIVPdf(anexoData)
+      const anexoUpload = await uploadSupplementPdf(anexoBytes, anexoFileName, invoiceDate)
+      const anexoAccessUrl = anexoUpload.publicUrl ?? anexoUpload.signedUrl ?? null
+      setAnexoUrl(anexoAccessUrl)
+
+      try {
+        await supabase.from('facturas').update({ anexo_path: anexoUpload.path }).eq('invoice_number', invoiceNumber)
+      } catch (updateError) {
+        console.warn('[facturas/nueva] No se pudo actualizar anexo_path:', updateError)
+      }
+
+      setStatus(`Factura y anexo generados y subidos correctamente.`)
     } catch (err) {
       console.error(err)
-      setError('No se pudo generar o subir la factura. Revisa los datos e inténtalo de nuevo.')
+      const message = err instanceof Error ? err.message : 'Error desconocido'
+      setError(`No se pudo generar o subir la factura/anexo: ${message}`)
     } finally {
       setLoading(false)
     }
@@ -227,7 +292,16 @@ export default function NuevaFacturaPage() {
     emitterTaxId,
     invoiceDate,
     invoiceNumber,
+    destination,
+    incoterm,
+    paymentTerms,
+    awb,
+    flightNumber,
+    bankName,
+    bankIban,
+    bankSwift,
     rows,
+    supabase,
   ])
 
   return (
@@ -236,11 +310,7 @@ export default function NuevaFacturaPage() {
         <div>
           <p className="text-sm uppercase text-gray-500">Facturación</p>
           <h1 className="text-2xl font-semibold text-gray-900">Nueva factura</h1>
-          <p className="text-sm text-gray-600">Pega desde Excel, revisa y genera la factura. Al generar se sube a Supabase automáticamente.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <TableIcon className="h-5 w-5 text-gray-400" />
-          <span className="text-sm text-gray-600">Bucket: facturas</span>
+          <p className="text-sm text-gray-600">Pega desde Excel, revisa y genera la factura.</p>
         </div>
       </div>
 
@@ -250,16 +320,28 @@ export default function NuevaFacturaPage() {
             <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
               <CheckCircle2 className="h-4 w-4" />
               <span>{status}</span>
-              {uploadUrl && (
-                <a
-                  href={uploadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="ml-auto text-xs font-semibold underline"
-                >
-                  Abrir/descargar PDF
-                </a>
-              )}
+              <div className="ml-auto flex items-center gap-2">
+                {uploadUrl && (
+                  <a
+                    href={uploadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-semibold underline"
+                  >
+                    Factura PDF
+                  </a>
+                )}
+                {anexoUrl && (
+                  <a
+                    href={anexoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-semibold underline"
+                  >
+                    Anexo IV
+                  </a>
+                )}
+              </div>
             </div>
           )}
           {(error || warnings.length > 0) && (
@@ -281,7 +363,7 @@ export default function NuevaFacturaPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-3 space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
             <h2 className="text-lg font-semibold text-gray-900">Datos de cabecera</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -357,6 +439,96 @@ export default function NuevaFacturaPage() {
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                 />
               </label>
+              <label className="text-sm text-gray-700">
+                Destino
+                <input
+                  type="text"
+                  value={destination}
+                  onChange={(event) => setDestination(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm text-gray-700">
+                AWB
+                <input
+                  type="text"
+                  value={awb}
+                  onChange={(event) => setAwb(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm text-gray-700">
+                Nº de vuelo
+                <input
+                  type="text"
+                  value={flightNumber}
+                  onChange={(event) => setFlightNumber(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm text-gray-700">
+                Incoterm
+                <input
+                  type="text"
+                  value={incoterm}
+                  onChange={(event) => setIncoterm(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm text-gray-700 sm:col-span-2">
+                Payment due
+                <input
+                  type="text"
+                  value={paymentTerms}
+                  onChange={(event) => setPaymentTerms(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm text-gray-700">
+                Forma
+                <input
+                  type="text"
+                  value={productForm}
+                  onChange={(event) => setProductForm(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm text-gray-700">
+                Nombre botánico
+                <input
+                  type="text"
+                  value={botanicalName}
+                  onChange={(event) => setBotanicalName(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm text-gray-700 sm:col-span-2">
+                Banco
+                <input
+                  type="text"
+                  value={bankName}
+                  onChange={(event) => setBankName(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm text-gray-700 sm:col-span-2">
+                IBAN
+                <input
+                  type="text"
+                  value={bankIban}
+                  onChange={(event) => setBankIban(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm text-gray-700 sm:col-span-2">
+                SWIFT/BIC
+                <input
+                  type="text"
+                  value={bankSwift}
+                  onChange={(event) => setBankSwift(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                />
+              </label>
             </div>
           </div>
 
@@ -397,9 +569,9 @@ export default function NuevaFacturaPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Producto', 'Peso neto (kg)', 'Precio', 'Bultos', 'Importe total'].map((col) => (
+                    {['Producto', 'Peso neto (kg)', 'Precio', 'Bultos', 'Importe total', ''].map((col, idx) => (
                       <th key={col} className="px-3 py-2 text-left font-semibold text-gray-700">
-                        {col}
+                        {idx === 5 ? '' : col}
                       </th>
                     ))}
                   </tr>
@@ -460,12 +632,23 @@ export default function NuevaFacturaPage() {
                             </ul>
                           )}
                         </td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => removeRow(idx)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            aria-label="Eliminar fila"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Eliminar
+                          </button>
+                        </td>
                       </tr>
                     )
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-3 py-4 text-center text-gray-500">
+                      <td colSpan={6} className="px-3 py-4 text-center text-gray-500">
                         Sin filas. Pega datos o añade manualmente.
                       </td>
                     </tr>
@@ -475,24 +658,20 @@ export default function NuevaFacturaPage() {
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
-            <h3 className="text-base font-semibold text-gray-900">Acción</h3>
-            <p className="text-sm text-gray-600">Genera y sube automáticamente al bucket `facturas`.</p>
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={loading}
-              className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white ${
-                loading ? 'bg-gray-400' : 'bg-emerald-600 hover:opacity-90'
-              }`}
-            >
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Generar
-            </button>
-          </div>
-        </div>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={loading}
+          className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white ${
+            loading ? 'bg-gray-400' : 'bg-emerald-600 hover:opacity-90'
+          }`}
+        >
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          Generar
+        </button>
       </div>
     </div>
   )
