@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Download, Loader2, RefreshCcw, Trash2 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
@@ -27,7 +27,7 @@ export default function FacturasHistorialPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
 
-  const fetchRows = async () => {
+  const fetchRows = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -49,11 +49,11 @@ export default function FacturasHistorialPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
 
   useEffect(() => {
     void fetchRows()
-  },)
+  }, [fetchRows])
 
   const openFromStorage = async (path: string, id: string, label: string, bucket = 'facturas') => {
     if (!path) return
