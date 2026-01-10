@@ -636,16 +636,16 @@ export default function NuevaFacturaPage() {
                           <input
                             type="text"
                             value={row.invoiceNumber}
-                            readOnly
-                            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 text-sm text-gray-700"
+                            onChange={(event) => updateCell(idx, 'invoiceNumber', event.target.value)}
+                            className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
                           />
                         </td>
                         <td className="px-3 py-2">
                           <input
                             type="text"
                             value={row.awb}
-                            readOnly
-                            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 text-sm text-gray-700"
+                            onChange={(event) => updateCell(idx, 'awb', event.target.value)}
+                            className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm"
                           />
                         </td>
                         <td className="px-3 py-2">

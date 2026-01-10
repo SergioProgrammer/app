@@ -58,7 +58,13 @@ export default function FacturasHistorialPage() {
   const openFromStorage = async (path: string, id: string, label: string, bucket = 'facturas') => {
     if (!path) return
     setDownloadingId(`${id}:${label}`)
-    const popup = window.open('', '_blank', 'noopener,noreferrer')
+    const popup = window.open('about:blank', '_blank')
+    if (!popup) {
+      setError('El navegador bloqueó la nueva pestaña. Permite ventanas emergentes para abrir la factura.')
+      setDownloadingId(null)
+      return
+    }
+    popup.opener = null
     try {
       let url: string | null = null
       if (bucket === 'informe') {
@@ -79,19 +85,15 @@ export default function FacturasHistorialPage() {
         }
       }
       if (url) {
-        if (popup) {
-          popup.location.href = url
-        } else {
-          window.location.href = url
-        }
+        popup.location.href = url
       } else {
         setError('No se pudo obtener el enlace de descarga.')
-        if (popup) popup.close()
+        popup.close()
       }
     } catch (err) {
       console.error(err)
       setError('No se pudo descargar el archivo solicitado.')
-      if (popup) popup.close()
+      popup.close()
     } finally {
       setDownloadingId(null)
     }
