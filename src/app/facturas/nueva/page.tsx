@@ -77,9 +77,9 @@ export default function NuevaFacturaPage() {
   const [destination, setDestination] = useState('MAD AIRPORT')
   const [incoterm, setIncoterm] = useState('CPT')
   const [paymentTerms, setPaymentTerms] = useState('30 days')
-  const [bankName, setBankName] = useState('BANKINTER S.A.')
-  const [bankIban, setBankIban] = useState('ES13 0128 0850 7301 0015 7347')
-  const [bankSwift, setBankSwift] = useState('BKBKESMMXXX')
+  const [bankName, setBankName] = useState('CAJAMAR CAJA RURAL, SOCIEDAD COOPERATIVA DE CRÉDITO.')
+  const [bankIban, setBankIban] = useState('ES59 3058 6105 1828 1001 2174')
+  const [bankSwift, setBankSwift] = useState('CCRIES2AXXX')
   const [productForm, setProductForm] = useState('HOJAS FRESCAS')
   const [botanicalName, setBotanicalName] = useState('Ocimum basilicum')
 
