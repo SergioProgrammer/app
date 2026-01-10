@@ -58,22 +58,40 @@ export default function FacturasHistorialPage() {
   const openFromStorage = async (path: string, id: string, label: string, bucket = 'facturas') => {
     if (!path) return
     setDownloadingId(`${id}:${label}`)
+    const popup = window.open('', '_blank', 'noopener,noreferrer')
     try {
-      const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path)
-      let url = publicData?.publicUrl ?? null
-      if (!url) {
-        const { data: signedData, error: signedError } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60)
+      let url: string | null = null
+      if (bucket === 'informe') {
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from(bucket)
+          .createSignedUrl(path, 60 * 60)
         if (signedError) throw signedError
         url = signedData?.signedUrl ?? null
+      } else {
+        const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path)
+        url = publicData?.publicUrl ?? null
+        if (!url) {
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(path, 60 * 60)
+          if (signedError) throw signedError
+          url = signedData?.signedUrl ?? null
+        }
       }
       if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer')
+        if (popup) {
+          popup.location.href = url
+        } else {
+          window.location.href = url
+        }
       } else {
         setError('No se pudo obtener el enlace de descarga.')
+        if (popup) popup.close()
       }
     } catch (err) {
       console.error(err)
       setError('No se pudo descargar el archivo solicitado.')
+      if (popup) popup.close()
     } finally {
       setDownloadingId(null)
     }
@@ -222,41 +240,33 @@ export default function FacturasHistorialPage() {
                       : '—'}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {row.file_path ? (
-                        <button
-                          type="button"
-                          onClick={() => void openFromStorage(row.file_path!, row.id, 'factura', 'facturas')}
-                          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
-                          disabled={downloadingId === `${row.id}:factura`}
-                        >
-                          {downloadingId === `${row.id}:factura` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Download className="h-4 w-4" />
-                          )}
-                          Factura
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-500">Sin factura</span>
-                      )}
-                      {row.anexo_path ? (
-                        <button
-                          type="button"
-                          onClick={() => void openFromStorage(row.anexo_path!, row.id, 'anexo', 'informe')}
-                          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
-                          disabled={downloadingId === `${row.id}:anexo`}
-                        >
-                          {downloadingId === `${row.id}:anexo` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Download className="h-4 w-4" />
-                          )}
-                          Anexo IV
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-500">Sin anexo</span>
-                      )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => row.file_path && void openFromStorage(row.file_path, row.id, 'factura', 'facturas')}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!row.file_path || downloadingId === `${row.id}:factura`}
+                      >
+                        {downloadingId === `${row.id}:factura` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                        Factura
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => row.anexo_path && void openFromStorage(row.anexo_path, row.id, 'anexo', 'informe')}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!row.anexo_path || downloadingId === `${row.id}:anexo`}
+                      >
+                        {downloadingId === `${row.id}:anexo` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                        Anexo IV
+                      </button>
                     </div>
                   </td>
                 </tr>

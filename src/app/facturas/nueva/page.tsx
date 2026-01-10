@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { AlertCircle, CheckCircle2, Loader2, Plus, TableIcon, Trash2 } from 'lucide-react'
 import { parseExcelPaste, type InvoicePasteRow } from '@/lib/parseExcelPaste'
+import { calculateTotals } from '@/lib/invoice-totals'
 import { generateInvoicePdf } from '@/lib/invoicePdf'
 import { generateAnexoIVPdf } from '@/lib/anexo-iv-pdf'
 import { uploadInvoicePdf, uploadSupplementPdf } from '@/lib/supabaseInvoiceUpload'
@@ -10,6 +11,8 @@ import { createClient } from '@/utils/supabase/client'
 
 type EditableRow = {
   product: string
+  invoiceNumber: string
+  awb: string
   netWeightKg: string
   price: string
   bundles: string
@@ -20,6 +23,8 @@ type RowErrors = Record<number, string[]>
 
 const emptyRow = (): EditableRow => ({
   product: '',
+  invoiceNumber: '',
+  awb: '',
   netWeightKg: '',
   price: '',
   bundles: '',
@@ -29,6 +34,8 @@ const emptyRow = (): EditableRow => ({
 function toEditable(row: InvoicePasteRow): EditableRow {
   return {
     product: row.product ?? '',
+    invoiceNumber: row.invoiceNumber ?? '',
+    awb: row.awb ?? '',
     netWeightKg: row.netWeightKg != null ? String(row.netWeightKg) : '',
     price: row.price != null ? String(row.price) : '',
     bundles: row.bundles != null ? String(row.bundles) : '',
@@ -52,17 +59,20 @@ export default function NuevaFacturaPage() {
   const [rowErrors, setRowErrors] = useState<RowErrors>({})
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [uploadUrl, setUploadUrl] = useState<string | null>(null)
-  const [anexoUrl, setAnexoUrl] = useState<string | null>(null)
+  const [generatedLinks, setGeneratedLinks] = useState<
+    { invoiceNumber: string; invoiceUrl?: string | null; anexoUrl?: string | null }[]
+  >([])
   const [loading, setLoading] = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
   const [invoiceNumber, setInvoiceNumber] = useState(() => `FAC-${today.replace(/-/g, '')}`)
+  const [invoiceNumberTouched, setInvoiceNumberTouched] = useState(false)
   const [invoiceDate, setInvoiceDate] = useState(today)
   const [clientName, setClientName] = useState('ARICO FRUITS SL')
   const [clientTaxId, setClientTaxId] = useState('B24895971')
   const [clientAddress, setClientAddress] = useState('MERCAMADRID NAVE POLIVALENCIA 21/23 · 28053 · MADRID')
   const [awb, setAwb] = useState('996-13826540')
+  const [awbTouched, setAwbTouched] = useState(false)
   const [flightNumber, setFlightNumber] = useState('UX9117')
   const [destination, setDestination] = useState('MAD AIRPORT')
   const [incoterm, setIncoterm] = useState('CPT')
@@ -90,9 +100,15 @@ export default function NuevaFacturaPage() {
       setRows([emptyRow()])
       return
     }
+    if (result.header.invoiceNumber && (!invoiceNumberTouched || invoiceNumber.trim().length === 0)) {
+      setInvoiceNumber(result.header.invoiceNumber)
+    }
+    if (result.header.awb && (!awbTouched || awb.trim().length === 0)) {
+      setAwb(result.header.awb)
+    }
     setRows(result.rows.map(toEditable))
     setWarnings(result.warnings)
-  }, [rawText])
+  }, [awb, awbTouched, invoiceNumber, invoiceNumberTouched, rawText])
 
   const addRow = () => setRows((current) => [...current, emptyRow()])
   const removeRow = (index: number) =>
@@ -114,6 +130,8 @@ export default function NuevaFacturaPage() {
     rows.forEach((row, idx) => {
       const rowMsgs: string[] = []
       const product = row.product.trim()
+      const rowInvoiceNumber = row.invoiceNumber.trim()
+      const rowAwb = row.awb.trim()
       const netWeight = parseNumeric(row.netWeightKg)
       const price = parseNumeric(row.price)
       const bundles = parseNumeric(row.bundles)
@@ -150,6 +168,8 @@ export default function NuevaFacturaPage() {
       } else {
         validRows.push({
           product,
+          invoiceNumber: rowInvoiceNumber || undefined,
+          awb: rowAwb || undefined,
           netWeightKg: netWeight,
           price,
           bundles,
@@ -168,8 +188,7 @@ export default function NuevaFacturaPage() {
     setLoading(true)
     setStatus(null)
     setError(null)
-    setUploadUrl(null)
-    setAnexoUrl(null)
+    setGeneratedLinks([])
     const { valid, hasErrors } = validateRows()
     if (hasErrors || valid.length === 0) {
       setLoading(false)
@@ -178,104 +197,120 @@ export default function NuevaFacturaPage() {
     }
 
     try {
-      const totals = valid.reduce(
-        (acc, item) => {
-          acc.totalKg += item.netWeightKg ?? 0
-          acc.totalBundles += item.bundles ?? 0
-          acc.totalAmount += item.total ?? 0
-          return acc
-        },
-        { totalKg: 0, totalBundles: 0, totalAmount: 0 },
-      )
-
-      const { pdfBytes, fileName } = await generateInvoicePdf({
-        invoiceNumber,
-        invoiceDate,
-        destination,
-        incoterm,
-        ggnOrCoc: 'GGN CERTIFIED / CoC 4063061964472',
-        paymentTerms,
-        awb,
-        flightNumber,
-        emitter: {
-          name: emitterName,
-          taxId: emitterTaxId,
-          address: emitterAddress,
-        },
-        receiver: {
-          name: clientName,
-          taxId: clientTaxId,
-          address: clientAddress,
-        },
-        bankInfo: {
-          bankName,
-          iban: bankIban,
-          swift: bankSwift,
-        },
-        grossWeight: totals.totalKg,
-        netWeight: totals.totalKg,
-        items: valid.map((row) => ({
-          product: row.product,
-          netWeightKg: row.netWeightKg ?? 0,
-          pricePerKg: row.price ?? 0,
-          bundles: row.bundles,
-          total: row.total ?? 0,
-        })),
-        igicRate: 0,
-        totals: { totalBundles: totals.totalBundles, totalKg: totals.totalKg },
-      })
-
-      const upload = await uploadInvoicePdf(pdfBytes, fileName, {
-        invoiceDate,
-        invoiceNumber,
-        customerName: clientName,
-        customerTaxId: clientTaxId,
-        total: totals.totalAmount,
-        currency: 'EUR',
-      })
-
-      const invoiceUrl = upload.publicUrl ?? upload.signedUrl ?? null
-      setUploadUrl(invoiceUrl)
-
-      const anexoData = {
-        companyName: emitterName,
-        companyTaxId: emitterTaxId,
-        signerName: 'ANTONIO GUEDES',
-        signerId: '43278677Z',
-        signerRole: 'PRESIDENTE',
-        productName: valid[0]?.product ?? 'Producto',
-        netWeightKg: totals.totalKg,
-        form: 'HOJAS FRESCAS',
-        botanicalName: 'Ocimum basilicum',
-        packageType: 'CAJAS BOX',
-        packageMark: 'RTDOS',
-        bundles: totals.totalBundles,
-        transportId: `${flightNumber} - AWB ${awb}`,
-        location: 'S/C de TFE',
-        dateText: new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).format(
-          new Date(invoiceDate),
-        ),
-        invoiceNumber,
-        items: valid.map((row) => ({
-          productName: row.product,
-          netWeightKg: row.netWeightKg ?? 0,
-          form: productForm,
-          botanicalName,
-        })),
+      const fallbackInvoiceNumber = invoiceNumber.trim()
+      if (!fallbackInvoiceNumber) {
+        setLoading(false)
+        setError('Indica un número de factura en la cabecera o en las filas.')
+        return
       }
 
-      const { pdfBytes: anexoBytes, fileName: anexoFileName } = await generateAnexoIVPdf(anexoData)
-      const anexoUpload = await uploadSupplementPdf(anexoBytes, anexoFileName, invoiceDate)
-      const anexoAccessUrl = anexoUpload.publicUrl ?? anexoUpload.signedUrl ?? null
-      setAnexoUrl(anexoAccessUrl)
+      const grouped = new Map<string, InvoicePasteRow[]>()
+      valid.forEach((row) => {
+        const key = row.invoiceNumber?.trim() || fallbackInvoiceNumber
+        if (!grouped.has(key)) grouped.set(key, [])
+        grouped.get(key)!.push(row)
+      })
 
-      try {
-        await supabase.from('facturas').update({ anexo_path: anexoUpload.path }).eq('invoice_number', invoiceNumber)
-      } catch (updateError) {
-        console.warn('[facturas/nueva] No se pudo actualizar anexo_path:', updateError)
+      const nextLinks: { invoiceNumber: string; invoiceUrl?: string | null; anexoUrl?: string | null }[] = []
+      for (const [groupInvoiceNumber, items] of grouped.entries()) {
+        const totals = calculateTotals(items)
+        const groupAwb =
+          items.find((item) => item.awb && item.awb.trim().length > 0)?.awb?.trim() || awb.trim()
+
+        const { pdfBytes, fileName } = await generateInvoicePdf({
+          invoiceNumber: groupInvoiceNumber,
+          invoiceDate,
+          destination,
+          incoterm,
+          ggnOrCoc: 'GGN CERTIFIED / CoC 4063061964472',
+          paymentTerms,
+          awb: groupAwb,
+          flightNumber,
+          emitter: {
+            name: emitterName,
+            taxId: emitterTaxId,
+            address: emitterAddress,
+          },
+          receiver: {
+            name: clientName,
+            taxId: clientTaxId,
+            address: clientAddress,
+          },
+          bankInfo: {
+            bankName,
+            iban: bankIban,
+            swift: bankSwift,
+          },
+          grossWeight: totals.totalGrossKg,
+          netWeight: totals.totalNetKg,
+          items: items.map((row) => ({
+            product: row.product,
+            netWeightKg: row.netWeightKg ?? 0,
+            pricePerKg: row.price ?? 0,
+            bundles: row.bundles,
+            total: row.total ?? 0,
+          })),
+          igicRate: 0,
+          totals: { totalBundles: totals.totalBundles, totalKg: totals.totalNetKg },
+        })
+
+        const upload = await uploadInvoicePdf(pdfBytes, fileName, {
+          invoiceDate,
+          invoiceNumber: groupInvoiceNumber,
+          customerName: clientName,
+          customerTaxId: clientTaxId,
+          total: totals.totalAmount,
+          currency: 'EUR',
+        })
+
+        const invoiceUrl = upload.publicUrl ?? upload.signedUrl ?? null
+
+        const anexoData = {
+          companyName: emitterName,
+          companyTaxId: emitterTaxId,
+          signerName: 'ANTONIO GUEDES',
+          signerId: '43278677Z',
+          signerRole: 'PRESIDENTE',
+          productName: items[0]?.product ?? 'Producto',
+          netWeightKg: totals.totalNetKg,
+          grossWeightKg: totals.totalGrossKg,
+          form: 'HOJAS FRESCAS',
+          botanicalName: 'Ocimum basilicum',
+          packageType: 'CAJAS BOX',
+          packageMark: 'RTDOS',
+          bundles: totals.totalBundles,
+          transportId: `${flightNumber} - AWB ${groupAwb || awb}`,
+          location: 'S/C de TFE',
+          dateText: new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).format(
+            new Date(invoiceDate),
+          ),
+          invoiceNumber: groupInvoiceNumber,
+          items: items.map((row) => ({
+            productName: row.product,
+            netWeightKg: row.netWeightKg ?? 0,
+            form: productForm,
+            botanicalName,
+          })),
+        }
+
+        const { pdfBytes: anexoBytes, fileName: anexoFileName } = await generateAnexoIVPdf(anexoData)
+        const anexoUpload = await uploadSupplementPdf(anexoBytes, anexoFileName, invoiceDate)
+        const anexoAccessUrl = anexoUpload.publicUrl ?? anexoUpload.signedUrl ?? null
+
+        try {
+          await supabase
+            .from('facturas')
+            .update({ anexo_path: anexoUpload.path })
+            .eq('file_path', upload.path)
+        } catch (updateError) {
+          console.warn('[facturas/nueva] No se pudo actualizar anexo_path:', updateError)
+        }
+
+        nextLinks.push({ invoiceNumber: groupInvoiceNumber, invoiceUrl, anexoUrl: anexoAccessUrl })
       }
 
-      setStatus(`Factura y anexo generados y subidos correctamente.`)
+      setGeneratedLinks(nextLinks)
+      setStatus(`Facturas y anexos generados y subidos correctamente.`)
     } catch (err) {
       console.error(err)
       const message = err instanceof Error ? err.message : 'Error desconocido'
@@ -300,6 +335,8 @@ export default function NuevaFacturaPage() {
     bankName,
     bankIban,
     bankSwift,
+    productForm,
+    botanicalName,
     rows,
     supabase,
   ])
@@ -320,28 +357,34 @@ export default function NuevaFacturaPage() {
             <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
               <CheckCircle2 className="h-4 w-4" />
               <span>{status}</span>
-              <div className="ml-auto flex items-center gap-2">
-                {uploadUrl && (
-                  <a
-                    href={uploadUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs font-semibold underline"
-                  >
-                    Factura PDF
-                  </a>
-                )}
-                {anexoUrl && (
-                  <a
-                    href={anexoUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs font-semibold underline"
-                  >
-                    Anexo IV
-                  </a>
-                )}
-              </div>
+              {generatedLinks.length > 0 && (
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {generatedLinks.map((link) => (
+                    <div key={link.invoiceNumber} className="flex items-center gap-2">
+                      {link.invoiceUrl && (
+                        <a
+                          href={link.invoiceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-semibold underline"
+                        >
+                          Factura {link.invoiceNumber}
+                        </a>
+                      )}
+                      {link.anexoUrl && (
+                        <a
+                          href={link.anexoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-semibold underline"
+                        >
+                          Anexo IV {link.invoiceNumber}
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {(error || warnings.length > 0) && (
@@ -372,7 +415,10 @@ export default function NuevaFacturaPage() {
                 <input
                   type="text"
                   value={invoiceNumber}
-                  onChange={(event) => setInvoiceNumber(event.target.value)}
+                  onChange={(event) => {
+                    setInvoiceNumberTouched(true)
+                    setInvoiceNumber(event.target.value)
+                  }}
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                 />
               </label>
@@ -453,7 +499,10 @@ export default function NuevaFacturaPage() {
                 <input
                   type="text"
                   value={awb}
-                  onChange={(event) => setAwb(event.target.value)}
+                  onChange={(event) => {
+                    setAwbTouched(true)
+                    setAwb(event.target.value)
+                  }}
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                 />
               </label>
@@ -569,11 +618,13 @@ export default function NuevaFacturaPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Producto', 'Peso neto (kg)', 'Precio', 'Bultos', 'Importe total', ''].map((col, idx) => (
+                    {['Factura', 'AWB', 'Producto', 'Peso neto (kg)', 'Precio', 'Bultos', 'Importe total', ''].map(
+                      (col, idx) => (
                       <th key={col} className="px-3 py-2 text-left font-semibold text-gray-700">
-                        {idx === 5 ? '' : col}
+                        {idx === 7 ? '' : col}
                       </th>
-                    ))}
+                    ),
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -581,6 +632,22 @@ export default function NuevaFacturaPage() {
                     const errors = rowErrors[idx] ?? []
                     return (
                       <tr key={idx} className="border-t border-gray-100 align-top">
+                        <td className="px-3 py-2">
+                          <input
+                            type="text"
+                            value={row.invoiceNumber}
+                            readOnly
+                            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 text-sm text-gray-700"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="text"
+                            value={row.awb}
+                            readOnly
+                            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 text-sm text-gray-700"
+                          />
+                        </td>
                         <td className="px-3 py-2">
                           <input
                             type="text"
@@ -648,7 +715,7 @@ export default function NuevaFacturaPage() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-3 py-4 text-center text-gray-500">
+                      <td colSpan={8} className="px-3 py-4 text-center text-gray-500">
                         Sin filas. Pega datos o añade manualmente.
                       </td>
                     </tr>

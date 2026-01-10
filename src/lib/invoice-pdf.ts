@@ -60,6 +60,16 @@ function formatCurrency(value: number | undefined): string {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value)
 }
 
+function formatNumber(value: number | undefined): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return ''
+  const rounded = Number(value.toFixed(2))
+  const isWhole = Number.isInteger(rounded)
+  return rounded.toLocaleString(
+    'es-ES',
+    isWhole ? undefined : { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+  )
+}
+
 function formatDate(value: string): string {
   if (!value) return ''
   return value
@@ -98,7 +108,7 @@ async function embedLogo(pdfDoc: PDFDocument): Promise<{ width: number; height: 
     if (!response.ok) return null
     const buffer = await response.arrayBuffer()
     const png = await pdfDoc.embedPng(buffer)
-    const dims = png.scale(0.17)
+    const dims = png.scale(0.34)
     return { width: dims.width, height: dims.height, bytes: new Uint8Array(buffer) }
   } catch {
     return null
@@ -224,7 +234,7 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
   // Invoice data box
   const invoiceBoxHeight = 48
   const invoiceBoxWidth = 230
-  const invoiceTop = Math.min(emitterBottomY, receiverTop - receiverBoxHeight - 4)
+  const invoiceTop = Math.min(emitterBottomY, receiverTop - receiverBoxHeight - 4) + 22
   const invoiceBoxY = invoiceTop - invoiceBoxHeight
   page.drawRectangle({
     x: margin,
@@ -234,7 +244,8 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
     borderColor: rgb(0, 0, 0),
     borderWidth: 1,
   })
-  drawText('FACTURA / INVOICE', margin + 8, invoiceTop - 14, { size: 9, bold: true })
+  const invoiceLabelY = invoiceTop - 14
+  drawText('FACTURA / INVOICE', margin + 8, invoiceLabelY, { size: 9, bold: true })
 
   const numberBox = { x: margin + 8, y: invoiceBoxY + 10, w: 110, h: 18 }
   page.drawRectangle({ x: numberBox.x, y: numberBox.y, width: numberBox.w, height: numberBox.h, borderColor: rgb(0, 0, 0), borderWidth: 1 })
@@ -242,14 +253,16 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
 
   const dateBox = { x: numberBox.x + numberBox.w + 12, y: numberBox.y, w: 70, h: 18 }
   page.drawRectangle({ x: dateBox.x, y: dateBox.y, width: dateBox.w, height: dateBox.h, borderColor: rgb(0, 0, 0), borderWidth: 1 })
+  drawText('FECHA', dateBox.x + 2, invoiceLabelY, { size: 9, bold: true })
   drawText(formatDate(payload.invoiceDate), dateBox.x + 6, dateBox.y + 5, { size: 9 })
 
-  cursorY = invoiceBoxY - 12
+  cursorY = invoiceBoxY - 6
 
   // Destination / Incoterm
+  cursorY -= 6
   drawLabelValue('DESTINO / DESTINATION', payload.destination || '—', margin, cursorY, 220)
   drawLabelValue('INCOTERM', payload.incoterm || '—', margin + 240, cursorY, 140)
-  cursorY -= 18
+  cursorY -= 20
 
   // Table header
   const colWidths = [200, 80, 80, 70, 90]
@@ -257,7 +270,7 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
   const colTitlesBottom = ['PRODUCT', 'Kg Net', 'Price kg (€)', 'Bundles', 'Total due']
   const tableX = margin
   const tableY = cursorY
-  const rowHeight = 28
+  const rowHeight = 24
 
   // Header background
   page.drawRectangle({
@@ -271,8 +284,8 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
   })
   let cursorX = tableX + 6
   colTitlesTop.forEach((title, idx) => {
-    drawText(title, cursorX, tableY - 10, { size: 9, bold: true })
-    drawText(colTitlesBottom[idx], cursorX, tableY - 22, { size: 8 })
+    drawText(title, cursorX, tableY - 9, { size: 9, bold: true })
+    drawText(colTitlesBottom[idx], cursorX, tableY - 19, { size: 8 })
     cursorX += colWidths[idx]
   })
   cursorY -= rowHeight
@@ -359,11 +372,11 @@ export async function generateInvoicePdf(payload: InvoicePayload): Promise<{ pdf
   const awb = payload.awb ?? '-'
   const flight = payload.flightNumber ?? '-'
   const destination = payload.destination ?? '-'
-  drawText(`Total Kg (Gross Weight): ${grossWeight.toLocaleString('es-ES')}   AWB: ${awb}`, leftColX, logisticsY, {
+  drawText(`Peso bruto (kg): ${formatNumber(grossWeight)}   AWB: ${awb}`, leftColX, logisticsY, {
     size: 9,
   })
   drawText(
-    `Total Kg (Net Weight): ${netWeight.toLocaleString('es-ES')}   Nº de Vuelo: ${flight}`,
+    `Peso neto (kg): ${formatNumber(netWeight)}   Nº de Vuelo: ${flight}`,
     leftColX,
     logisticsY - 12,
     { size: 9 },

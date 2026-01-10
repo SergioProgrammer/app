@@ -8,6 +8,7 @@ export interface AnexoIVData {
   signerRole: string
   productName: string
   netWeightKg: number
+  grossWeightKg?: number
   form: string
   botanicalName: string
   packageType: string
@@ -48,6 +49,16 @@ export async function generateAnexoIVPdf(data: AnexoIVData): Promise<{ pdfBytes:
       font: options?.bold ? boldFont : font,
       color: rgb(0, 0, 0),
     })
+  }
+
+  const formatNumber = (value?: number) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return ''
+    const rounded = Number(value.toFixed(2))
+    const isWhole = Number.isInteger(rounded)
+    return rounded.toLocaleString(
+      'es-ES',
+      isWhole ? undefined : { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+    )
   }
 
   const wrapText = (text: string, maxWidth: number, size: number, isBold = false) => {
@@ -207,11 +218,21 @@ export async function generateAnexoIVPdf(data: AnexoIVData): Promise<{ pdfBytes:
     ['left', 'left', 'right', 'left'],
   )
 
+  const grossWeightKg = data.grossWeightKg ?? data.netWeightKg
+  drawText(`Peso bruto (kg): ${formatNumber(grossWeightKg)}`, margin, cursorY)
+  cursorY -= lineHeight
+  drawText(`Peso neto (kg): ${formatNumber(data.netWeightKg)}`, margin, cursorY)
+  cursorY -= lineHeight
+  drawText(`Número de bultos: ${data.bundles.toLocaleString('es-ES')}`, margin, cursorY)
+  cursorY -= lineHeight * 1.5
+
   drawText('Fecha y lugar', margin, cursorY, { size: 11, bold: true })
   cursorY -= lineHeight
   drawText(`Lugar: ${data.location}`, margin, cursorY)
   cursorY -= lineHeight
-  drawText(`Fecha: ${data.dateText}`, margin, cursorY)
+  drawText('FECHA', margin, cursorY, { size: 10, bold: true })
+  cursorY -= lineHeight
+  drawText(data.dateText, margin, cursorY)
   cursorY -= lineHeight * 1.5
 
   drawText('DECLARA BAJO SU RESPONSABILIDAD:', margin, cursorY, { size: 11, bold: true })
