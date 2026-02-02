@@ -1,7 +1,7 @@
 'use client'
 
 import { Archive, MoreVertical } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SpreadsheetListItem } from '../types'
 
 interface SpreadsheetCardProps {
@@ -23,6 +23,18 @@ function timeAgo(dateStr: string): string {
 
 export function SpreadsheetCard({ spreadsheet, onClick, onArchive }: SpreadsheetCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [menuOpen])
 
   const handleArchive = useCallback(
     (e: React.MouseEvent) => {
@@ -46,27 +58,29 @@ export function SpreadsheetCard({ spreadsheet, onClick, onArchive }: Spreadsheet
           </p>
           <p className="mt-0.5 text-xs text-gray-400">{timeAgo(spreadsheet.updatedAt)}</p>
         </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            setMenuOpen(!menuOpen)
-          }}
-          className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-        >
-          <MoreVertical className="h-4 w-4" />
-        </button>
-      </div>
-      {menuOpen && (
-        <div className="absolute right-4 top-12 z-10 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+        <div ref={menuRef}>
           <button
-            onClick={handleArchive}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen(!menuOpen)
+            }}
+            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
           >
-            <Archive className="h-3.5 w-3.5" />
-            Archivar
+            <MoreVertical className="h-4 w-4" />
           </button>
+          {menuOpen && (
+            <div className="absolute right-4 top-12 z-10 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+              <button
+                onClick={handleArchive}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <Archive className="h-3.5 w-3.5" />
+                Archivar
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -1,17 +1,15 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Loader2, FileText } from 'lucide-react'
+import { ArrowLeft, FileText, Loader2, Pencil } from 'lucide-react'
+import Link from 'next/link'
 import { useSpreadsheet } from '@/client/spreadsheets/hooks/useSpreadsheet'
 import { SpreadsheetToolbar } from '@/client/spreadsheets/components/SpreadsheetToolbar'
 import { SpreadsheetTable } from '@/client/spreadsheets/components/SpreadsheetTable'
 import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/SpreadsheetHeaderForm'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
-import * as api from '@/client/spreadsheets/services/spreadsheetApi'
 
 export default function NuevaHojaPage() {
-  const router = useRouter()
   const {
     name,
     headerData,
@@ -32,17 +30,12 @@ export default function NuevaHojaPage() {
   } = useSpreadsheet({})
 
   const [generating, setGenerating] = useState(false)
-  const [generatedLinks, setGeneratedLinks] = useState<{
-    invoiceUrl: string | null
-    anexoUrl: string | null
-  } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null)
 
   const handleSave = useCallback(async () => {
     try {
       await save()
-      // Después del primer guardado, redirigir a la página de edición
-      // save() retorna void pero el spreadsheetId se actualiza internamente
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al guardar')
     }
@@ -51,19 +44,37 @@ export default function NuevaHojaPage() {
   const handleGenerate = useCallback(async () => {
     setGenerating(true)
     setError(null)
-    setGeneratedLinks(null)
     try {
+      // Validar que los datos de cabecera estén rellenados
+      const requiredHeaders: (keyof typeof headerData)[] = [
+        'invoiceNumber', 'invoiceDate', 'clientName', 'clientTaxId',
+        'emitterName', 'emitterTaxId',
+      ]
+      const missingHeaders = requiredHeaders.filter((k) => !headerData[k].trim())
+      if (missingHeaders.length > 0) {
+        setError('Rellena los datos de cabecera obligatorios: Nº factura, fecha, nombre y CIF del cliente y emisor.')
+        return
+      }
+
+      // Validar que haya al menos una fila con datos
+      const hasData = rows.some((r) => {
+        const { id: _id, position: _pos, ...fields } = r
+        return Object.values(fields).some((v) => v !== '')
+      })
+      if (!hasData) {
+        setError('Añade al menos una fila con datos antes de generar la factura.')
+        return
+      }
+
       // Primero guardar para asegurar que existe en DB
       await save()
-      // Necesitamos el ID - guardamos y luego generamos
-      // El ID está en el hook pero no es accesible directamente en esta primera creación
       setError('Guarda la hoja primero. Después de guardar, serás redirigido a la vista de edición donde podrás generar la factura.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al generar')
     } finally {
       setGenerating(false)
     }
-  }, [save])
+  }, [save, headerData, rows])
 
   const selectedIndex = selectedRows.size === 1 ? [...selectedRows][0] : -1
 
@@ -71,14 +82,23 @@ export default function NuevaHojaPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm uppercase text-gray-500">Hojas de cálculo</p>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => updateName(e.target.value)}
-            className="text-2xl font-semibold text-gray-900 bg-transparent border-0 outline-none focus:ring-0 p-0"
-            placeholder="Nombre de la hoja"
-          />
+          <Link
+            href="/hojas-calculo"
+            className="mb-1 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Volver a hojas de cálculo
+          </Link>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => updateName(e.target.value)}
+              className="text-2xl font-semibold text-gray-900 bg-transparent border-b border-dashed border-gray-300 outline-none focus:border-gray-900 py-0.5 px-1 transition-colors"
+              placeholder="Nombre de la hoja"
+            />
+            <Pencil className="h-4 w-4 text-gray-400" />
+          </div>
         </div>
       </div>
 
@@ -88,29 +108,20 @@ export default function NuevaHojaPage() {
         </div>
       )}
 
-      {generatedLinks && (
-        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          <span>Factura generada.</span>
-          {generatedLinks.invoiceUrl && (
-            <a href={generatedLinks.invoiceUrl} target="_blank" rel="noreferrer" className="font-semibold underline">
-              Ver factura
-            </a>
-          )}
-          {generatedLinks.anexoUrl && (
-            <a href={generatedLinks.anexoUrl} target="_blank" rel="noreferrer" className="font-semibold underline">
-              Ver anexo IV
-            </a>
-          )}
-        </div>
-      )}
-
       <SpreadsheetToolbar
         saveStatus={saveStatus}
         selectedCount={selectedRows.size}
+        hasActiveRow={activeRowIndex !== null}
         onSave={handleSave}
         onAddRow={addRow}
         onDeleteRows={() => deleteRows(selectedRows)}
-        onCopyRows={() => copyRows(selectedRows)}
+        onCopyRows={() => {
+          if (selectedRows.size > 0) {
+            copyRows(selectedRows)
+          } else if (activeRowIndex !== null) {
+            copyRows(new Set([activeRowIndex]))
+          }
+        }}
         onPasteRows={pasteRows}
         onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
         onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
@@ -124,6 +135,7 @@ export default function NuevaHojaPage() {
         onSelectRows={setSelectedRows}
         onUpdateRow={updateRow}
         onAddRow={addRow}
+        onActiveRowChange={setActiveRowIndex}
       />
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />

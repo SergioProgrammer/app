@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HeaderDataClient, SpreadsheetRowClient } from '../types'
-import { EMPTY_HEADER, emptyRow } from '../types'
+import { DEFAULT_HEADER, emptyRow } from '../types'
 import * as api from '../services/spreadsheetApi'
 import { useAutoSave } from './useAutoSave'
 
@@ -11,7 +11,7 @@ interface UseSpreadsheetOptions {
 export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(id ?? null)
   const [name, setName] = useState('Sin nombre')
-  const [headerData, setHeaderData] = useState<HeaderDataClient>(EMPTY_HEADER)
+  const [headerData, setHeaderData] = useState<HeaderDataClient>(DEFAULT_HEADER)
   const [rows, setRows] = useState<SpreadsheetRowClient[]>([emptyRow(0)])
   const [loading, setLoading] = useState(!!id)
   const [error, setError] = useState<string | null>(null)

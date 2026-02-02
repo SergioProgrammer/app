@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from 'react'
 import type { SpreadsheetColumnKey, SpreadsheetRowClient } from '../types'
-import { SPREADSHEET_COLUMNS } from '../types'
+import { EXAMPLE_ROW, SPREADSHEET_COLUMNS } from '../types'
 
 interface SpreadsheetTableProps {
   rows: SpreadsheetRowClient[]
@@ -10,6 +10,7 @@ interface SpreadsheetTableProps {
   onSelectRows: (selected: Set<number>) => void
   onUpdateRow: (index: number, field: keyof SpreadsheetRowClient, value: string) => void
   onAddRow: () => void
+  onActiveRowChange?: (index: number | null) => void
 }
 
 export function SpreadsheetTable({
@@ -18,6 +19,7 @@ export function SpreadsheetTable({
   onSelectRows,
   onUpdateRow,
   onAddRow,
+  onActiveRowChange,
 }: SpreadsheetTableProps) {
   const tableRef = useRef<HTMLDivElement>(null)
 
@@ -102,6 +104,24 @@ export function SpreadsheetTable({
           </tr>
         </thead>
         <tbody>
+          {/* Fila de ejemplo no editable */}
+          <tr className="border-b border-gray-200 bg-amber-50/40">
+            <td className="px-2 py-1 text-center">
+              <span className="text-[10px] text-amber-400">ej.</span>
+            </td>
+            <td className="px-2 py-1 text-center text-xs text-amber-400">—</td>
+            {SPREADSHEET_COLUMNS.map((col) => (
+              <td key={col.key} className="px-1 py-0.5">
+                <span
+                  className="block w-full px-1.5 py-1 text-sm text-amber-600/70 italic"
+                  style={{ minWidth: col.width - 8 }}
+                >
+                  {EXAMPLE_ROW[col.key as SpreadsheetColumnKey]}
+                </span>
+              </td>
+            ))}
+          </tr>
+
           {rows.map((row, rowIdx) => (
             <tr
               key={row.id}
@@ -121,12 +141,15 @@ export function SpreadsheetTable({
                   <input
                     data-row={rowIdx}
                     data-col={colIdx}
-                    type="text"
+                    type={col.inputType === 'number' ? 'number' : 'text'}
+                    step={col.inputType === 'number' ? 'any' : undefined}
                     value={row[col.key as SpreadsheetColumnKey]}
                     onChange={(e) =>
                       onUpdateRow(rowIdx, col.key as keyof SpreadsheetRowClient, e.target.value)
                     }
                     onKeyDown={(e) => handleKeyDown(e, rowIdx, colIdx)}
+                    onFocus={() => onActiveRowChange?.(rowIdx)}
+                    onBlur={() => onActiveRowChange?.(null)}
                     className="w-full rounded border-0 bg-transparent px-1.5 py-1 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-blue-400"
                     style={{ minWidth: col.width - 8 }}
                   />

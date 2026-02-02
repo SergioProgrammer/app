@@ -74,9 +74,14 @@ export function SpreadsheetHeaderForm({ data, onChange }: SpreadsheetHeaderFormP
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 rounded-2xl"
       >
-        <h2 className="text-sm font-semibold text-gray-900">Datos de cabecera</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-gray-900">Datos de cabecera</h2>
+          <span className="text-xs text-gray-400">
+            {open ? '(Click para plegar)' : '(Click para desplegar)'}
+          </span>
+        </div>
         {open ? (
           <ChevronDown className="h-4 w-4 text-gray-400" />
         ) : (

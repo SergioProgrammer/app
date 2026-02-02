@@ -1,6 +1,6 @@
 'use client'
 
-import { Loader2, Plus } from 'lucide-react'
+import { Loader2, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSpreadsheetList } from '../hooks/useSpreadsheetList'
@@ -32,9 +32,10 @@ export function SpreadsheetList() {
         <div className="flex items-center gap-3">
           <Link
             href="/hojas-calculo/papelera"
-            className="text-sm text-gray-500 hover:text-gray-700"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
           >
-            Papelera
+            <Trash2 className="h-3.5 w-3.5" />
+            Ver papelera
           </Link>
         </div>
         <Link
