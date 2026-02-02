@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { generateInvoicePdf } from '@/lib/invoice-pdf'
 import type { InvoicePayload } from '@/lib/invoice-pdf'
 import { generateAnexoIVPdf } from '@/lib/anexo-iv-pdf'
@@ -13,7 +14,10 @@ interface GenerateInvoiceResult {
 }
 
 export class GenerateInvoiceFromSpreadsheet {
-  constructor(private readonly repository: SpreadsheetRepository) {}
+  constructor(
+    private readonly repository: SpreadsheetRepository,
+    private readonly supabaseClient: SupabaseClient,
+  ) {}
 
   async execute(id: string, userId: string): Promise<GenerateInvoiceResult> {
     const spreadsheet = await this.repository.findById(id)
@@ -78,13 +82,18 @@ export class GenerateInvoiceFromSpreadsheet {
     const { pdfBytes: invoiceBytes, fileName: invoiceFileName } =
       await generateInvoicePdf(payload)
 
-    const invoiceResult = await uploadInvoicePdf(invoiceBytes, invoiceFileName, {
-      invoiceNumber: payload.invoiceNumber,
-      invoiceDate: payload.invoiceDate,
-      customerName: payload.receiver.name,
-      customerTaxId: payload.receiver.taxId,
-      total: totals.totalAmount,
-    })
+    const invoiceResult = await uploadInvoicePdf(
+      invoiceBytes,
+      invoiceFileName,
+      {
+        invoiceNumber: payload.invoiceNumber,
+        invoiceDate: payload.invoiceDate,
+        customerName: payload.receiver.name,
+        customerTaxId: payload.receiver.taxId,
+        total: totals.totalAmount,
+      },
+      this.supabaseClient,
+    )
 
     let anexoUrl: string | null = null
     try {
@@ -117,8 +126,21 @@ export class GenerateInvoiceFromSpreadsheet {
         anexoBytes,
         anexoFileName,
         payload.invoiceDate,
+        this.supabaseClient,
       )
       anexoUrl = anexoResult.publicUrl ?? anexoResult.signedUrl ?? null
+
+      // Actualizar anexo_path en la tabla facturas
+      if (anexoResult.path) {
+        try {
+          await this.supabaseClient
+            .from('facturas')
+            .update({ anexo_path: anexoResult.path })
+            .eq('file_path', invoiceResult.path)
+        } catch {
+          // No bloquear si falla la actualización del anexo_path
+        }
+      }
     } catch {
       // Anexo generation is optional, don't fail the whole operation
     }

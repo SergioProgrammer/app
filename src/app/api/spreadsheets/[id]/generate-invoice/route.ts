@@ -16,7 +16,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
   const { id } = await params
   const supabase = await createServerSupabaseClient()
   const repository = new SupabaseSpreadsheetRepository(supabase)
-  const useCase = new GenerateInvoiceFromSpreadsheet(repository)
+  const useCase = new GenerateInvoiceFromSpreadsheet(repository, supabase)
 
   try {
     const result = await useCase.execute(id, user.id)
