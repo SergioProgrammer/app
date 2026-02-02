@@ -1,4 +1,5 @@
 import type { Spreadsheet } from '../../domain/entities/Spreadsheet'
+import type { HeaderData } from '../../domain/types'
 
 export interface SpreadsheetListItemResponse {
   id: string
@@ -30,7 +31,7 @@ export interface SpreadsheetRowResponse {
 export interface SpreadsheetResponse {
   id: string
   name: string
-  headerData: Record<string, string | undefined>
+  headerData: HeaderData
   rows: SpreadsheetRowResponse[]
   createdAt: string
   updatedAt: string

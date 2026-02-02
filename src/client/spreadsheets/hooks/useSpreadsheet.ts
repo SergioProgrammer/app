@@ -94,7 +94,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   )
 
   // Guardar
-  const save = useCallback(async () => {
+  const save = useCallback(async (): Promise<void> => {
     if (!spreadsheetId) {
       // Primera vez: crear
       const result = await api.createSpreadsheet(name)
@@ -106,14 +106,13 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
           rows: serializeRows(rows),
         })
       }
-      return result.id
+      return
     }
     await api.updateSpreadsheet(spreadsheetId, {
       name,
       headerData: headerData as unknown as Record<string, string>,
       rows: serializeRows(rows),
     })
-    return spreadsheetId
   }, [spreadsheetId, name, headerData, rows, serializeRows])
 
   const { status: saveStatus, markUnsaved, forceSave } = useAutoSave({
