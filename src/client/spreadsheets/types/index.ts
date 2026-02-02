@@ -61,8 +61,8 @@ export type ColumnInputType = 'text' | 'number' | 'date'
 
 export const SPREADSHEET_COLUMNS = [
   { key: 'week', label: 'Semana', width: 80, inputType: 'text' as ColumnInputType },
-  { key: 'invoiceDate', label: 'Fecha factura', width: 110, inputType: 'text' as ColumnInputType },
-  { key: 'date', label: 'Fecha', width: 100, inputType: 'text' as ColumnInputType },
+  { key: 'invoiceDate', label: 'Fecha factura', width: 140, inputType: 'date' as ColumnInputType },
+  { key: 'date', label: 'Fecha', width: 140, inputType: 'date' as ColumnInputType },
   { key: 'finalClient', label: 'Cliente final', width: 140, inputType: 'text' as ColumnInputType },
   { key: 'kg', label: 'Kg', width: 80, inputType: 'number' as ColumnInputType },
   { key: 'product', label: 'Producto', width: 140, inputType: 'text' as ColumnInputType },
@@ -104,8 +104,8 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
   id: 'example',
   position: -1,
   week: '20265',
-  invoiceDate: '3/1/2026',
-  date: '3/1/2026',
+  invoiceDate: '2026-01-03',
+  date: '2026-01-03',
   finalClient: 'Arico Fruits S.L',
   kg: '850',
   product: 'BASIL/ALBAHACA 1 KG',
@@ -121,12 +121,13 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
 }
 
 export function emptyRow(position: number): SpreadsheetRowClient {
+  const today = new Date().toISOString().slice(0, 10)
   return {
     id: crypto.randomUUID(),
     position,
     week: '',
-    invoiceDate: '',
-    date: '',
+    invoiceDate: today,
+    date: today,
     finalClient: '',
     kg: '',
     product: '',

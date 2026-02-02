@@ -105,15 +105,15 @@ export function SpreadsheetTable({
         </thead>
         <tbody>
           {/* Fila de ejemplo no editable */}
-          <tr className="border-b border-gray-200 bg-amber-50/40">
-            <td className="px-2 py-1 text-center">
-              <span className="text-[10px] text-amber-400">ej.</span>
+          <tr className="border-b border-gray-200 border-l-4 border-l-amber-400 bg-amber-100/60">
+            <td className="px-2 py-1.5 text-center">
+              <span className="rounded bg-amber-200 px-1 py-0.5 text-[10px] font-bold uppercase text-amber-700">Ej.</span>
             </td>
-            <td className="px-2 py-1 text-center text-xs text-amber-400">—</td>
+            <td className="px-2 py-1.5 text-center text-xs font-medium text-amber-500">—</td>
             {SPREADSHEET_COLUMNS.map((col) => (
               <td key={col.key} className="px-1 py-0.5">
                 <span
-                  className="block w-full px-1.5 py-1 text-sm text-amber-600/70 italic"
+                  className="block w-full px-1.5 py-1 text-sm font-medium text-amber-700"
                   style={{ minWidth: col.width - 8 }}
                 >
                   {EXAMPLE_ROW[col.key as SpreadsheetColumnKey]}

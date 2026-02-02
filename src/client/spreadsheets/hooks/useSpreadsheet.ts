@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { HeaderDataClient, SpreadsheetRowClient } from '../types'
 import { DEFAULT_HEADER, emptyRow } from '../types'
 import * as api from '../services/spreadsheetApi'
@@ -16,7 +16,6 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   const [loading, setLoading] = useState(!!id)
   const [error, setError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
-  const clipboardRef = useRef<SpreadsheetRowClient[]>([])
 
   // Cargar hoja existente
   useEffect(() => {
@@ -149,8 +148,8 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
 
   const moveRow = useCallback(
     (from: number, direction: 'up' | 'down') => {
+      const to = direction === 'up' ? from - 1 : from + 1
       setRows((prev) => {
-        const to = direction === 'up' ? from - 1 : from + 1
         if (to < 0 || to >= prev.length) return prev
         const updated = [...prev]
         const temp = updated[from]
@@ -158,30 +157,35 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
         updated[to] = { ...temp, position: to }
         return updated
       })
+      setSelectedRows((prev) => {
+        if (!prev.has(from)) return prev
+        const next = new Set(prev)
+        next.delete(from)
+        next.add(to)
+        return next
+      })
       markUnsaved()
     },
     [markUnsaved],
   )
 
-  const copyRows = useCallback(
+  const duplicateRows = useCallback(
     (indices: Set<number>) => {
-      clipboardRef.current = rows.filter((_, i) => indices.has(i))
+      if (indices.size === 0) return
+      setRows((prev) => {
+        const toDuplicate = prev.filter((_, i) => indices.has(i))
+        const newRows = toDuplicate.map((r, i) => ({
+          ...r,
+          id: crypto.randomUUID(),
+          position: prev.length + i,
+        }))
+        return [...prev, ...newRows]
+      })
+      setSelectedRows(new Set())
+      markUnsaved()
     },
-    [rows],
+    [markUnsaved],
   )
-
-  const pasteRows = useCallback(() => {
-    if (clipboardRef.current.length === 0) return
-    setRows((prev) => {
-      const newRows = clipboardRef.current.map((r, i) => ({
-        ...r,
-        id: crypto.randomUUID(),
-        position: prev.length + i,
-      }))
-      return [...prev, ...newRows]
-    })
-    markUnsaved()
-  }, [markUnsaved])
 
   const addPastedRows = useCallback(
     (newRows: Omit<SpreadsheetRowClient, 'id' | 'position'>[]) => {
@@ -228,8 +232,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     addRow,
     deleteRows,
     moveRow,
-    copyRows,
-    pasteRows,
+    duplicateRows,
     addPastedRows,
     updateHeaderData,
     updateName,

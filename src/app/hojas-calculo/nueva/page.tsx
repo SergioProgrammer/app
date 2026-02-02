@@ -8,6 +8,12 @@ import { SpreadsheetToolbar } from '@/client/spreadsheets/components/Spreadsheet
 import { SpreadsheetTable } from '@/client/spreadsheets/components/SpreadsheetTable'
 import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/SpreadsheetHeaderForm'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
+import type { SpreadsheetColumnKey } from '@/client/spreadsheets/types'
+import { SPREADSHEET_COLUMNS } from '@/client/spreadsheets/types'
+
+const REQUIRED_ROW_FIELDS: SpreadsheetColumnKey[] = SPREADSHEET_COLUMNS
+  .filter((c) => c.key !== 'search')
+  .map((c) => c.key)
 
 export default function NuevaHojaPage() {
   const {
@@ -21,8 +27,7 @@ export default function NuevaHojaPage() {
     addRow,
     deleteRows,
     moveRow,
-    copyRows,
-    pasteRows,
+    duplicateRows,
     addPastedRows,
     updateHeaderData,
     updateName,
@@ -32,6 +37,7 @@ export default function NuevaHojaPage() {
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null)
+  const [headerReviewed, setHeaderReviewed] = useState(false)
 
   const handleSave = useCallback(async () => {
     try {
@@ -45,7 +51,7 @@ export default function NuevaHojaPage() {
     setGenerating(true)
     setError(null)
     try {
-      // Validar que los datos de cabecera estén rellenados
+      // Validar cabecera
       const requiredHeaders: (keyof typeof headerData)[] = [
         'invoiceNumber', 'invoiceDate', 'clientName', 'clientTaxId',
         'emitterName', 'emitterTaxId',
@@ -56,17 +62,25 @@ export default function NuevaHojaPage() {
         return
       }
 
-      // Validar que haya al menos una fila con datos
-      const hasData = rows.some((r) => {
+      // Validar que haya filas con datos
+      const dataRows = rows.filter((r) => {
         const { id: _id, position: _pos, ...fields } = r
         return Object.values(fields).some((v) => v !== '')
       })
-      if (!hasData) {
+      if (dataRows.length === 0) {
         setError('Añade al menos una fila con datos antes de generar la factura.')
         return
       }
 
-      // Primero guardar para asegurar que existe en DB
+      // Validar campos requeridos en cada fila con datos
+      const incomplete = dataRows.some((r) =>
+        REQUIRED_ROW_FIELDS.some((key) => !r[key]?.trim()),
+      )
+      if (incomplete) {
+        setError('Todas las filas deben tener todos los campos rellenos (excepto Búsqueda).')
+        return
+      }
+
       await save()
       setError('Guarda la hoja primero. Después de guardar, serás redirigido a la vista de edición donde podrás generar la factura.')
     } catch (err) {
@@ -115,14 +129,13 @@ export default function NuevaHojaPage() {
         onSave={handleSave}
         onAddRow={addRow}
         onDeleteRows={() => deleteRows(selectedRows)}
-        onCopyRows={() => {
+        onDuplicate={() => {
           if (selectedRows.size > 0) {
-            copyRows(selectedRows)
+            duplicateRows(selectedRows)
           } else if (activeRowIndex !== null) {
-            copyRows(new Set([activeRowIndex]))
+            duplicateRows(new Set([activeRowIndex]))
           }
         }}
-        onPasteRows={pasteRows}
         onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
         onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
       />
@@ -140,10 +153,19 @@ export default function NuevaHojaPage() {
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
 
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-3">
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={headerReviewed}
+            onChange={(e) => setHeaderReviewed(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          He revisado la sección Datos de cabecera
+        </label>
         <button
           onClick={handleGenerate}
-          disabled={generating}
+          disabled={generating || !headerReviewed}
           className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
         >
           {generating ? (
