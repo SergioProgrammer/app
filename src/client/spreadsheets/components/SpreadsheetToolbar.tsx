@@ -18,7 +18,6 @@ import type { SaveStatus } from '../types'
 interface SpreadsheetToolbarProps {
   saveStatus: SaveStatus
   selectedCount: number
-  hasActiveRow: boolean
   onSave: () => void
   onAddRow: () => void
   onDeleteRows: () => void
@@ -36,7 +35,6 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
 export function SpreadsheetToolbar({
   saveStatus,
   selectedCount,
-  hasActiveRow,
   onSave,
   onAddRow,
   onDeleteRows,
@@ -95,7 +93,7 @@ export function SpreadsheetToolbar({
 
       <button
         onClick={onDuplicate}
-        disabled={selectedCount === 0 && !hasActiveRow}
+        disabled={selectedCount === 0}
         className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-40"
       >
         <Copy className="h-3.5 w-3.5" />
@@ -150,7 +148,7 @@ export function SpreadsheetToolbar({
             <li><strong>Guardar:</strong> Guarda todos los cambios de la hoja.</li>
             <li><strong>Fila:</strong> Añade una nueva fila vacía al final con la fecha de hoy.</li>
             <li><strong>Eliminar:</strong> Elimina las filas seleccionadas (checkbox).</li>
-            <li><strong>Duplicar línea:</strong> Duplica las filas seleccionadas (o la fila que estés editando) al final de la tabla.</li>
+            <li><strong>Duplicar línea:</strong> Duplica las filas seleccionadas (checkbox) al final de la tabla.</li>
             <li><strong>Flechas arriba/abajo:</strong> Mueven la fila seleccionada de posición. La selección sigue a la fila.</li>
             <li><strong>Tab:</strong> Navega a la siguiente celda. <strong>Enter:</strong> Baja a la celda inferior.</li>
           </ul>

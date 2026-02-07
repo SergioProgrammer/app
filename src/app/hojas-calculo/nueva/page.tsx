@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useState } from 'react'
-import { ArrowLeft, FileText, Loader2, Pencil } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Loader2, Pencil, Save } from 'lucide-react'
 import Link from 'next/link'
 import { useSpreadsheet } from '@/client/spreadsheets/hooks/useSpreadsheet'
 import { SpreadsheetToolbar } from '@/client/spreadsheets/components/SpreadsheetToolbar'
@@ -16,7 +17,9 @@ const REQUIRED_ROW_FIELDS: SpreadsheetColumnKey[] = SPREADSHEET_COLUMNS
   .map((c) => c.key)
 
 export default function NuevaHojaPage() {
+  const router = useRouter()
   const {
+    spreadsheetId,
     name,
     headerData,
     rows,
@@ -36,8 +39,13 @@ export default function NuevaHojaPage() {
 
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null)
   const [headerReviewed, setHeaderReviewed] = useState(false)
+
+  useEffect(() => {
+    if (spreadsheetId) {
+      router.replace(`/hojas-calculo/${spreadsheetId}`)
+    }
+  }, [spreadsheetId, router])
 
   const handleSave = useCallback(async () => {
     try {
@@ -52,13 +60,10 @@ export default function NuevaHojaPage() {
     setError(null)
     try {
       // Validar cabecera
-      const requiredHeaders: (keyof typeof headerData)[] = [
-        'invoiceNumber', 'invoiceDate', 'clientName', 'clientTaxId',
-        'emitterName', 'emitterTaxId',
-      ]
-      const missingHeaders = requiredHeaders.filter((k) => !headerData[k].trim())
+      const missingHeaders = (Object.keys(headerData) as (keyof typeof headerData)[])
+        .filter((k) => !headerData[k].trim())
       if (missingHeaders.length > 0) {
-        setError('Rellena los datos de cabecera obligatorios: Nº factura, fecha, nombre y CIF del cliente y emisor.')
+        setError('Rellena todos los datos de cabecera antes de generar la factura.')
         return
       }
 
@@ -74,7 +79,7 @@ export default function NuevaHojaPage() {
 
       // Validar campos requeridos en cada fila con datos
       const incomplete = dataRows.some((r) =>
-        REQUIRED_ROW_FIELDS.some((key) => !r[key]?.trim()),
+        REQUIRED_ROW_FIELDS.some((key) => !String(r[key] ?? '').trim()),
       )
       if (incomplete) {
         setError('Todas las filas deben tener todos los campos rellenos (excepto Búsqueda).')
@@ -82,7 +87,7 @@ export default function NuevaHojaPage() {
       }
 
       await save()
-      setError('Guarda la hoja primero. Después de guardar, serás redirigido a la vista de edición donde podrás generar la factura.')
+      // After save, spreadsheetId will be set → useEffect redirects to edit page
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al generar')
     } finally {
@@ -125,17 +130,10 @@ export default function NuevaHojaPage() {
       <SpreadsheetToolbar
         saveStatus={saveStatus}
         selectedCount={selectedRows.size}
-        hasActiveRow={activeRowIndex !== null}
         onSave={handleSave}
         onAddRow={addRow}
         onDeleteRows={() => deleteRows(selectedRows)}
-        onDuplicate={() => {
-          if (selectedRows.size > 0) {
-            duplicateRows(selectedRows)
-          } else if (activeRowIndex !== null) {
-            duplicateRows(new Set([activeRowIndex]))
-          }
-        }}
+        onDuplicate={() => duplicateRows(selectedRows)}
         onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
         onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
       />
@@ -148,7 +146,6 @@ export default function NuevaHojaPage() {
         onSelectRows={setSelectedRows}
         onUpdateRow={updateRow}
         onAddRow={addRow}
-        onActiveRowChange={setActiveRowIndex}
       />
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
@@ -171,9 +168,9 @@ export default function NuevaHojaPage() {
           {generating ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <FileText className="h-4 w-4" />
+            <Save className="h-4 w-4" />
           )}
-          Generar factura
+          Guardar y continuar
         </button>
       </div>
     </div>

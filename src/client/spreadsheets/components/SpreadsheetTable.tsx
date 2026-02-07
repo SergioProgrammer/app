@@ -105,7 +105,7 @@ export function SpreadsheetTable({
         </thead>
         <tbody>
           {/* Fila de ejemplo no editable */}
-          <tr className="border-b border-gray-200 border-l-4 border-l-amber-400 bg-amber-100/60">
+          <tr key="example-row" className="border-b border-gray-200 border-l-4 border-l-amber-400 bg-amber-100/60">
             <td className="px-2 py-1.5 text-center">
               <span className="rounded bg-amber-200 px-1 py-0.5 text-[10px] font-bold uppercase text-amber-700">Ej.</span>
             </td>
@@ -116,7 +116,9 @@ export function SpreadsheetTable({
                   className="block w-full px-1.5 py-1 text-sm font-medium text-amber-700"
                   style={{ minWidth: col.width - 8 }}
                 >
-                  {EXAMPLE_ROW[col.key as SpreadsheetColumnKey]}
+                  {col.inputType === 'number'
+                    ? Number(EXAMPLE_ROW[col.key as SpreadsheetColumnKey]).toLocaleString('es-ES')
+                    : EXAMPLE_ROW[col.key as SpreadsheetColumnKey]}
                 </span>
               </td>
             ))}
@@ -141,8 +143,9 @@ export function SpreadsheetTable({
                   <input
                     data-row={rowIdx}
                     data-col={colIdx}
-                    type={col.inputType === 'number' ? 'number' : 'text'}
+                    type={col.inputType === 'number' ? 'number' : col.inputType === 'date' ? 'date' : 'text'}
                     step={col.inputType === 'number' ? 'any' : undefined}
+                    min={col.inputType === 'number' ? '0' : undefined}
                     value={row[col.key as SpreadsheetColumnKey]}
                     onChange={(e) =>
                       onUpdateRow(rowIdx, col.key as keyof SpreadsheetRowClient, e.target.value)
@@ -159,6 +162,7 @@ export function SpreadsheetTable({
           ))}
           {/* Fila vacía para añadir datos */}
           <tr
+            key="add-row"
             className="cursor-pointer border-b border-gray-100 text-gray-400 hover:bg-gray-50"
             onClick={onAddRow}
           >

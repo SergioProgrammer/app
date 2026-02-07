@@ -32,21 +32,21 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
         const loadedRows: SpreadsheetRowClient[] = data.rows.map((r) => ({
           id: r.id,
           position: r.position,
-          week: r.week ?? '',
-          invoiceDate: r.invoiceDate ?? '',
-          date: r.date ?? '',
-          finalClient: r.finalClient ?? '',
-          kg: r.kg ?? '',
-          product: r.product ?? '',
-          boxType: r.boxType ?? '',
-          bundles: r.bundles ?? '',
-          price: r.price ?? '',
-          orderNumber: r.orderNumber ?? '',
-          awb: r.awb ?? '',
-          deliveryNote: r.deliveryNote ?? '',
-          invoiceNumber: r.invoiceNumber ?? '',
-          line: r.line ?? '',
-          search: r.search ?? '',
+          week: String(r.week ?? ''),
+          invoiceDate: String(r.invoiceDate ?? ''),
+          date: String(r.date ?? ''),
+          finalClient: String(r.finalClient ?? ''),
+          kg: String(r.kg ?? ''),
+          product: String(r.product ?? ''),
+          boxType: String(r.boxType ?? ''),
+          bundles: String(r.bundles ?? ''),
+          price: String(r.price ?? ''),
+          orderNumber: String(r.orderNumber ?? ''),
+          awb: String(r.awb ?? ''),
+          deliveryNote: String(r.deliveryNote ?? ''),
+          invoiceNumber: String(r.invoiceNumber ?? ''),
+          line: String(r.line ?? ''),
+          search: String(r.search ?? ''),
         }))
         setRows(loadedRows.length > 0 ? loadedRows : [emptyRow(0)])
       })
@@ -149,8 +149,8 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   const moveRow = useCallback(
     (from: number, direction: 'up' | 'down') => {
       const to = direction === 'up' ? from - 1 : from + 1
+      if (to < 0 || to >= rows.length) return
       setRows((prev) => {
-        if (to < 0 || to >= prev.length) return prev
         const updated = [...prev]
         const temp = updated[from]
         updated[from] = { ...updated[to], position: from }
@@ -166,7 +166,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       })
       markUnsaved()
     },
-    [markUnsaved],
+    [rows.length, markUnsaved],
   )
 
   const duplicateRows = useCallback(

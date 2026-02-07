@@ -45,7 +45,6 @@ export default function EditarHojaPage() {
     anexoUrl: string | null
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null)
   const [headerReviewed, setHeaderReviewed] = useState(false)
 
   const handleGenerate = useCallback(async () => {
@@ -54,13 +53,10 @@ export default function EditarHojaPage() {
     setGeneratedLinks(null)
     try {
       // Validar cabecera
-      const requiredHeaders: (keyof typeof headerData)[] = [
-        'invoiceNumber', 'invoiceDate', 'clientName', 'clientTaxId',
-        'emitterName', 'emitterTaxId',
-      ]
-      const missingHeaders = requiredHeaders.filter((k) => !headerData[k].trim())
+      const missingHeaders = (Object.keys(headerData) as (keyof typeof headerData)[])
+        .filter((k) => !headerData[k].trim())
       if (missingHeaders.length > 0) {
-        setError('Rellena los datos de cabecera obligatorios: Nº factura, fecha, nombre y CIF del cliente y emisor.')
+        setError('Rellena todos los datos de cabecera antes de generar la factura.')
         return
       }
 
@@ -76,7 +72,7 @@ export default function EditarHojaPage() {
 
       // Validar campos requeridos en cada fila con datos
       const incomplete = dataRows.some((r) =>
-        REQUIRED_ROW_FIELDS.some((key) => !r[key]?.trim()),
+        REQUIRED_ROW_FIELDS.some((key) => !String(r[key] ?? '').trim()),
       )
       if (incomplete) {
         setError('Todas las filas deben tener todos los campos rellenos (excepto Búsqueda).')
@@ -163,17 +159,10 @@ export default function EditarHojaPage() {
       <SpreadsheetToolbar
         saveStatus={saveStatus}
         selectedCount={selectedRows.size}
-        hasActiveRow={activeRowIndex !== null}
         onSave={save}
         onAddRow={addRow}
         onDeleteRows={() => deleteRows(selectedRows)}
-        onDuplicate={() => {
-          if (selectedRows.size > 0) {
-            duplicateRows(selectedRows)
-          } else if (activeRowIndex !== null) {
-            duplicateRows(new Set([activeRowIndex]))
-          }
-        }}
+        onDuplicate={() => duplicateRows(selectedRows)}
         onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
         onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
       />
@@ -186,7 +175,6 @@ export default function EditarHojaPage() {
         onSelectRows={setSelectedRows}
         onUpdateRow={updateRow}
         onAddRow={addRow}
-        onActiveRowChange={setActiveRowIndex}
       />
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
