@@ -105,7 +105,7 @@ export const DEFAULT_HEADER: HeaderDataClient = {
 export const EXAMPLE_ROW: SpreadsheetRowClient = {
   id: 'example',
   position: -1,
-  week: '20265',
+  week: '20265',  // YYYYW format (2026, week 5)
   invoiceDate: '01/01/2026',
   date: '01/01/2026',
   finalClient: 'Arico Fruits S.L',
@@ -131,6 +131,7 @@ export function getWeekString(dateStr?: string): string {
   const firstThursday = target.getTime()
   const jan4 = new Date(Date.UTC(target.getUTCFullYear(), 0, 4)).getTime()
   const weekNum = 1 + Math.round((firstThursday - jan4) / (7 * 86400000))
+  // Return YYYYW format (single digit for weeks 1-9, two digits for 10-52)
   return `${target.getUTCFullYear()}${weekNum}`
 }
 
