@@ -63,7 +63,7 @@ export function SpreadsheetToolbar({
       <button
         onClick={onSave}
         disabled={isSaving}
-        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors duration-300 disabled:cursor-not-allowed ${saveButtonClass}`}
+        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-all duration-500 disabled:cursor-not-allowed ${saveButtonClass}`}
       >
         {isJustSaved ? (
           <Check className="h-3.5 w-3.5" />
