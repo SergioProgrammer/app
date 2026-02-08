@@ -130,8 +130,45 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
       .order('updated_at', { ascending: false })
 
     if (error) throw new Error(`Failed to list spreadsheets: ${error.message}`)
-    return (data ?? []).map((s: SpreadsheetDbRow) =>
-      toEntity(s, []),
+
+    // For each spreadsheet, get row count from database
+    const spreadsheets = data ?? []
+    return Promise.all(
+      spreadsheets.map(async (s: SpreadsheetDbRow) => {
+        const { count, error: countError } = await this.supabase
+          .from('spreadsheet_rows')
+          .select('*', { count: 'exact', head: true })
+          .eq('spreadsheet_id', s.id)
+
+        if (countError) {
+          console.error(`Failed to count rows for spreadsheet ${s.id}:`, countError.message)
+          return toEntity(s, [])
+        }
+
+        // Create fake rows array with correct length for counting purposes
+        const fakeRows = Array.from({ length: count ?? 0 }, (_, i) => ({
+          id: `fake-${i}`,
+          spreadsheet_id: s.id,
+          position: i,
+          week: null,
+          invoice_date: null,
+          date: null,
+          final_client: null,
+          kg: null,
+          product: null,
+          box_type: null,
+          bundles: null,
+          price: null,
+          order_number: null,
+          awb: null,
+          delivery_note: null,
+          invoice_number: null,
+          line: null,
+          search: null,
+        } as SpreadsheetRowDbRow))
+
+        return toEntity(s, fakeRows)
+      })
     )
   }
 
@@ -144,8 +181,45 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
       .order('archived_at', { ascending: false })
 
     if (error) throw new Error(`Failed to list archived spreadsheets: ${error.message}`)
-    return (data ?? []).map((s: SpreadsheetDbRow) =>
-      toEntity(s, []),
+
+    // For each spreadsheet, get row count from database
+    const spreadsheets = data ?? []
+    return Promise.all(
+      spreadsheets.map(async (s: SpreadsheetDbRow) => {
+        const { count, error: countError } = await this.supabase
+          .from('spreadsheet_rows')
+          .select('*', { count: 'exact', head: true })
+          .eq('spreadsheet_id', s.id)
+
+        if (countError) {
+          console.error(`Failed to count rows for spreadsheet ${s.id}:`, countError.message)
+          return toEntity(s, [])
+        }
+
+        // Create fake rows array with correct length for counting purposes
+        const fakeRows = Array.from({ length: count ?? 0 }, (_, i) => ({
+          id: `fake-${i}`,
+          spreadsheet_id: s.id,
+          position: i,
+          week: null,
+          invoice_date: null,
+          date: null,
+          final_client: null,
+          kg: null,
+          product: null,
+          box_type: null,
+          bundles: null,
+          price: null,
+          order_number: null,
+          awb: null,
+          delivery_note: null,
+          invoice_number: null,
+          line: null,
+          search: null,
+        } as SpreadsheetRowDbRow))
+
+        return toEntity(s, fakeRows)
+      })
     )
   }
 
