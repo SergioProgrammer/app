@@ -77,12 +77,14 @@ export function SpreadsheetHeaderForm({ data, onChange }: SpreadsheetHeaderFormP
                       value={data[field.key]}
                       onChange={(e) => onChange({ [field.key]: e.target.value })}
                       className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm ${
-                        isEmpty ? 'border-red-300' : 'border-gray-200'
+                        isEmpty
+                          ? 'border-red-400 outline outline-2 outline-red-400 bg-red-50'
+                          : 'border-gray-200'
                       }`}
                     />
                   </label>
                   {isEmpty && (
-                    <span className="mt-1 flex items-center gap-1 text-xs text-red-600">
+                    <span className="mt-1 flex items-center gap-1 text-xs text-red-700 font-medium">
                       <AlertCircle className="h-3 w-3" />
                       Campo requerido
                     </span>
