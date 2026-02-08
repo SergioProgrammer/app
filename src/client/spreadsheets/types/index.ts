@@ -1,4 +1,4 @@
-export type SaveStatus = 'saved' | 'saving' | 'unsaved'
+export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'justSaved'
 
 export interface SpreadsheetRowClient {
   id: string
@@ -62,7 +62,7 @@ export type ColumnInputType = 'text' | 'number' | 'date'
 export const SPREADSHEET_COLUMNS = [
   { key: 'week', label: 'Semana', width: 80, inputType: 'text' as ColumnInputType },
   { key: 'invoiceDate', label: 'Fecha factura', width: 140, inputType: 'date' as ColumnInputType },
-  { key: 'date', label: 'Fecha', width: 140, inputType: 'date' as ColumnInputType },
+  { key: 'date', label: 'Fecha corte', width: 140, inputType: 'date' as ColumnInputType },
   { key: 'finalClient', label: 'Cliente final', width: 140, inputType: 'text' as ColumnInputType },
   { key: 'kg', label: 'Kg', width: 80, inputType: 'number' as ColumnInputType },
   { key: 'product', label: 'Producto', width: 140, inputType: 'text' as ColumnInputType },
@@ -78,6 +78,8 @@ export const SPREADSHEET_COLUMNS = [
 ] as const
 
 export type SpreadsheetColumnKey = (typeof SPREADSHEET_COLUMNS)[number]['key']
+
+export const REQUIRED_ROW_FIELDS: SpreadsheetColumnKey[] = ['product', 'kg', 'price']
 
 export const DEFAULT_HEADER: HeaderDataClient = {
   invoiceNumber: '',
@@ -120,12 +122,24 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
   search: '',
 }
 
+export function getWeekString(dateStr?: string): string {
+  const date = dateStr ? new Date(dateStr) : new Date()
+  if (isNaN(date.getTime())) return ''
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNr = (target.getUTCDay() + 6) % 7
+  target.setUTCDate(target.getUTCDate() - dayNr + 3)
+  const firstThursday = target.getTime()
+  const jan4 = new Date(Date.UTC(target.getUTCFullYear(), 0, 4)).getTime()
+  const weekNum = 1 + Math.round((firstThursday - jan4) / (7 * 86400000))
+  return `${target.getUTCFullYear()}${weekNum}`
+}
+
 export function emptyRow(position: number): SpreadsheetRowClient {
   const today = new Date().toISOString().slice(0, 10)
   return {
     id: crypto.randomUUID(),
     position,
-    week: '',
+    week: getWeekString(today),
     invoiceDate: today,
     date: today,
     finalClient: '',

@@ -1,21 +1,19 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, FileText, Loader2, Pencil } from 'lucide-react'
+import { ArrowLeft, Check, FileText, Loader2, Pencil, X } from 'lucide-react'
 import Link from 'next/link'
 import { useSpreadsheet } from '@/client/spreadsheets/hooks/useSpreadsheet'
 import { SpreadsheetToolbar } from '@/client/spreadsheets/components/SpreadsheetToolbar'
 import { SpreadsheetTable } from '@/client/spreadsheets/components/SpreadsheetTable'
 import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/SpreadsheetHeaderForm'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
+import { Toast } from '@/client/spreadsheets/components/Toast'
 import * as api from '@/client/spreadsheets/services/spreadsheetApi'
-import type { SpreadsheetColumnKey } from '@/client/spreadsheets/types'
-import { SPREADSHEET_COLUMNS } from '@/client/spreadsheets/types'
+import { REQUIRED_ROW_FIELDS } from '@/client/spreadsheets/types'
 
-const REQUIRED_ROW_FIELDS: SpreadsheetColumnKey[] = SPREADSHEET_COLUMNS
-  .filter((c) => c.key !== 'search')
-  .map((c) => c.key)
+type GenerateState = 'idle' | 'generating' | 'success' | 'error'
 
 export default function EditarHojaPage() {
   const { id } = useParams<{ id: string }>()
@@ -39,24 +37,37 @@ export default function EditarHojaPage() {
     save,
   } = useSpreadsheet({ id })
 
-  const [generating, setGenerating] = useState(false)
-  const [generatedLinks, setGeneratedLinks] = useState<{
-    invoiceUrl: string | null
-    anexoUrl: string | null
-  } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [generateState, setGenerateState] = useState<GenerateState>('idle')
   const [headerReviewed, setHeaderReviewed] = useState(false)
+  const [toast, setToast] = useState<{
+    type: 'success' | 'error'
+    title: string
+    message?: string
+    links?: { label: string; href: string }[]
+  } | null>(null)
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+    }
+  }, [])
 
   const handleGenerate = useCallback(async () => {
-    setGenerating(true)
-    setError(null)
-    setGeneratedLinks(null)
+    setGenerateState('generating')
+    setToast(null)
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current)
+      resetTimerRef.current = null
+    }
     try {
       // Validar cabecera
       const missingHeaders = (Object.keys(headerData) as (keyof typeof headerData)[])
         .filter((k) => !headerData[k].trim())
       if (missingHeaders.length > 0) {
-        setError('Rellena todos los datos de cabecera antes de generar la factura.')
+        setGenerateState('error')
+        setToast({ type: 'error', title: 'Error de validación', message: 'Rellena todos los datos de cabecera antes de generar la factura.' })
+        resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
         return
       }
 
@@ -66,7 +77,9 @@ export default function EditarHojaPage() {
         return Object.values(fields).some((v) => v !== '')
       })
       if (dataRows.length === 0) {
-        setError('Añade al menos una fila con datos antes de generar la factura.')
+        setGenerateState('error')
+        setToast({ type: 'error', title: 'Error de validación', message: 'Añade al menos una fila con datos antes de generar la factura.' })
+        resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
         return
       }
 
@@ -75,17 +88,30 @@ export default function EditarHojaPage() {
         REQUIRED_ROW_FIELDS.some((key) => !String(r[key] ?? '').trim()),
       )
       if (incomplete) {
-        setError('Todas las filas deben tener todos los campos rellenos (excepto Búsqueda).')
+        setGenerateState('error')
+        setToast({ type: 'error', title: 'Error de validación', message: 'Cada fila debe tener al menos: Producto, Kg y Precio.' })
+        resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
         return
       }
 
       await save()
       const result = await api.generateInvoice(id)
-      setGeneratedLinks(result)
+
+      setGenerateState('success')
+      const links: { label: string; href: string }[] = []
+      if (result.invoiceUrl) links.push({ label: 'Ver factura', href: result.invoiceUrl })
+      if (result.anexoUrl) links.push({ label: 'Ver anexo IV', href: result.anexoUrl })
+      links.push({ label: 'Ver en historial de facturas', href: '/facturas/historial' })
+      setToast({ type: 'success', title: 'Factura generada', links })
+      resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al generar factura')
-    } finally {
-      setGenerating(false)
+      setGenerateState('error')
+      setToast({
+        type: 'error',
+        title: 'Error al generar',
+        message: err instanceof Error ? err.message : 'Error al generar factura',
+      })
+      resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
     }
   }, [id, save, headerData, rows])
 
@@ -107,8 +133,27 @@ export default function EditarHojaPage() {
     )
   }
 
+  const generateButtonClass =
+    generateState === 'success'
+      ? 'bg-emerald-600 hover:bg-emerald-600'
+      : generateState === 'error'
+        ? 'bg-red-600 hover:bg-red-600'
+        : generateState === 'generating'
+          ? 'bg-gray-400'
+          : 'bg-gray-900 hover:bg-gray-800'
+
   return (
     <div className="space-y-4">
+      {toast && (
+        <Toast
+          type={toast.type}
+          title={toast.title}
+          message={toast.message}
+          links={toast.links}
+          onDismiss={() => setToast(null)}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <Link
@@ -130,31 +175,6 @@ export default function EditarHojaPage() {
           </div>
         </div>
       </div>
-
-      {(error || generatedLinks) && (
-        <div className="space-y-2">
-          {error && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              {error}
-            </div>
-          )}
-          {generatedLinks && (
-            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              <span>Factura generada.</span>
-              {generatedLinks.invoiceUrl && (
-                <a href={generatedLinks.invoiceUrl} target="_blank" rel="noreferrer" className="font-semibold underline">
-                  Ver factura
-                </a>
-              )}
-              {generatedLinks.anexoUrl && (
-                <a href={generatedLinks.anexoUrl} target="_blank" rel="noreferrer" className="font-semibold underline">
-                  Ver anexo IV
-                </a>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       <SpreadsheetToolbar
         saveStatus={saveStatus}
@@ -180,26 +200,36 @@ export default function EditarHojaPage() {
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
 
       <div className="flex flex-col items-end gap-3">
-        <label className="flex items-center gap-2 text-sm text-gray-700">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
           <input
             type="checkbox"
             checked={headerReviewed}
             onChange={(e) => setHeaderReviewed(e.target.checked)}
-            className="rounded border-gray-300"
+            className="cursor-pointer rounded border-gray-300"
           />
           He revisado la sección Datos de cabecera
         </label>
         <button
           onClick={handleGenerate}
-          disabled={generating || !headerReviewed}
-          className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+          disabled={generateState === 'generating' || !headerReviewed}
+          className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium text-white transition-colors duration-300 disabled:cursor-not-allowed disabled:opacity-50 ${generateButtonClass}`}
         >
-          {generating ? (
+          {generateState === 'generating' ? (
             <Loader2 className="h-4 w-4 animate-spin" />
+          ) : generateState === 'success' ? (
+            <Check className="h-4 w-4" />
+          ) : generateState === 'error' ? (
+            <X className="h-4 w-4" />
           ) : (
             <FileText className="h-4 w-4" />
           )}
-          Generar factura
+          {generateState === 'generating'
+            ? 'Generando...'
+            : generateState === 'success'
+              ? 'Generado'
+              : generateState === 'error'
+                ? 'Fallo al generar'
+                : 'Generar factura'}
         </button>
       </div>
     </div>

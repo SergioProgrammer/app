@@ -10,10 +10,15 @@ interface UseAutoSaveOptions {
 export function useAutoSave({ onSave, debounceMs = 3000, enabled = true }: UseAutoSaveOptions) {
   const [status, setStatus] = useState<SaveStatus>('saved')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const justSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef(false)
 
   const markUnsaved = useCallback(() => {
     if (!enabled) return
+    if (justSavedTimerRef.current) {
+      clearTimeout(justSavedTimerRef.current)
+      justSavedTimerRef.current = null
+    }
     setStatus('unsaved')
 
     if (timerRef.current) {
@@ -25,7 +30,8 @@ export function useAutoSave({ onSave, debounceMs = 3000, enabled = true }: UseAu
       setStatus('saving')
       try {
         await onSave()
-        setStatus('saved')
+        setStatus('justSaved')
+        justSavedTimerRef.current = setTimeout(() => setStatus('saved'), 2000)
       } catch {
         setStatus('unsaved')
       } finally {
@@ -44,7 +50,8 @@ export function useAutoSave({ onSave, debounceMs = 3000, enabled = true }: UseAu
     setStatus('saving')
     try {
       await onSave()
-      setStatus('saved')
+      setStatus('justSaved')
+      justSavedTimerRef.current = setTimeout(() => setStatus('saved'), 2000)
     } catch {
       setStatus('unsaved')
     } finally {
@@ -63,10 +70,11 @@ export function useAutoSave({ onSave, debounceMs = 3000, enabled = true }: UseAu
     return () => window.removeEventListener('beforeunload', handler)
   }, [status])
 
-  // Limpiar timer al desmontar
+  // Limpiar timers al desmontar
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
+      if (justSavedTimerRef.current) clearTimeout(justSavedTimerRef.current)
     }
   }, [])
 

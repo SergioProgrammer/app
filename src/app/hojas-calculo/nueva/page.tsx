@@ -9,12 +9,7 @@ import { SpreadsheetToolbar } from '@/client/spreadsheets/components/Spreadsheet
 import { SpreadsheetTable } from '@/client/spreadsheets/components/SpreadsheetTable'
 import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/SpreadsheetHeaderForm'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
-import type { SpreadsheetColumnKey } from '@/client/spreadsheets/types'
-import { SPREADSHEET_COLUMNS } from '@/client/spreadsheets/types'
-
-const REQUIRED_ROW_FIELDS: SpreadsheetColumnKey[] = SPREADSHEET_COLUMNS
-  .filter((c) => c.key !== 'search')
-  .map((c) => c.key)
+import { REQUIRED_ROW_FIELDS } from '@/client/spreadsheets/types'
 
 export default function NuevaHojaPage() {
   const router = useRouter()
@@ -82,7 +77,7 @@ export default function NuevaHojaPage() {
         REQUIRED_ROW_FIELDS.some((key) => !String(r[key] ?? '').trim()),
       )
       if (incomplete) {
-        setError('Todas las filas deben tener todos los campos rellenos (excepto Búsqueda).')
+        setError('Cada fila debe tener al menos: Producto, Kg y Precio.')
         return
       }
 
@@ -151,19 +146,19 @@ export default function NuevaHojaPage() {
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
 
       <div className="flex flex-col items-end gap-3">
-        <label className="flex items-center gap-2 text-sm text-gray-700">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
           <input
             type="checkbox"
             checked={headerReviewed}
             onChange={(e) => setHeaderReviewed(e.target.checked)}
-            className="rounded border-gray-300"
+            className="cursor-pointer rounded border-gray-300"
           />
           He revisado la sección Datos de cabecera
         </label>
         <button
           onClick={handleGenerate}
           disabled={generating || !headerReviewed}
-          className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {generating ? (
             <Loader2 className="h-4 w-4 animate-spin" />

@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import type { HeaderDataClient } from '../types'
 
@@ -45,7 +45,7 @@ export function SpreadsheetHeaderForm({ data, onChange }: SpreadsheetHeaderFormP
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 rounded-2xl"
+        className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 rounded-2xl"
       >
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-gray-900">Datos de cabecera</h2>
@@ -63,20 +63,33 @@ export function SpreadsheetHeaderForm({ data, onChange }: SpreadsheetHeaderFormP
       {open && (
         <div className="border-t border-gray-100 px-4 pb-4 pt-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {HEADER_FIELDS.map((field) => (
-              <label
-                key={field.key}
-                className={`text-sm text-gray-700 ${field.colSpan === 2 ? 'sm:col-span-2' : ''}`}
-              >
-                {field.label}
-                <input
-                  type={field.type === 'date' ? 'date' : 'text'}
-                  value={data[field.key]}
-                  onChange={(e) => onChange({ [field.key]: e.target.value })}
-                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                />
-              </label>
-            ))}
+            {HEADER_FIELDS.map((field) => {
+              const isEmpty = !data[field.key].trim()
+              return (
+                <div
+                  key={field.key}
+                  className={field.colSpan === 2 ? 'sm:col-span-2' : ''}
+                >
+                  <label className="text-sm text-gray-700">
+                    {field.label}
+                    <input
+                      type={field.type === 'date' ? 'date' : 'text'}
+                      value={data[field.key]}
+                      onChange={(e) => onChange({ [field.key]: e.target.value })}
+                      className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm ${
+                        isEmpty ? 'border-red-300' : 'border-gray-200'
+                      }`}
+                    />
+                  </label>
+                  {isEmpty && (
+                    <span className="mt-1 flex items-center gap-1 text-xs text-red-600">
+                      <AlertCircle className="h-3 w-3" />
+                      Campo requerido
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

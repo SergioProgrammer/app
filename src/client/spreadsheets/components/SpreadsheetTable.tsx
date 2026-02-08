@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from 'react'
 import type { SpreadsheetColumnKey, SpreadsheetRowClient } from '../types'
-import { EXAMPLE_ROW, SPREADSHEET_COLUMNS } from '../types'
+import { EXAMPLE_ROW, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
 
 interface SpreadsheetTableProps {
   rows: SpreadsheetRowClient[]
@@ -92,15 +92,19 @@ export function SpreadsheetTable({
               />
             </th>
             <th className="w-10 px-2 py-2 text-center text-xs font-medium text-gray-400">#</th>
-            {SPREADSHEET_COLUMNS.map((col) => (
-              <th
-                key={col.key}
-                className="px-1 py-2 text-left text-xs font-medium text-gray-500"
-                style={{ minWidth: col.width }}
-              >
-                {col.label}
-              </th>
-            ))}
+            {SPREADSHEET_COLUMNS.map((col) => {
+              const isRequired = REQUIRED_ROW_FIELDS.includes(col.key)
+              return (
+                <th
+                  key={col.key}
+                  className={`px-1 py-2 text-left text-xs font-medium ${isRequired ? 'text-gray-700' : 'text-gray-500'}`}
+                  style={{ minWidth: col.width }}
+                >
+                  {col.label}
+                  {isRequired && <span className="ml-0.5 text-red-400">*</span>}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>

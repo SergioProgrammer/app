@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { HeaderDataClient, SpreadsheetRowClient } from '../types'
-import { DEFAULT_HEADER, emptyRow } from '../types'
+import { DEFAULT_HEADER, emptyRow, getWeekString } from '../types'
 import * as api from '../services/spreadsheetApi'
 import { useAutoSave } from './useAutoSave'
 
@@ -125,6 +125,10 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       setRows((prev) => {
         const updated = [...prev]
         updated[index] = { ...updated[index], [field]: value }
+        // Auto-calcular semana cuando se actualiza invoiceDate
+        if (field === 'invoiceDate') {
+          updated[index].week = getWeekString(value)
+        }
         return updated
       })
       markUnsaved()
