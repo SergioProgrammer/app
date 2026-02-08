@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **ProcesIA** - An agricultural label automation platform for Spanish produce suppliers. Generates supermarket-specific product labels (etiquetas) and delivery notes (albaranes) for major chains (Mercadona, Aldi, Lidl, Hiperdino, Kanali). Uses AI vision to parse order PDFs/images and automates label generation with precise formatting requirements.
 
+The platform also includes a **Spreadsheet module** (Hojas de Calculo) that allows users to create/edit spreadsheets with agricultural order data and generate invoices (facturas) + Anexo IV PDFs directly from them.
+
 ## Development Commands
 
 ### Essential Commands
@@ -42,10 +44,40 @@ import { renderLabelPdf } from '@/server/label-renderer'
 ```
 src/
 ├── app/                    # Next.js App Router pages & API routes
-│   ├── api/                # 12 API endpoints (vision, storage, stock, n8n)
+│   ├── api/                # API endpoints (vision, storage, stock, n8n, spreadsheets)
+│   │   └── spreadsheets/   # Spreadsheet CRUD + invoice generation
+│   │       ├── route.ts                    # POST (create) + GET (list)
+│   │       ├── trash/route.ts              # GET (list trash)
+│   │       └── [id]/
+│   │           ├── route.ts                # GET + PATCH + DELETE
+│   │           ├── archive/route.ts        # POST (soft delete)
+│   │           ├── restore/route.ts        # POST (restore)
+│   │           └── generate-invoice/route.ts # POST (generate invoice PDF)
+│   ├── hojas-calculo/      # Spreadsheet pages
+│   │   ├── page.tsx                        # List (server component)
+│   │   ├── nueva/page.tsx                  # Create new (client)
+│   │   ├── [id]/page.tsx                   # Edit existing (client)
+│   │   └── papelera/page.tsx               # Trash view
 │   ├── panel/              # Main user dashboard
 │   ├── pedidos-vision/     # AI order parsing UI
 │   └── [other routes]
+├── client/                 # Feature-specific client code (hooks, components, services)
+│   └── spreadsheets/       # Spreadsheet module (client-side)
+│       ├── types/index.ts                  # Types, columns, defaults, example row
+│       ├── hooks/
+│       │   ├── useSpreadsheet.ts           # Main hook (state + operations)
+│       │   ├── useAutoSave.ts              # Auto-save with debounce
+│       │   └── useSpreadsheetList.ts       # List hook
+│       ├── services/
+│       │   └── spreadsheetApi.ts           # HTTP API client
+│       └── components/
+│           ├── SpreadsheetTable.tsx         # Editable grid (15 columns)
+│           ├── SpreadsheetToolbar.tsx       # Action bar
+│           ├── SpreadsheetHeaderForm.tsx    # Invoice header form (18 fields)
+│           ├── PasteFromExcel.tsx           # Paste from Excel
+│           ├── SpreadsheetList.tsx          # List view
+│           ├── SpreadsheetCard.tsx          # Individual card
+│           └── TrashBin.tsx                 # Trash view
 ├── components/             # React components (minimal - most UI is colocated)
 ├── lib/                    # Client-side utilities & config
 │   ├── panel-config.ts     # Dashboard configuration & templates
@@ -58,15 +90,53 @@ src/
 │   ├── vision-order-parser.ts # OpenAI Vision parsing
 │   ├── supabase-storage.ts # Storage integration
 │   ├── inventory.ts        # Stock management
-│   └── renderers/          # Specialized label renderers
-│       ├── aldi-renderer.ts
-│       ├── lidl-renderer.ts
-│       ├── hiperdino-renderer.ts
-│       └── kanali-renderer.ts
+│   ├── renderers/          # Specialized label renderers
+│   │   ├── aldi-renderer.ts
+│   │   ├── lidl-renderer.ts
+│   │   ├── hiperdino-renderer.ts
+│   │   └── kanali-renderer.ts
+│   └── spreadsheets/       # Spreadsheet module (server-side, DDD pattern)
+│       ├── domain/
+│       │   ├── entities/Spreadsheet.ts
+│       │   ├── entities/SpreadsheetRow.ts  # Includes toInvoiceItem()
+│       │   ├── repositories/SpreadsheetRepository.ts
+│       │   └── types.ts
+│       ├── application/
+│       │   ├── dto/SpreadsheetRequest.ts
+│       │   ├── dto/SpreadsheetResponse.ts
+│       │   └── use-cases/
+│       │       ├── CreateSpreadsheet.ts
+│       │       ├── UpdateSpreadsheet.ts
+│       │       ├── ArchiveSpreadsheet.ts
+│       │       ├── RestoreSpreadsheet.ts
+│       │       ├── DeleteSpreadsheet.ts
+│       │       └── GenerateInvoiceFromSpreadsheet.ts
+│       └── persistence/
+│           └── SupabaseSpreadsheetRepository.ts
 ├── utils/supabase/         # Supabase client initialization
 ├── types/                  # TypeScript type definitions
 └── workflows/              # N8N workflow templates (JSON)
 ```
+
+### Feature Module Pattern (`src/client/`)
+
+New features follow the pattern in `src/client/<feature>/`:
+- **types/**: TypeScript types, column definitions, defaults
+- **hooks/**: React hooks for state management and operations
+- **services/**: API client functions (HTTP calls to `src/app/api/`)
+- **components/**: React components specific to the feature
+
+The server counterpart lives in `src/server/<feature>/` using DDD:
+- **domain/**: Entities, repository interfaces, domain types
+- **application/**: DTOs, use cases (business logic)
+- **persistence/**: Repository implementations (Supabase)
+
+### `.ai/` Directory
+
+The `.ai/` directory contains internal project documentation (not shipped to production):
+- **`.ai/context/`**: Session context files documenting what was built and decisions made
+- **`.ai/plans/`**: Implementation plans written before coding (reviewed and approved by devs)
+- **`.ai/meetings/`**: Meeting transcripts and summaries with extracted tasks
 
 ## Critical Server-Side Rendering Notes
 
@@ -164,6 +234,11 @@ File paths follow pattern: `{bucket}/{folder}/{filename}_{timestamp}.pdf`
 ### Database Tables
 - `pedidos_subidos` - Uploaded order files metadata
 - `inventory` - Product stock levels (real-time subscriptions)
+- `facturas` - Generated invoices (invoice_path, anexo_path, metadata)
+- `spreadsheets` - Spreadsheet metadata (id, user_id, name, header_data JSONB, archived_at, timestamps)
+- `spreadsheets_rows` - Spreadsheet row data (position, week, dates, kg, product, price, etc.)
+  - Numeric columns: `kg` (numeric), `bundles` (integer), `price` (numeric)
+  - RLS: All operations filtered by `auth.uid() = user_id`
 
 Authentication uses Supabase Auth (email/password + OAuth2).
 
@@ -187,6 +262,17 @@ Authentication uses Supabase Auth (email/password + OAuth2).
 ### Stock Management
 - `GET /api/stock/list` - Get inventory levels
 - `POST /api/stock/adjust` - Adjust inventory (add/subtract units)
+
+### Spreadsheets
+- `POST /api/spreadsheets` - Create new spreadsheet
+- `GET /api/spreadsheets` - List user's spreadsheets
+- `GET /api/spreadsheets/trash` - List archived spreadsheets
+- `GET /api/spreadsheets/[id]` - Get spreadsheet with rows
+- `PATCH /api/spreadsheets/[id]` - Update spreadsheet + rows
+- `DELETE /api/spreadsheets/[id]` - Permanently delete
+- `POST /api/spreadsheets/[id]/archive` - Soft delete (archive)
+- `POST /api/spreadsheets/[id]/restore` - Restore from archive
+- `POST /api/spreadsheets/[id]/generate-invoice` - Generate invoice PDF + Anexo IV
 
 ### Other
 - `POST /api/n8n/create` - Create N8N email automation workflow
@@ -305,10 +391,16 @@ const channel = supabase
 6. **Aldi trace numbers** - Auto-generated as E00001, E00002, ... E99999 (5 digits)
 7. **Lidl labels** - Always generates 3 PDFs (1 base + 2 white labels)
 8. **Environment variables** - Create `.env.local` with all required vars (see README.md)
+9. **Spreadsheet data types** - API returns numeric fields (`kg`, `bundles`, `price`) as JavaScript numbers, but client stores everything as strings. Always wrap with `String()` when loading from API to avoid `.trim()` crashes
+10. **Invoice from spreadsheet** - Uses server Supabase client (not browser client) to avoid RLS issues when writing to `facturas` table from API routes
 
 ## Repository Conventions
 
-- **Language**: Spanish for UI text, comments, and variable names related to domain (e.g., `fechaEnvasado`, `lote`)
-- **Commit messages**: Recent commits use format `commit_description` (lowercase, underscores)
+- **UI text**: Spanish (labels, error messages, user-facing strings)
+- **Code**: English (variables, functions, types, technical comments)
+- **Commit messages**: Conventional commits in English (e.g., `feat: add spreadsheet UI components`, `fix: resolve trim crash`)
+- **Branches/Issues**: English titles to avoid problems with accents and special characters
+- **Plans**: Always write implementation plans in `.ai/plans/` and get developer approval BEFORE implementing
 - **No tests**: Manual testing via UI is the current workflow
 - **TypeScript**: Strict mode enabled, but `@ts-nocheck` used in `label-renderer.ts` due to pdf-lib types
+- **GitHub Board**: Columns: Ready, In Progress, Review
