@@ -212,7 +212,7 @@ export default function EditarHojaPage() {
         <button
           onClick={handleGenerate}
           disabled={generateState === 'generating' || !headerReviewed}
-          className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium text-white transition-colors duration-300 disabled:cursor-not-allowed disabled:opacity-50 ${generateButtonClass}`}
+          className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium text-white transition-all duration-500 disabled:cursor-not-allowed disabled:opacity-50 ${generateButtonClass}`}
         >
           {generateState === 'generating' ? (
             <Loader2 className="h-4 w-4 animate-spin" />
