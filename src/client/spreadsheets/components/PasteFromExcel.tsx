@@ -13,12 +13,12 @@ interface PasteFromExcelProps {
 const COLUMN_ALIASES: Record<string, SpreadsheetColumnKey> = {
   semana: 'week',
   week: 'week',
-  'fecha factura': 'invoiceDate',
-  'invoice date': 'invoiceDate',
-  'fecha corte': 'date',
+  'fechafactura': 'invoiceDate',
+  'invoicedate': 'invoiceDate',
+  'fechacorte': 'date',
   fecha: 'date',
   date: 'date',
-  'cliente final': 'finalClient',
+  'clientefinal': 'finalClient',
   cliente: 'finalClient',
   client: 'finalClient',
   kg: 'kg',
@@ -26,27 +26,27 @@ const COLUMN_ALIASES: Record<string, SpreadsheetColumnKey> = {
   weight: 'kg',
   producto: 'product',
   product: 'product',
-  'tipo caja': 'boxType',
-  'box type': 'boxType',
+  'tipocaja': 'boxType',
+  'boxtype': 'boxType',
   caja: 'boxType',
   bultos: 'bundles',
   bundles: 'bundles',
   precio: 'price',
   price: 'price',
-  'n pedido': 'orderNumber',
-  'no pedido': 'orderNumber',
-  'num pedido': 'orderNumber',
+  'npedido': 'orderNumber',
+  'nopedido': 'orderNumber',
+  'numpedido': 'orderNumber',
   pedido: 'orderNumber',
-  'order number': 'orderNumber',
+  'ordernumber': 'orderNumber',
   order: 'orderNumber',
   awb: 'awb',
   albaran: 'deliveryNote',
-  'delivery note': 'deliveryNote',
-  'n factura': 'invoiceNumber',
-  'no factura': 'invoiceNumber',
-  'num factura': 'invoiceNumber',
+  'deliverynote': 'deliveryNote',
+  'nfactura': 'invoiceNumber',
+  'nofactura': 'invoiceNumber',
+  'numfactura': 'invoiceNumber',
   factura: 'invoiceNumber',
-  'invoice number': 'invoiceNumber',
+  'invoicenumber': 'invoiceNumber',
   invoice: 'invoiceNumber',
   linea: 'line',
   line: 'line',
@@ -61,8 +61,7 @@ function normalizeLabel(label: string): string {
     .trim()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9]/g, '')  // Remove ALL non-alphanumeric (including spaces)
 }
 
 function matchColumnHeader(header: string): SpreadsheetColumnKey | null {
@@ -279,8 +278,8 @@ export function PasteFromExcel({ onPaste }: PasteFromExcelProps) {
         <div className="space-y-3 border-t border-gray-100 px-4 pb-4 pt-3">
           <p className="text-xs text-gray-500">
             Copia filas desde Excel y pégalas aquí. Si la primera fila contiene cabeceras,
-            las columnas se detectan automáticamente. Nombres reconocidos:{' '}
-            {ALL_RECOGNIZED_LABELS.join(', ')}.
+            las columnas se detectan automáticamente (columnas no reconocidas se ignoran).
+            Nombres reconocidos: {ALL_RECOGNIZED_LABELS.join(', ')}.
           </p>
           <textarea
             value={rawText}
