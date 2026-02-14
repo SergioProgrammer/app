@@ -107,11 +107,13 @@ export class GenerateInvoiceFromSpreadsheet {
         netWeightKg: totals.totalNetKg,
         form: header.productForm ?? '',
         botanicalName: header.botanicalName ?? '',
-        packageType: '',
-        packageMark: '',
+        packageType: 'CAJAS BOX',
+        packageMark: 'RTDOS',
         bundles: totals.totalBundles,
-        transportId: header.awb ?? '',
-        location: '',
+        transportId: header.flightNumber && header.awb
+          ? `${header.flightNumber} / AWB ${header.awb}`
+          : header.awb ?? header.flightNumber ?? '',
+        location: 'S/C de TFE',
         dateText: payload.invoiceDate,
         invoiceNumber: payload.invoiceNumber,
         items: invoiceItems.map((item) => ({
