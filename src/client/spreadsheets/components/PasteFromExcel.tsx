@@ -29,6 +29,10 @@ const COLUMN_ALIASES: Record<string, SpreadsheetColumnKey> = {
   'tipocaja': 'boxType',
   'boxtype': 'boxType',
   caja: 'boxType',
+  abono: 'abono',
+  'kgporunidad': 'abono',
+  'pesounidad': 'abono',
+  'pesoporunidad': 'abono',
   bultos: 'bundles',
   bundles: 'bundles',
   precio: 'price',
@@ -117,6 +121,7 @@ function emptyRowData(): Omit<SpreadsheetRowClient, 'id' | 'position'> {
     kg: '',
     product: '',
     boxType: '',
+    abono: '',
     bundles: '',
     price: '',
     orderNumber: '',
@@ -182,6 +187,15 @@ function parseSpreadsheetPaste(text: string): {
       row.week = getWeekString(row.invoiceDate)
     }
 
+    // Recalcular bundles si hay kg y abono
+    if (row.kg && row.abono) {
+      const kgNum = parseFloat(row.kg)
+      const abonoNum = parseFloat(row.abono)
+      if (!isNaN(kgNum) && !isNaN(abonoNum) && abonoNum > 0) {
+        row.bundles = String(Math.ceil(kgNum / abonoNum))
+      }
+    }
+
     if (hasData) rows.push(row)
   }
 
@@ -200,6 +214,7 @@ function mapParsedRow(
     kg: parsed.netWeightKg != null ? String(parsed.netWeightKg) : '',
     product: (parsed.product as string) ?? '',
     boxType: '',
+    abono: '',
     bundles: parsed.bundles != null ? String(parsed.bundles) : '',
     price: parsed.price != null ? String(parsed.price) : '',
     orderNumber: '',
@@ -215,6 +230,7 @@ const ALL_RECOGNIZED_LABELS = [
   ...SPREADSHEET_COLUMNS.map((c) => c.label),
   'Peso', 'Weight', 'Product', 'Client', 'Bundles', 'Price',
   'Invoice', 'Order', 'Line', 'Search', 'Pedido', 'Factura',
+  'Kg por unidad', 'Peso unidad',
 ]
 
 export function PasteFromExcel({ onPaste }: PasteFromExcelProps) {

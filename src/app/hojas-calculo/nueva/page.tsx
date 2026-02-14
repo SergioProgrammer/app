@@ -9,7 +9,25 @@ import { SpreadsheetToolbar } from '@/client/spreadsheets/components/Spreadsheet
 import { SpreadsheetTable } from '@/client/spreadsheets/components/SpreadsheetTable'
 import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/SpreadsheetHeaderForm'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
+import type { SpreadsheetRowClient } from '@/client/spreadsheets/types'
 import { REQUIRED_ROW_FIELDS } from '@/client/spreadsheets/types'
+
+function validateDeliveryNotes(rows: SpreadsheetRowClient[]): string | null {
+  const deliveryNotes = rows
+    .map((r) => r.deliveryNote?.trim())
+    .filter((note) => note && note !== '')
+
+  if (deliveryNotes.length === 0) {
+    return null // Sin albaranes, no hay problema
+  }
+
+  const uniqueNotes = new Set(deliveryNotes)
+  if (uniqueNotes.size > 1) {
+    return `Se encontraron múltiples albaranes diferentes: ${Array.from(uniqueNotes).join(', ')}. Todos los albaranes deben ser iguales.`
+  }
+
+  return null // Un único albarán o todos iguales
+}
 
 export default function NuevaHojaPage() {
   const router = useRouter()
@@ -77,7 +95,14 @@ export default function NuevaHojaPage() {
         REQUIRED_ROW_FIELDS.some((key) => !String(r[key] ?? '').trim()),
       )
       if (incomplete) {
-        setError('Cada fila debe tener al menos: Producto, Kg y Precio.')
+        setError('Cada fila debe tener al menos: Producto, Kg, Precio y Abono.')
+        return
+      }
+
+      // Validar albaranes
+      const deliveryNoteError = validateDeliveryNotes(dataRows)
+      if (deliveryNoteError) {
+        setError(deliveryNoteError)
         return
       }
 

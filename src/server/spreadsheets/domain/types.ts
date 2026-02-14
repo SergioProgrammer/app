@@ -6,6 +6,7 @@ export interface SpreadsheetRowData {
   kg: number | null
   product: string | null
   boxType: string | null
+  abono: number | null
   bundles: number | null
   price: number | null
   orderNumber: string | null

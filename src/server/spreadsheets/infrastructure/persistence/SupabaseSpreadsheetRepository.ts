@@ -24,6 +24,7 @@ interface SpreadsheetRowDbRow {
   kg: number | null
   product: string | null
   box_type: string | null
+  abono: number | null
   bundles: number | null
   price: number | null
   order_number: string | null
@@ -43,6 +44,7 @@ function dbRowToData(row: SpreadsheetRowDbRow): SpreadsheetRowData {
     kg: row.kg,
     product: row.product,
     boxType: row.box_type,
+    abono: row.abono,
     bundles: row.bundles,
     price: row.price,
     orderNumber: row.order_number,
@@ -68,6 +70,7 @@ function dataToDbRow(
     kg: row.data.kg,
     product: row.data.product,
     box_type: row.data.boxType,
+    abono: row.data.abono,
     bundles: row.data.bundles,
     price: row.data.price,
     order_number: row.data.orderNumber,
@@ -157,6 +160,7 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
           kg: null,
           product: null,
           box_type: null,
+          abono: null,
           bundles: null,
           price: null,
           order_number: null,
@@ -208,6 +212,7 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
           kg: null,
           product: null,
           box_type: null,
+          abono: null,
           bundles: null,
           price: null,
           order_number: null,

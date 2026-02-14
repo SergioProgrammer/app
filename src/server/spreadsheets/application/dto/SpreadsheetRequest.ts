@@ -16,6 +16,7 @@ const RowSchema = z.object({
   kg: z.number().nullable().default(null),
   product: z.string().nullable().default(null),
   boxType: z.string().nullable().default(null),
+  abono: z.number().nullable().default(null),
   bundles: z.number().int().nullable().default(null),
   price: z.number().nullable().default(null),
   orderNumber: z.string().nullable().default(null),

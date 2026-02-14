@@ -11,9 +11,27 @@ import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/Spreadsh
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
 import { Toast } from '@/client/spreadsheets/components/Toast'
 import * as api from '@/client/spreadsheets/services/spreadsheetApi'
+import type { SpreadsheetRowClient } from '@/client/spreadsheets/types'
 import { REQUIRED_ROW_FIELDS } from '@/client/spreadsheets/types'
 
 type GenerateState = 'idle' | 'generating' | 'success' | 'error'
+
+function validateDeliveryNotes(rows: SpreadsheetRowClient[]): string | null {
+  const deliveryNotes = rows
+    .map((r) => r.deliveryNote?.trim())
+    .filter((note) => note && note !== '')
+
+  if (deliveryNotes.length === 0) {
+    return null // Sin albaranes, no hay problema
+  }
+
+  const uniqueNotes = new Set(deliveryNotes)
+  if (uniqueNotes.size > 1) {
+    return `Se encontraron múltiples albaranes diferentes: ${Array.from(uniqueNotes).join(', ')}. Todos los albaranes deben ser iguales.`
+  }
+
+  return null // Un único albarán o todos iguales
+}
 
 export default function EditarHojaPage() {
   const { id } = useParams<{ id: string }>()
@@ -89,7 +107,16 @@ export default function EditarHojaPage() {
       )
       if (incomplete) {
         setGenerateState('error')
-        setToast({ type: 'error', title: 'Error de validación', message: 'Cada fila debe tener al menos: Producto, Kg y Precio.' })
+        setToast({ type: 'error', title: 'Error de validación', message: 'Cada fila debe tener al menos: Producto, Kg, Precio y Abono.' })
+        resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
+        return
+      }
+
+      // Validar albaranes
+      const deliveryNoteError = validateDeliveryNotes(dataRows)
+      if (deliveryNoteError) {
+        setGenerateState('error')
+        setToast({ type: 'error', title: 'Error de validación', message: deliveryNoteError })
         resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
         return
       }

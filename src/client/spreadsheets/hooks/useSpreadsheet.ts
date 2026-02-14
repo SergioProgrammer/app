@@ -39,6 +39,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
           kg: String(r.kg ?? ''),
           product: String(r.product ?? ''),
           boxType: String(r.boxType ?? ''),
+          abono: String(r.abono ?? ''),
           bundles: String(r.bundles ?? ''),
           price: String(r.price ?? ''),
           orderNumber: String(r.orderNumber ?? ''),
@@ -80,6 +81,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
           kg: r.kg ? Number(r.kg) : null,
           product: r.product || null,
           boxType: r.boxType || null,
+          abono: r.abono ? Number(r.abono) : null,
           bundles: r.bundles ? Number(r.bundles) : null,
           price: r.price ? Number(r.price) : null,
           orderNumber: r.orderNumber || null,
@@ -120,6 +122,13 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   })
 
   // Modificaciones de filas
+  const calculateBundles = useCallback((kg: string, abono: string): string => {
+    const kgNum = parseFloat(kg)
+    const abonoNum = parseFloat(abono)
+    if (isNaN(kgNum) || isNaN(abonoNum) || abonoNum <= 0) return ''
+    return String(Math.ceil(kgNum / abonoNum))
+  }, [])
+
   const updateRow = useCallback(
     (index: number, field: keyof SpreadsheetRowClient, value: string) => {
       setRows((prev) => {
@@ -129,11 +138,18 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
         if (field === 'invoiceDate') {
           updated[index].week = getWeekString(value)
         }
+        // Auto-calcular bundles cuando se actualiza kg o abono
+        if (field === 'kg' || field === 'abono') {
+          updated[index].bundles = calculateBundles(
+            updated[index].kg,
+            updated[index].abono
+          )
+        }
         return updated
       })
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, calculateBundles],
   )
 
   const addRow = useCallback(() => {

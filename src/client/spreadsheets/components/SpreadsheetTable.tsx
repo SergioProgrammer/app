@@ -157,7 +157,11 @@ export function SpreadsheetTable({
                     onKeyDown={(e) => handleKeyDown(e, rowIdx, colIdx)}
                     onFocus={() => onActiveRowChange?.(rowIdx)}
                     onBlur={() => onActiveRowChange?.(null)}
-                    className="w-full rounded border-0 bg-transparent px-1.5 py-1 text-sm text-gray-900 outline-none focus:ring-1 focus:ring-blue-400"
+                    readOnly={col.key === 'bundles'}
+                    title={col.key === 'bundles' ? 'Calculado automáticamente: Kg / Abono (redondeado)' : undefined}
+                    className={`w-full rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
+                      col.key === 'bundles' ? 'cursor-not-allowed bg-gray-50 text-gray-500' : 'bg-transparent text-gray-900'
+                    }`}
                     style={{ minWidth: col.width - 8 }}
                   />
                 </td>

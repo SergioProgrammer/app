@@ -10,6 +10,7 @@ export interface SpreadsheetRowClient {
   kg: string
   product: string
   boxType: string
+  abono: string
   bundles: string
   price: string
   orderNumber: string
@@ -67,6 +68,7 @@ export const SPREADSHEET_COLUMNS = [
   { key: 'kg', label: 'Kg', width: 80, inputType: 'number' as ColumnInputType },
   { key: 'product', label: 'Producto', width: 140, inputType: 'text' as ColumnInputType },
   { key: 'boxType', label: 'Tipo caja', width: 100, inputType: 'text' as ColumnInputType },
+  { key: 'abono', label: 'Abono', width: 80, inputType: 'number' as ColumnInputType },
   { key: 'bundles', label: 'Bultos', width: 70, inputType: 'number' as ColumnInputType },
   { key: 'price', label: 'Precio', width: 90, inputType: 'number' as ColumnInputType },
   { key: 'orderNumber', label: 'Nº pedido', width: 100, inputType: 'text' as ColumnInputType },
@@ -79,7 +81,7 @@ export const SPREADSHEET_COLUMNS = [
 
 export type SpreadsheetColumnKey = (typeof SPREADSHEET_COLUMNS)[number]['key']
 
-export const REQUIRED_ROW_FIELDS: SpreadsheetColumnKey[] = ['product', 'kg', 'price']
+export const REQUIRED_ROW_FIELDS: SpreadsheetColumnKey[] = ['product', 'kg', 'price', 'abono']
 
 export const DEFAULT_HEADER: HeaderDataClient = {
   invoiceNumber: '',
@@ -112,7 +114,8 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
   kg: '850',
   product: 'BASIL/ALBAHACA 1 KG',
   boxType: '1 kg',
-  bundles: '180',
+  abono: '5',
+  bundles: '170',
   price: '7.5',
   orderNumber: '20261',
   awb: '996-13826540',
@@ -147,6 +150,7 @@ export function emptyRow(position: number): SpreadsheetRowClient {
     kg: '',
     product: '',
     boxType: '',
+    abono: '',
     bundles: '',
     price: '',
     orderNumber: '',

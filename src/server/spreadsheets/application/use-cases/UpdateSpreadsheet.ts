@@ -38,6 +38,7 @@ export class UpdateSpreadsheet {
             kg: row.kg ?? null,
             product: row.product ?? null,
             boxType: row.boxType ?? null,
+            abono: row.abono ?? null,
             bundles: row.bundles ?? null,
             price: row.price ?? null,
             orderNumber: row.orderNumber ?? null,
