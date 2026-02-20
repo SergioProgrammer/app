@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/utils/supabase/client'
 
 export interface UploadInvoiceOptions {
@@ -15,8 +16,9 @@ async function uploadToStorage(
   invoiceDate: string,
   bucketName = 'facturas',
   prefix = bucketName,
+  supabaseClient?: SupabaseClient,
 ) {
-  const supabase = createClient()
+  const supabase = supabaseClient ?? createClient()
   const parsedDate = invoiceDate ? new Date(invoiceDate) : null
   const dateObj = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : new Date()
   const year = String(dateObj.getFullYear())
@@ -54,13 +56,19 @@ async function uploadToStorage(
   return { supabase, path, publicUrl, signedUrl }
 }
 
-export async function uploadInvoicePdf(bytes: Uint8Array, fileName: string, options: UploadInvoiceOptions) {
+export async function uploadInvoicePdf(
+  bytes: Uint8Array,
+  fileName: string,
+  options: UploadInvoiceOptions,
+  supabaseClient?: SupabaseClient,
+) {
   const { supabase, path, publicUrl, signedUrl } = await uploadToStorage(
     bytes,
     fileName,
     options.invoiceDate,
     'facturas',
     'facturas',
+    supabaseClient,
   )
 
   try {
@@ -84,7 +92,12 @@ export async function uploadInvoicePdf(bytes: Uint8Array, fileName: string, opti
   }
 }
 
-export async function uploadSupplementPdf(bytes: Uint8Array, fileName: string, invoiceDate: string) {
-  const { path, publicUrl, signedUrl } = await uploadToStorage(bytes, fileName, invoiceDate, 'informe', 'informe')
+export async function uploadSupplementPdf(
+  bytes: Uint8Array,
+  fileName: string,
+  invoiceDate: string,
+  supabaseClient?: SupabaseClient,
+) {
+  const { path, publicUrl, signedUrl } = await uploadToStorage(bytes, fileName, invoiceDate, 'informe', 'informe', supabaseClient)
   return { path, publicUrl, signedUrl, bucket: 'informe' }
 }
