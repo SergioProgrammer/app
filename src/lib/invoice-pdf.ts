@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib'
+import { LOGO_BASE64 } from './logo-base64'
 
 export interface InvoiceParty {
   name: string
@@ -97,19 +98,16 @@ function wrapText(line: string, maxWidth: number, font: PDFFont, size: number): 
 
 async function embedLogo(pdfDoc: PDFDocument): Promise<{ width: number; height: number; bytes: Uint8Array } | null> {
   try {
-    const baseUrl =
-      typeof window !== 'undefined'
-        ? ''
-        : process.env.NEXT_PUBLIC_SITE_URL
-        ? process.env.NEXT_PUBLIC_SITE_URL
-        : ''
-    const url = `${baseUrl}/logos/logoycoward.png`
-    const response = await fetch(url)
-    if (!response.ok) return null
-    const buffer = await response.arrayBuffer()
-    const png = await pdfDoc.embedPng(buffer)
+    // Decode base64 to bytes
+    const binaryString = atob(LOGO_BASE64)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+
+    const png = await pdfDoc.embedPng(bytes)
     const dims = png.scale(0.34)
-    return { width: dims.width, height: dims.height, bytes: new Uint8Array(buffer) }
+    return { width: dims.width, height: dims.height, bytes }
   } catch {
     return null
   }
