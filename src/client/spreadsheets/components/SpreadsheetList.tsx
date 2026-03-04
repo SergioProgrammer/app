@@ -153,34 +153,23 @@ interface DayColumnProps {
   onCreateForDay: (day: DayOfWeek) => void
 }
 
-function DayColumn({ day, spreadsheets, sortBy, onToggleSort, onClickCard, onArchive, onCreateForDay }: DayColumnProps) {
+function DayColumn({ day, spreadsheets, sortBy, onToggleSort, onClickCard, onArchive, onCreateForDay, isFirst }: DayColumnProps & { isFirst?: boolean }) {
   const [collapsed, setCollapsed] = useState(false)
   const sorted = useMemo(() => sortSpreadsheets(spreadsheets, sortBy), [spreadsheets, sortBy])
 
   return (
-    <div className="flex flex-col lg:pl-6 first:lg:pl-0">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="flex items-center gap-1.5 text-base font-bold text-gray-900 lg:cursor-default"
-          >
-            {day.label}
-            <span className="text-sm font-normal text-gray-400">({spreadsheets.length})</span>
-            <span className="lg:hidden">
-              {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </span>
-          </button>
-          <button
-            onClick={onToggleSort}
-            className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 transition-colors"
-            title={sortBy === 'updatedAt' ? 'Ordenado por fecha de edición' : 'Ordenado por fecha de creación'}
-          >
-            <ArrowDownUp className="h-3.5 w-3.5" />
-            <span className="text-gray-500">Ordenar por:</span>
-            <span className="font-medium">{sortBy === 'updatedAt' ? 'Fecha de edición' : 'Fecha de creación'}</span>
-          </button>
-        </div>
+    <div className={`flex flex-col ${isFirst ? '' : 'lg:border-l lg:border-gray-200 lg:pl-6'}`}>
+      <div className="mb-1 flex items-center justify-between">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex items-center gap-1.5 text-base font-bold text-gray-900 lg:cursor-default"
+        >
+          {day.label}
+          <span className="text-sm font-normal text-gray-400">({spreadsheets.length})</span>
+          <span className="lg:hidden">
+            {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </span>
+        </button>
         <button
           onClick={() => onCreateForDay(day.key)}
           className="inline-flex items-center gap-1 rounded-xl bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 transition-colors"
@@ -190,6 +179,13 @@ function DayColumn({ day, spreadsheets, sortBy, onToggleSort, onClickCard, onArc
           Nueva
         </button>
       </div>
+      <button
+        onClick={onToggleSort}
+        className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+      >
+        <ArrowDownUp className="h-3 w-3" />
+        {sortBy === 'updatedAt' ? 'Editado recientemente' : 'Creado recientemente'}
+      </button>
       {!collapsed && (
         <div className="flex flex-col gap-2">
           {sorted.length === 0 ? (
@@ -301,8 +297,8 @@ export function SpreadsheetList() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:divide-x lg:divide-gray-200">
-            {DAY_COLUMNS.map((day) => (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-0">
+            {DAY_COLUMNS.map((day, idx) => (
               <DayColumn
                 key={day.key}
                 day={day}
@@ -312,6 +308,7 @@ export function SpreadsheetList() {
                 onClickCard={(id) => router.push(`/hojas-calculo/${id}`)}
                 onArchive={archive}
                 onCreateForDay={(d) => openModal(d)}
+                isFirst={idx === 0}
               />
             ))}
           </div>
