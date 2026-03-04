@@ -50,19 +50,11 @@ export function SpreadsheetTable({
         e.preventDefault()
         const isLastCol = colIdx === SPREADSHEET_COLUMNS.length - 1
         const isLastRow = rowIdx === rows.length - 1
-
-        if (e.key === 'Tab') {
-          if (isLastCol) {
-            // Saltar a primera celda de siguiente fila
-            if (isLastRow) onAddRow()
-            focusCell(rowIdx + 1, 0)
-          } else {
-            focusCell(rowIdx, colIdx + 1)
-          }
-        } else {
-          // Enter: bajar a misma columna
+        if (isLastCol) {
           if (isLastRow) onAddRow()
-          focusCell(rowIdx + 1, colIdx)
+          focusCell(rowIdx + 1, 0)
+        } else {
+          focusCell(rowIdx, colIdx + 1)
         }
       }
     },
