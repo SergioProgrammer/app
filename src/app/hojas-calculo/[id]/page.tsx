@@ -213,26 +213,27 @@ export default function EditarHojaPage() {
         </div>
       )}
 
-      <SpreadsheetToolbar
-        saveStatus={saveStatus}
-        selectedCount={selectedRows.size}
-        onSave={save}
-        onAddRow={addRow}
-        onDeleteRows={() => deleteRows(selectedRows)}
-        onDuplicate={() => duplicateRows(selectedRows)}
-        onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
-        onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
-      />
-
       <PasteFromExcel onPaste={addPastedRows} />
 
-      <SpreadsheetTable
-        rows={rows}
-        selectedRows={selectedRows}
-        onSelectRows={setSelectedRows}
-        onUpdateRow={updateRow}
-        onAddRow={addRow}
-      />
+      <div className="space-y-0">
+        <SpreadsheetToolbar
+          saveStatus={saveStatus}
+          selectedCount={selectedRows.size}
+          onSave={save}
+          onAddRow={addRow}
+          onDeleteRows={() => deleteRows(selectedRows)}
+          onDuplicate={() => duplicateRows(selectedRows)}
+          onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
+          onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
+        />
+        <SpreadsheetTable
+          rows={rows}
+          selectedRows={selectedRows}
+          onSelectRows={setSelectedRows}
+          onUpdateRow={updateRow}
+          onAddRow={addRow}
+        />
+      </div>
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
 

@@ -42,7 +42,7 @@ export function SpreadsheetHeaderForm({ data, onChange }: SpreadsheetHeaderFormP
         className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-emerald-50 rounded-2xl"
       >
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-900">Especificaciones</h2>
+          <h2 className="text-base font-semibold text-gray-900">Especificaciones</h2>
           <span className="text-xs text-gray-400">
             {open ? '(Click para plegar)' : '(Click para desplegar)'}
           </span>
