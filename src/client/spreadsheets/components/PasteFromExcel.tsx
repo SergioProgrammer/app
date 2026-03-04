@@ -271,11 +271,11 @@ export function PasteFromExcel({ onPaste }: PasteFromExcelProps) {
   }, [rawText, onPaste])
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white">
+    <div className="rounded-2xl border border-gray-200 bg-white transition-all duration-200 hover:border-emerald-300">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 rounded-2xl"
+        className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-emerald-50 rounded-2xl"
       >
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-gray-900">Pegar desde Excel</h2>
