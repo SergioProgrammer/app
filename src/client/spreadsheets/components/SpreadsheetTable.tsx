@@ -154,7 +154,7 @@ export function SpreadsheetTable({
 
   return (
     <div ref={tableRef} className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-      <table className="border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
+      <table className="min-w-full border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
         <colgroup>
           <col style={{ width: 40 }} />
           <col style={{ width: 40 }} />
@@ -164,7 +164,7 @@ export function SpreadsheetTable({
         </colgroup>
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="px-2 py-2 text-center">
+            <th className="border-r border-gray-300 px-2 py-2 text-center">
               <input
                 type="checkbox"
                 checked={rows.length > 0 && selectedRows.size === rows.length}
@@ -172,13 +172,13 @@ export function SpreadsheetTable({
                 className="rounded border-gray-300"
               />
             </th>
-            <th className="px-2 py-2 text-center text-xs font-medium text-gray-400">#</th>
+            <th className="border-r border-gray-300 px-2 py-2 text-center text-xs font-medium text-gray-400">#</th>
             {SPREADSHEET_COLUMNS.map((col, colIdx) => {
               const isRequired = REQUIRED_ROW_FIELDS.includes(col.key)
               return (
                 <th
                   key={col.key}
-                  className={`relative select-none px-1 py-2 text-left text-xs font-medium ${isRequired ? 'text-gray-700' : 'text-gray-500'}`}
+                  className={`relative select-none px-1 py-2 text-left text-xs font-medium ${isRequired ? 'text-gray-700' : 'text-gray-500'} ${colIdx < SPREADSHEET_COLUMNS.length - 1 ? 'border-r border-gray-300' : ''}`}
                 >
                   <span data-header-col={colIdx} className="truncate">
                     {col.label}
