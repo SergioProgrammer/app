@@ -8,6 +8,7 @@ import { useSpreadsheet } from '@/client/spreadsheets/hooks/useSpreadsheet'
 import { SpreadsheetToolbar } from '@/client/spreadsheets/components/SpreadsheetToolbar'
 import { SpreadsheetTable } from '@/client/spreadsheets/components/SpreadsheetTable'
 import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/SpreadsheetHeaderForm'
+import { SpreadsheetHeaderFields } from '@/client/spreadsheets/components/SpreadsheetHeaderFields'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
 import { Toast } from '@/client/spreadsheets/components/Toast'
 import * as api from '@/client/spreadsheets/services/spreadsheetApi'
@@ -203,6 +204,8 @@ export default function EditarHojaPage() {
         </div>
       </div>
 
+      <SpreadsheetHeaderFields data={headerData} onChange={updateHeaderData} />
+
       <SpreadsheetToolbar
         saveStatus={saveStatus}
         selectedCount={selectedRows.size}
@@ -234,7 +237,7 @@ export default function EditarHojaPage() {
             onChange={(e) => setHeaderReviewed(e.target.checked)}
             className="cursor-pointer rounded border-gray-300"
           />
-          He revisado la sección Datos de cabecera
+          He revisado los datos de cabecera y especificaciones
         </label>
         <button
           onClick={handleGenerate}

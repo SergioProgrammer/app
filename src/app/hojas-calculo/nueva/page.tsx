@@ -8,6 +8,7 @@ import { useSpreadsheet } from '@/client/spreadsheets/hooks/useSpreadsheet'
 import { SpreadsheetToolbar } from '@/client/spreadsheets/components/SpreadsheetToolbar'
 import { SpreadsheetTable } from '@/client/spreadsheets/components/SpreadsheetTable'
 import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/SpreadsheetHeaderForm'
+import { SpreadsheetHeaderFields } from '@/client/spreadsheets/components/SpreadsheetHeaderFields'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
 import type { SpreadsheetRowClient } from '@/client/spreadsheets/types'
 import { REQUIRED_ROW_FIELDS } from '@/client/spreadsheets/types'
@@ -141,6 +142,8 @@ export default function NuevaHojaPage() {
         </div>
       </div>
 
+      <SpreadsheetHeaderFields data={headerData} onChange={updateHeaderData} />
+
       {error && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           {error}
@@ -178,7 +181,7 @@ export default function NuevaHojaPage() {
             onChange={(e) => setHeaderReviewed(e.target.checked)}
             className="cursor-pointer rounded border-gray-300"
           />
-          He revisado la sección Datos de cabecera
+          He revisado los datos de cabecera y especificaciones
         </label>
         <button
           onClick={handleGenerate}

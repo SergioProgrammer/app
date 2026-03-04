@@ -17,18 +17,12 @@ interface FieldDef {
 }
 
 const HEADER_FIELDS: FieldDef[] = [
-  { key: 'invoiceNumber', label: 'Número de factura' },
-  { key: 'invoiceDate', label: 'Fecha', type: 'date' },
   { key: 'clientName', label: 'Cliente (nombre)', colSpan: 2 },
   { key: 'clientTaxId', label: 'Cliente CIF/NIF' },
   { key: 'clientAddress', label: 'Cliente dirección', colSpan: 2 },
   { key: 'emitterName', label: 'Emisor (nombre)', colSpan: 2 },
   { key: 'emitterTaxId', label: 'Emisor CIF/NIF' },
   { key: 'emitterAddress', label: 'Emisor dirección', colSpan: 2 },
-  { key: 'destination', label: 'Destino' },
-  { key: 'awb', label: 'AWB' },
-  { key: 'flightNumber', label: 'Nº de vuelo' },
-  { key: 'incoterm', label: 'Incoterm' },
   { key: 'paymentTerms', label: 'Payment due', colSpan: 2 },
   { key: 'productForm', label: 'Forma' },
   { key: 'botanicalName', label: 'Nombre botánico' },
@@ -48,7 +42,7 @@ export function SpreadsheetHeaderForm({ data, onChange }: SpreadsheetHeaderFormP
         className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-emerald-50 rounded-2xl"
       >
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-900">Datos de cabecera</h2>
+          <h2 className="text-sm font-semibold text-gray-900">Especificaciones</h2>
           <span className="text-xs text-gray-400">
             {open ? '(Click para plegar)' : '(Click para desplegar)'}
           </span>
