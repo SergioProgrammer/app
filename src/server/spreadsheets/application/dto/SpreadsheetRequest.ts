@@ -2,6 +2,8 @@ import { z } from 'zod'
 
 export const CreateSpreadsheetSchema = z.object({
   name: z.string().min(1).max(200).default('Sin nombre'),
+  dayOfWeek: z.enum(['lunes', 'martes', 'sabado']).optional(),
+  copyFromPrevious: z.boolean().optional().default(false),
 })
 
 export type CreateSpreadsheetRequest = z.infer<typeof CreateSpreadsheetSchema>

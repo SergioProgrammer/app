@@ -1,4 +1,4 @@
-import type { HeaderData, SpreadsheetProps, SpreadsheetRowProps } from '../types'
+import type { DayOfWeek, HeaderData, SpreadsheetProps, SpreadsheetRowProps } from '../types'
 
 export class Spreadsheet {
   readonly id: string
@@ -8,6 +8,7 @@ export class Spreadsheet {
   private _name: string
   private _headerData: HeaderData
   private _rows: SpreadsheetRowProps[]
+  private _dayOfWeek: DayOfWeek | null
   private _updatedAt: Date
   private _archivedAt: Date | null
 
@@ -17,6 +18,7 @@ export class Spreadsheet {
     this.userId = props.userId
     this._headerData = props.headerData
     this._rows = props.rows
+    this._dayOfWeek = props.dayOfWeek
     this.createdAt = props.createdAt
     this._updatedAt = props.updatedAt
     this._archivedAt = props.archivedAt
@@ -32,6 +34,10 @@ export class Spreadsheet {
 
   get rows(): SpreadsheetRowProps[] {
     return this._rows
+  }
+
+  get dayOfWeek(): DayOfWeek | null {
+    return this._dayOfWeek
   }
 
   get updatedAt(): Date {
@@ -61,6 +67,11 @@ export class Spreadsheet {
     this._updatedAt = new Date()
   }
 
+  setDayOfWeek(day: DayOfWeek | null): void {
+    this._dayOfWeek = day
+    this._updatedAt = new Date()
+  }
+
   archive(): void {
     this._archivedAt = new Date()
     this._updatedAt = new Date()
@@ -78,6 +89,7 @@ export class Spreadsheet {
       userId: this.userId,
       headerData: this._headerData,
       rows: this._rows,
+      dayOfWeek: this._dayOfWeek,
       createdAt: this.createdAt,
       updatedAt: this._updatedAt,
       archivedAt: this._archivedAt,

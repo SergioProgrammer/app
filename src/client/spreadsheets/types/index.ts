@@ -42,10 +42,13 @@ export interface HeaderDataClient {
   botanicalName: string
 }
 
+export type DayOfWeek = 'lunes' | 'martes' | 'sabado'
+
 export interface SpreadsheetListItem {
   id: string
   name: string
   rowCount: number
+  dayOfWeek: DayOfWeek | null
   updatedAt: string
 }
 

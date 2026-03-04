@@ -45,12 +45,15 @@ export interface HeaderData {
   botanicalName?: string
 }
 
+export type DayOfWeek = 'lunes' | 'martes' | 'sabado'
+
 export interface SpreadsheetProps {
   id: string
   name: string
   userId: string
   headerData: HeaderData
   rows: SpreadsheetRowProps[]
+  dayOfWeek: DayOfWeek | null
   createdAt: Date
   updatedAt: Date
   archivedAt: Date | null

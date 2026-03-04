@@ -1,13 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Spreadsheet } from '../../domain/entities/Spreadsheet'
 import type { SpreadsheetRepository } from '../../domain/repositories/SpreadsheetRepository'
-import type { HeaderData, SpreadsheetRowData, SpreadsheetRowProps } from '../../domain/types'
+import type { DayOfWeek, HeaderData, SpreadsheetRowData, SpreadsheetRowProps } from '../../domain/types'
 
 interface SpreadsheetDbRow {
   id: string
   name: string
   user_id: string
   header_data: Record<string, unknown>
+  day_of_week: string | null
   created_at: string
   updated_at: string
   archived_at: string | null
@@ -94,10 +95,35 @@ function toEntity(db: SpreadsheetDbRow, dbRows: SpreadsheetRowDbRow[]): Spreadsh
       position: r.position,
       data: dbRowToData(r),
     })),
+    dayOfWeek: (db.day_of_week as DayOfWeek) ?? null,
     createdAt: new Date(db.created_at),
     updatedAt: new Date(db.updated_at),
     archivedAt: db.archived_at ? new Date(db.archived_at) : null,
   })
+}
+
+function buildFakeRows(count: number, spreadsheetId: string): SpreadsheetRowDbRow[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `fake-${i}`,
+    spreadsheet_id: spreadsheetId,
+    position: i,
+    week: null,
+    invoice_date: null,
+    date: null,
+    final_client: null,
+    kg: null,
+    product: null,
+    box_type: null,
+    abono: null,
+    bundles: null,
+    price: null,
+    order_number: null,
+    awb: null,
+    delivery_note: null,
+    invoice_number: null,
+    line: null,
+    search: null,
+  }))
 }
 
 export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
@@ -134,7 +160,6 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
 
     if (error) throw new Error(`Failed to list spreadsheets: ${error.message}`)
 
-    // For each spreadsheet, get row count from database
     const spreadsheets = data ?? []
     return Promise.all(
       spreadsheets.map(async (s: SpreadsheetDbRow) => {
@@ -148,30 +173,7 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
           return toEntity(s, [])
         }
 
-        // Create fake rows array with correct length for counting purposes
-        const fakeRows = Array.from({ length: count ?? 0 }, (_, i) => ({
-          id: `fake-${i}`,
-          spreadsheet_id: s.id,
-          position: i,
-          week: null,
-          invoice_date: null,
-          date: null,
-          final_client: null,
-          kg: null,
-          product: null,
-          box_type: null,
-          abono: null,
-          bundles: null,
-          price: null,
-          order_number: null,
-          awb: null,
-          delivery_note: null,
-          invoice_number: null,
-          line: null,
-          search: null,
-        } as SpreadsheetRowDbRow))
-
-        return toEntity(s, fakeRows)
+        return toEntity(s, buildFakeRows(count ?? 0, s.id))
       })
     )
   }
@@ -186,7 +188,6 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
 
     if (error) throw new Error(`Failed to list archived spreadsheets: ${error.message}`)
 
-    // For each spreadsheet, get row count from database
     const spreadsheets = data ?? []
     return Promise.all(
       spreadsheets.map(async (s: SpreadsheetDbRow) => {
@@ -200,32 +201,35 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
           return toEntity(s, [])
         }
 
-        // Create fake rows array with correct length for counting purposes
-        const fakeRows = Array.from({ length: count ?? 0 }, (_, i) => ({
-          id: `fake-${i}`,
-          spreadsheet_id: s.id,
-          position: i,
-          week: null,
-          invoice_date: null,
-          date: null,
-          final_client: null,
-          kg: null,
-          product: null,
-          box_type: null,
-          abono: null,
-          bundles: null,
-          price: null,
-          order_number: null,
-          awb: null,
-          delivery_note: null,
-          invoice_number: null,
-          line: null,
-          search: null,
-        } as SpreadsheetRowDbRow))
-
-        return toEntity(s, fakeRows)
+        return toEntity(s, buildFakeRows(count ?? 0, s.id))
       })
     )
+  }
+
+  async findLatestByDayOfWeek(userId: string, dayOfWeek: DayOfWeek): Promise<Spreadsheet | null> {
+    const { data, error } = await this.supabase
+      .from('spreadsheets')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('day_of_week', dayOfWeek)
+      .is('archived_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) throw new Error(`Failed to find latest by day: ${error.message}`)
+    if (!data) return null
+
+    // Fetch full rows for copying
+    const { data: rows, error: rowsError } = await this.supabase
+      .from('spreadsheet_rows')
+      .select('*')
+      .eq('spreadsheet_id', data.id)
+      .order('position', { ascending: true })
+
+    if (rowsError) throw new Error(`Failed to fetch rows: ${rowsError.message}`)
+
+    return toEntity(data as SpreadsheetDbRow, (rows ?? []) as SpreadsheetRowDbRow[])
   }
 
   async save(spreadsheet: Spreadsheet): Promise<void> {
@@ -235,6 +239,7 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
       name: props.name,
       user_id: props.userId,
       header_data: props.headerData,
+      day_of_week: props.dayOfWeek,
       created_at: props.createdAt.toISOString(),
       updated_at: props.updatedAt.toISOString(),
       archived_at: props.archivedAt?.toISOString() ?? null,
@@ -258,6 +263,7 @@ export class SupabaseSpreadsheetRepository implements SpreadsheetRepository {
       .update({
         name: props.name,
         header_data: props.headerData,
+        day_of_week: props.dayOfWeek,
         updated_at: props.updatedAt.toISOString(),
         archived_at: props.archivedAt?.toISOString() ?? null,
       })
