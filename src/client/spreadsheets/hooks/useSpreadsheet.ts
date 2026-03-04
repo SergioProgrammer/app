@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { HeaderDataClient, SpreadsheetRowClient } from '../types'
 import { DEFAULT_HEADER, emptyRow, getWeekString } from '../types'
 import * as api from '../services/spreadsheetApi'
@@ -157,7 +157,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
         const rowId = row.id
 
         // If user edits an auto-generated field directly, mark it as manually edited
-        if (['week', 'date', 'bundles'].includes(field)) {
+        if (['week', 'date', 'bundles', 'awb'].includes(field)) {
           markFieldEdited(rowId, field)
         }
 
@@ -189,9 +189,9 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   )
 
   const addRow = useCallback(() => {
-    setRows((prev) => [...prev, emptyRow(prev.length)])
+    setRows((prev) => [...prev, emptyRow(prev.length, headerData.awb)])
     markUnsaved()
-  }, [markUnsaved])
+  }, [markUnsaved, headerData.awb])
 
   const deleteRows = useCallback(
     (indices: Set<number>) => {
@@ -285,6 +285,36 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     [markUnsaved],
   )
 
+  // Backfill empty AWB fields when header AWB changes
+  useEffect(() => {
+    const awb = headerData.awb
+    if (!awb) return
+    setRows((prev) => {
+      let changed = false
+      const updated = prev.map((row) => {
+        if (row.awb === '' && !isFieldManuallyEdited(row.id, 'awb')) {
+          changed = true
+          return { ...row, awb }
+        }
+        return row
+      })
+      return changed ? updated : prev
+    })
+  }, [headerData.awb, isFieldManuallyEdited])
+
+  // Warn if rows have different AWB than header
+  const multipleAwbWarning = useMemo(() => {
+    const headerAwb = headerData.awb?.trim()
+    if (!headerAwb) return null
+    const differentAwbs = rows.filter((r) => {
+      const rowAwb = r.awb?.trim()
+      return rowAwb && rowAwb !== headerAwb
+    })
+    if (differentAwbs.length === 0) return null
+    const uniqueAwbs = [...new Set(differentAwbs.map((r) => r.awb.trim()))]
+    return `${differentAwbs.length} fila(s) tienen un AWB diferente al de cabecera (${uniqueAwbs.join(', ')}). Verifica que sea correcto.`
+  }, [headerData.awb, rows])
+
   return {
     spreadsheetId,
     name,
@@ -303,6 +333,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     addPastedRows,
     updateHeaderData,
     updateName,
+    multipleAwbWarning,
     save: forceSave,
   }
 }

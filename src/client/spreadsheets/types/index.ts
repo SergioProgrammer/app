@@ -142,7 +142,7 @@ export function getWeekString(dateStr?: string): string {
   return `${target.getUTCFullYear()}${weekNum}`
 }
 
-export function emptyRow(position: number): SpreadsheetRowClient {
+export function emptyRow(position: number, awb?: string): SpreadsheetRowClient {
   const now = new Date()
   const today = now.toISOString().slice(0, 10)
   const yesterday = new Date(now)
@@ -162,7 +162,7 @@ export function emptyRow(position: number): SpreadsheetRowClient {
     bundles: '',
     price: '',
     orderNumber: '',
-    awb: '',
+    awb: awb ?? '',
     deliveryNote: '',
     invoiceNumber: '',
     line: '',
