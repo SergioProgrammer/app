@@ -1,8 +1,26 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SpreadsheetColumnKey, SpreadsheetRowClient } from '../types'
 import { EXAMPLE_ROW, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
+
+const STORAGE_KEY = 'spreadsheet-column-widths'
+const MIN_COL_WIDTH = 50
+const MAX_AUTO_FIT_WIDTH = 400
+
+function getInitialWidths(): number[] {
+  if (typeof window === 'undefined') return SPREADSHEET_COLUMNS.map((c) => c.width)
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored) as number[]
+      if (parsed.length === SPREADSHEET_COLUMNS.length) return parsed
+    }
+  } catch {
+    // ignore
+  }
+  return SPREADSHEET_COLUMNS.map((c) => c.width)
+}
 
 interface SpreadsheetTableProps {
   rows: SpreadsheetRowClient[]
@@ -22,6 +40,13 @@ export function SpreadsheetTable({
   onActiveRowChange,
 }: SpreadsheetTableProps) {
   const tableRef = useRef<HTMLDivElement>(null)
+  const [columnWidths, setColumnWidths] = useState<number[]>(getInitialWidths)
+  const resizingRef = useRef<{ colIdx: number; startX: number; startWidth: number } | null>(null)
+
+  // Persist widths to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(columnWidths))
+  }, [columnWidths])
 
   const toggleRow = useCallback(
     (index: number) => {
@@ -70,12 +95,76 @@ export function SpreadsheetTable({
     })
   }
 
+  // Column resize via drag
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent, colIdx: number) => {
+      e.preventDefault()
+      e.stopPropagation()
+      resizingRef.current = { colIdx, startX: e.clientX, startWidth: columnWidths[colIdx] }
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+
+      const handleMouseMove = (ev: MouseEvent) => {
+        if (!resizingRef.current) return
+        const delta = ev.clientX - resizingRef.current.startX
+        const newWidth = Math.max(MIN_COL_WIDTH, resizingRef.current.startWidth + delta)
+        setColumnWidths((prev) => {
+          const next = [...prev]
+          next[resizingRef.current!.colIdx] = newWidth
+          return next
+        })
+      }
+
+      const handleMouseUp = () => {
+        resizingRef.current = null
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    },
+    [columnWidths],
+  )
+
+  // Auto-fit column on double-click
+  const handleAutoFit = useCallback(
+    (colIdx: number) => {
+      if (!tableRef.current) return
+      const cells = tableRef.current.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`)
+      const headerEl = tableRef.current.querySelector<HTMLElement>(`[data-header-col="${colIdx}"]`)
+      let maxWidth = MIN_COL_WIDTH
+      cells.forEach((cell) => {
+        maxWidth = Math.max(maxWidth, cell.scrollWidth + 16)
+      })
+      if (headerEl) {
+        maxWidth = Math.max(maxWidth, headerEl.scrollWidth + 24)
+      }
+      maxWidth = Math.min(maxWidth, MAX_AUTO_FIT_WIDTH)
+      setColumnWidths((prev) => {
+        const next = [...prev]
+        next[colIdx] = maxWidth
+        return next
+      })
+    },
+    [],
+  )
+
   return (
     <div ref={tableRef} className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-      <table className="w-full border-collapse text-sm">
+      <table className="border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: 40 }} />
+          <col style={{ width: 40 }} />
+          {columnWidths.map((w, i) => (
+            <col key={i} style={{ width: w }} />
+          ))}
+        </colgroup>
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="w-10 px-2 py-2 text-center">
+            <th className="px-2 py-2 text-center">
               <input
                 type="checkbox"
                 checked={rows.length > 0 && selectedRows.size === rows.length}
@@ -83,17 +172,23 @@ export function SpreadsheetTable({
                 className="rounded border-gray-300"
               />
             </th>
-            <th className="w-10 px-2 py-2 text-center text-xs font-medium text-gray-400">#</th>
-            {SPREADSHEET_COLUMNS.map((col) => {
+            <th className="px-2 py-2 text-center text-xs font-medium text-gray-400">#</th>
+            {SPREADSHEET_COLUMNS.map((col, colIdx) => {
               const isRequired = REQUIRED_ROW_FIELDS.includes(col.key)
               return (
                 <th
                   key={col.key}
-                  className={`px-1 py-2 text-left text-xs font-medium ${isRequired ? 'text-gray-700' : 'text-gray-500'}`}
-                  style={{ minWidth: col.width }}
+                  className={`relative select-none px-1 py-2 text-left text-xs font-medium ${isRequired ? 'text-gray-700' : 'text-gray-500'}`}
                 >
-                  {col.label}
-                  {isRequired && <span className="ml-0.5 text-red-400">*</span>}
+                  <span data-header-col={colIdx} className="truncate">
+                    {col.label}
+                    {isRequired && <span className="ml-0.5 text-red-400">*</span>}
+                  </span>
+                  <div
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-300/50"
+                    onMouseDown={(e) => handleResizeStart(e, colIdx)}
+                    onDoubleClick={() => handleAutoFit(colIdx)}
+                  />
                 </th>
               )
             })}
@@ -108,10 +203,7 @@ export function SpreadsheetTable({
             <td className="px-2 py-1.5 text-center text-xs font-medium text-amber-500">—</td>
             {SPREADSHEET_COLUMNS.map((col) => (
               <td key={col.key} className="px-1 py-0.5">
-                <span
-                  className="block w-full px-1.5 py-1 text-sm font-medium text-amber-700"
-                  style={{ minWidth: col.width - 8 }}
-                >
+                <span className="block truncate px-1.5 py-1 text-sm font-medium text-amber-700">
                   {col.inputType === 'number'
                     ? Number(EXAMPLE_ROW[col.key as SpreadsheetColumnKey]).toLocaleString('es-ES')
                     : EXAMPLE_ROW[col.key as SpreadsheetColumnKey]}
@@ -158,12 +250,11 @@ export function SpreadsheetTable({
                             ? 'Auto-calculado: fecha factura - 1 día. Editable.'
                             : undefined
                     }
-                    className={`w-full rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
+                    className={`w-full truncate rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
                       ['bundles', 'week', 'date'].includes(col.key)
                         ? 'bg-blue-50/40 text-gray-700'
                         : 'bg-transparent text-gray-900'
                     }`}
-                    style={{ minWidth: col.width - 8 }}
                   />
                 </td>
               ))}
