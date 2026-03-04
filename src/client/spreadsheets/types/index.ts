@@ -65,7 +65,7 @@ export const SPREADSHEET_COLUMNS = [
   { key: 'invoiceDate', label: 'Fecha factura', width: 140, inputType: 'date' as ColumnInputType },
   { key: 'date', label: 'Fecha corte', width: 140, inputType: 'date' as ColumnInputType },
   { key: 'finalClient', label: 'Cliente final', width: 140, inputType: 'text' as ColumnInputType },
-  { key: 'kg', label: 'Kg', width: 80, inputType: 'number' as ColumnInputType },
+  { key: 'kg', label: 'Kg por bulto', width: 110, inputType: 'number' as ColumnInputType },
   { key: 'product', label: 'Producto', width: 140, inputType: 'text' as ColumnInputType },
   { key: 'boxType', label: 'Tipo caja', width: 100, inputType: 'text' as ColumnInputType },
   { key: 'abono', label: 'Abono', width: 80, inputType: 'number' as ColumnInputType },
