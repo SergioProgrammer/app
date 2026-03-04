@@ -163,21 +163,22 @@ function DayColumn({ day, spreadsheets, sortBy, onToggleSort, onClickCard, onArc
         <div className="flex items-center gap-2">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="flex items-center gap-1 text-sm font-semibold text-gray-900 lg:cursor-default"
+            className="flex items-center gap-1.5 text-base font-bold text-gray-900 lg:cursor-default"
           >
             {day.label}
-            <span className="text-xs font-normal text-gray-400">({spreadsheets.length})</span>
+            <span className="text-sm font-normal text-gray-400">({spreadsheets.length})</span>
             <span className="lg:hidden">
-              {collapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+              {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </span>
           </button>
           <button
             onClick={onToggleSort}
-            className="inline-flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
-            title={sortBy === 'updatedAt' ? 'Ordenado por edición' : 'Ordenado por creación'}
+            className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+            title={sortBy === 'updatedAt' ? 'Ordenado por fecha de edición' : 'Ordenado por fecha de creación'}
           >
             <ArrowDownUp className="h-3 w-3" />
-            {sortBy === 'updatedAt' ? 'Editado' : 'Creado'}
+            <span className="text-gray-300">Ordenar por:</span>
+            {sortBy === 'updatedAt' ? 'Fecha de edición' : 'Fecha de creación'}
           </button>
         </div>
         <button
