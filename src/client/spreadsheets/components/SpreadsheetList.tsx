@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, ChevronUp, Loader2, Plus, Trash2, X } from 'lucide-react'
+import { ArrowDownUp, ChevronDown, ChevronUp, Loader2, Plus, Trash2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
@@ -8,6 +8,19 @@ import type { DayOfWeek, SpreadsheetListItem } from '../types'
 import { useSpreadsheetList } from '../hooks/useSpreadsheetList'
 import { createSpreadsheet } from '../services/spreadsheetApi'
 import { SpreadsheetCard } from './SpreadsheetCard'
+
+type SortBy = 'updatedAt' | 'createdAt'
+
+function sortSpreadsheets(items: SpreadsheetListItem[], sortBy: SortBy): SpreadsheetListItem[] {
+  return [...items].sort((a, b) => new Date(b[sortBy]).getTime() - new Date(a[sortBy]).getTime())
+}
+
+function getUniqueName(baseName: string, existingNames: string[]): string {
+  if (!existingNames.includes(baseName)) return baseName
+  let counter = 2
+  while (existingNames.includes(`${baseName} (${counter})`)) counter++
+  return `${baseName} (${counter})`
+}
 
 const DAY_COLUMNS: { key: DayOfWeek; label: string }[] = [
   { key: 'lunes', label: 'Lunes' },
@@ -26,20 +39,21 @@ function formatDefaultName(day: DayOfWeek): string {
 
 interface CreateModalProps {
   initialDay?: DayOfWeek
+  existingNames: string[]
   hasPreviousForDay: (day: DayOfWeek) => boolean
   onClose: () => void
   onCreated: (id: string) => void
 }
 
-function CreateModal({ initialDay, hasPreviousForDay, onClose, onCreated }: CreateModalProps) {
+function CreateModal({ initialDay, existingNames, hasPreviousForDay, onClose, onCreated }: CreateModalProps) {
   const [selectedDay, setSelectedDay] = useState<DayOfWeek | undefined>(initialDay)
-  const [name, setName] = useState(initialDay ? formatDefaultName(initialDay) : '')
+  const [name, setName] = useState(initialDay ? getUniqueName(formatDefaultName(initialDay), existingNames) : '')
   const [copyFromPrevious, setCopyFromPrevious] = useState(true)
   const [creating, setCreating] = useState(false)
 
   const handleDayChange = (day: DayOfWeek) => {
     setSelectedDay(day)
-    setName(formatDefaultName(day))
+    setName(getUniqueName(formatDefaultName(day), existingNames))
     setCopyFromPrevious(hasPreviousForDay(day))
   }
 
@@ -132,27 +146,40 @@ function CreateModal({ initialDay, hasPreviousForDay, onClose, onCreated }: Crea
 interface DayColumnProps {
   day: { key: DayOfWeek; label: string }
   spreadsheets: SpreadsheetListItem[]
+  sortBy: SortBy
+  onToggleSort: () => void
   onClickCard: (id: string) => void
   onArchive: (id: string) => void
   onCreateForDay: (day: DayOfWeek) => void
 }
 
-function DayColumn({ day, spreadsheets, onClickCard, onArchive, onCreateForDay }: DayColumnProps) {
+function DayColumn({ day, spreadsheets, sortBy, onToggleSort, onClickCard, onArchive, onCreateForDay }: DayColumnProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const sorted = useMemo(() => sortSpreadsheets(spreadsheets, sortBy), [spreadsheets, sortBy])
 
   return (
     <div className="flex flex-col">
       <div className="mb-2 flex items-center justify-between">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center gap-1 text-sm font-semibold text-gray-900 lg:cursor-default"
-        >
-          {day.label}
-          <span className="text-xs font-normal text-gray-400">({spreadsheets.length})</span>
-          <span className="lg:hidden">
-            {collapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
-          </span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="flex items-center gap-1 text-sm font-semibold text-gray-900 lg:cursor-default"
+          >
+            {day.label}
+            <span className="text-xs font-normal text-gray-400">({spreadsheets.length})</span>
+            <span className="lg:hidden">
+              {collapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+            </span>
+          </button>
+          <button
+            onClick={onToggleSort}
+            className="inline-flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+            title={sortBy === 'updatedAt' ? 'Ordenado por edición' : 'Ordenado por creación'}
+          >
+            <ArrowDownUp className="h-3 w-3" />
+            {sortBy === 'updatedAt' ? 'Editado' : 'Creado'}
+          </button>
+        </div>
         <button
           onClick={() => onCreateForDay(day.key)}
           className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 transition-colors"
@@ -164,12 +191,12 @@ function DayColumn({ day, spreadsheets, onClickCard, onArchive, onCreateForDay }
       </div>
       {!collapsed && (
         <div className="flex flex-col gap-2">
-          {spreadsheets.length === 0 ? (
+          {sorted.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-xs text-gray-400">
               Sin hojas
             </div>
           ) : (
-            spreadsheets.map((s) => (
+            sorted.map((s) => (
               <SpreadsheetCard
                 key={s.id}
                 spreadsheet={s}
@@ -189,6 +216,11 @@ export function SpreadsheetList() {
   const router = useRouter()
   const [modalOpen, setModalOpen] = useState(false)
   const [modalDay, setModalDay] = useState<DayOfWeek | undefined>()
+  const [sortBy, setSortBy] = useState<SortBy>('updatedAt')
+
+  const toggleSort = useCallback(() => {
+    setSortBy((prev) => (prev === 'updatedAt' ? 'createdAt' : 'updatedAt'))
+  }, [])
 
   const grouped = useMemo(() => {
     const groups: Record<DayOfWeek | 'unclassified', SpreadsheetListItem[]> = {
@@ -274,6 +306,8 @@ export function SpreadsheetList() {
                 key={day.key}
                 day={day}
                 spreadsheets={grouped[day.key]}
+                sortBy={sortBy}
+                onToggleSort={toggleSort}
                 onClickCard={(id) => router.push(`/hojas-calculo/${id}`)}
                 onArchive={archive}
                 onCreateForDay={(d) => openModal(d)}
@@ -302,6 +336,7 @@ export function SpreadsheetList() {
       {modalOpen && (
         <CreateModal
           initialDay={modalDay}
+          existingNames={spreadsheets.map((s) => s.name)}
           hasPreviousForDay={hasPreviousForDay}
           onClose={() => setModalOpen(false)}
           onCreated={handleCreated}

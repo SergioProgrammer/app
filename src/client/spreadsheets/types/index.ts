@@ -49,6 +49,7 @@ export interface SpreadsheetListItem {
   name: string
   rowCount: number
   dayOfWeek: DayOfWeek | null
+  createdAt: string
   updatedAt: string
 }
 

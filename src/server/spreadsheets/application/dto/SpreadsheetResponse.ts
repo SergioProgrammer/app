@@ -6,6 +6,7 @@ export interface SpreadsheetListItemResponse {
   name: string
   rowCount: number
   dayOfWeek: DayOfWeek | null
+  createdAt: string
   updatedAt: string
 }
 
@@ -59,6 +60,7 @@ export function toSpreadsheetListItem(entity: Spreadsheet): SpreadsheetListItemR
     name: entity.name,
     rowCount: entity.rows.length,
     dayOfWeek: entity.dayOfWeek,
+    createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
   }
 }
