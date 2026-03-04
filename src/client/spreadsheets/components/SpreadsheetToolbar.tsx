@@ -59,7 +59,7 @@ export function SpreadsheetToolbar({
       : 'bg-gray-900 hover:bg-gray-800'
 
   return (
-    <div className="relative flex flex-wrap items-center gap-2 rounded-t-xl border border-b-0 border-gray-200 bg-white px-3 py-2">
+    <div className="relative flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2">
       <button
         onClick={onSave}
         disabled={isSaving}

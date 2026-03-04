@@ -159,25 +159,24 @@ export default function NuevaHojaPage() {
 
       <PasteFromExcel onPaste={addPastedRows} />
 
-      <div className="space-y-0">
-        <SpreadsheetToolbar
-          saveStatus={saveStatus}
-          selectedCount={selectedRows.size}
-          onSave={handleSave}
-          onAddRow={addRow}
-          onDeleteRows={() => deleteRows(selectedRows)}
-          onDuplicate={() => duplicateRows(selectedRows)}
-          onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
-          onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
-        />
-        <SpreadsheetTable
-          rows={rows}
-          selectedRows={selectedRows}
-          onSelectRows={setSelectedRows}
-          onUpdateRow={updateRow}
-          onAddRow={addRow}
-        />
-      </div>
+      <SpreadsheetToolbar
+        saveStatus={saveStatus}
+        selectedCount={selectedRows.size}
+        onSave={handleSave}
+        onAddRow={addRow}
+        onDeleteRows={() => deleteRows(selectedRows)}
+        onDuplicate={() => duplicateRows(selectedRows)}
+        onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
+        onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
+      />
+
+      <SpreadsheetTable
+        rows={rows}
+        selectedRows={selectedRows}
+        onSelectRows={setSelectedRows}
+        onUpdateRow={updateRow}
+        onAddRow={addRow}
+      />
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
 

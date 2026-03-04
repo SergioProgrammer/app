@@ -158,7 +158,7 @@ function DayColumn({ day, spreadsheets, sortBy, onToggleSort, onClickCard, onArc
   const sorted = useMemo(() => sortSpreadsheets(spreadsheets, sortBy), [spreadsheets, sortBy])
 
   return (
-    <div className={`flex flex-col ${isFirst ? '' : 'lg:border-l lg:border-gray-200 lg:pl-6'}`}>
+    <div className={`flex flex-col ${isFirst ? '' : 'lg:border-l lg:border-gray-200 lg:ml-6 lg:pl-6'}`}>
       <div className="mb-1 flex items-center justify-between">
         <button
           onClick={() => setCollapsed(!collapsed)}
