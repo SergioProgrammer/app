@@ -155,10 +155,11 @@ function DayColumn({ day, spreadsheets, onClickCard, onArchive, onCreateForDay }
         </button>
         <button
           onClick={() => onCreateForDay(day.key)}
-          className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 transition-colors"
           title={`Crear hoja para ${day.label}`}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
+          Nueva
         </button>
       </div>
       {!collapsed && (
