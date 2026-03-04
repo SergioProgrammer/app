@@ -17,6 +17,26 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   const [error, setError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
 
+  // Track manually edited auto-generated fields (keyed by row UUID)
+  const [manuallyEdited, setManuallyEdited] = useState<Map<string, Set<string>>>(new Map())
+
+  const markFieldEdited = useCallback((rowId: string, field: string) => {
+    setManuallyEdited((prev) => {
+      const next = new Map(prev)
+      const fields = new Set(next.get(rowId) ?? [])
+      fields.add(field)
+      next.set(rowId, fields)
+      return next
+    })
+  }, [])
+
+  const isFieldManuallyEdited = useCallback(
+    (rowId: string, field: string): boolean => {
+      return manuallyEdited.get(rowId)?.has(field) ?? false
+    },
+    [manuallyEdited],
+  )
+
   // Cargar hoja existente
   useEffect(() => {
     if (!id) return
@@ -133,23 +153,39 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     (index: number, field: keyof SpreadsheetRowClient, value: string) => {
       setRows((prev) => {
         const updated = [...prev]
-        updated[index] = { ...updated[index], [field]: value }
-        // Auto-calcular semana cuando se actualiza invoiceDate
+        const row = { ...updated[index], [field]: value }
+        const rowId = row.id
+
+        // If user edits an auto-generated field directly, mark it as manually edited
+        if (['week', 'date', 'bundles'].includes(field)) {
+          markFieldEdited(rowId, field)
+        }
+
+        // Auto-calculate week and date when invoiceDate changes
         if (field === 'invoiceDate') {
-          updated[index].week = getWeekString(value)
+          if (!isFieldManuallyEdited(rowId, 'week')) {
+            row.week = getWeekString(value)
+          }
+          if (!isFieldManuallyEdited(rowId, 'date')) {
+            const d = new Date(value)
+            if (!isNaN(d.getTime())) {
+              d.setDate(d.getDate() - 1)
+              row.date = d.toISOString().slice(0, 10)
+            }
+          }
         }
-        // Auto-calcular bundles cuando se actualiza kg o abono
-        if (field === 'kg' || field === 'abono') {
-          updated[index].bundles = calculateBundles(
-            updated[index].kg,
-            updated[index].abono
-          )
+
+        // Auto-calculate bundles when kg or abono changes
+        if ((field === 'kg' || field === 'abono') && !isFieldManuallyEdited(rowId, 'bundles')) {
+          row.bundles = calculateBundles(row.kg, row.abono)
         }
+
+        updated[index] = row
         return updated
       })
       markUnsaved()
     },
-    [markUnsaved, calculateBundles],
+    [markUnsaved, calculateBundles, markFieldEdited, isFieldManuallyEdited],
   )
 
   const addRow = useCallback(() => {
@@ -159,7 +195,18 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
 
   const deleteRows = useCallback(
     (indices: Set<number>) => {
-      setRows((prev) => prev.filter((_, i) => !indices.has(i)).map((r, i) => ({ ...r, position: i })))
+      setRows((prev) => {
+        const deletedIds = prev.filter((_, i) => indices.has(i)).map((r) => r.id)
+        // Clean up manual edit tracking for deleted rows
+        if (deletedIds.length > 0) {
+          setManuallyEdited((me) => {
+            const next = new Map(me)
+            deletedIds.forEach((id) => next.delete(id))
+            return next
+          })
+        }
+        return prev.filter((_, i) => !indices.has(i)).map((r, i) => ({ ...r, position: i }))
+      })
       setSelectedRows(new Set())
       markUnsaved()
     },

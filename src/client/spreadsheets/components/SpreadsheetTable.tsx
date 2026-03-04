@@ -149,10 +149,19 @@ export function SpreadsheetTable({
                     onKeyDown={(e) => handleKeyDown(e, rowIdx, colIdx)}
                     onFocus={() => onActiveRowChange?.(rowIdx)}
                     onBlur={() => onActiveRowChange?.(null)}
-                    readOnly={col.key === 'bundles'}
-                    title={col.key === 'bundles' ? 'Calculado automáticamente: Kg / Abono (redondeado)' : undefined}
+                    title={
+                      col.key === 'bundles'
+                        ? 'Auto-calculado: Kg / Abono. Editable.'
+                        : col.key === 'week'
+                          ? 'Auto-calculado desde fecha factura. Editable.'
+                          : col.key === 'date'
+                            ? 'Auto-calculado: fecha factura - 1 día. Editable.'
+                            : undefined
+                    }
                     className={`w-full rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
-                      col.key === 'bundles' ? 'cursor-not-allowed bg-gray-50 text-gray-500' : 'bg-transparent text-gray-900'
+                      ['bundles', 'week', 'date'].includes(col.key)
+                        ? 'bg-blue-50/40 text-gray-700'
+                        : 'bg-transparent text-gray-900'
                     }`}
                     style={{ minWidth: col.width - 8 }}
                   />

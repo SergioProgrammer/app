@@ -109,7 +109,7 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
   position: -1,
   week: '20265',  // YYYYW format (2026, week 5)
   invoiceDate: '01/01/2026',
-  date: '01/01/2026',
+  date: '31/12/2025',
   finalClient: 'Arico Fruits S.L',
   kg: '850',
   product: 'BASIL/ALBAHACA 1 KG',
@@ -139,13 +139,17 @@ export function getWeekString(dateStr?: string): string {
 }
 
 export function emptyRow(position: number): SpreadsheetRowClient {
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().slice(0, 10)
   return {
     id: crypto.randomUUID(),
     position,
     week: getWeekString(today),
     invoiceDate: today,
-    date: today,
+    date: yesterdayStr,
     finalClient: '',
     kg: '',
     product: '',
