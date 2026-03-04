@@ -158,7 +158,7 @@ function DayColumn({ day, spreadsheets, sortBy, onToggleSort, onClickCard, onArc
   const sorted = useMemo(() => sortSpreadsheets(spreadsheets, sortBy), [spreadsheets, sortBy])
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col lg:pl-6 first:lg:pl-0">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button
@@ -173,17 +173,17 @@ function DayColumn({ day, spreadsheets, sortBy, onToggleSort, onClickCard, onArc
           </button>
           <button
             onClick={onToggleSort}
-            className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+            className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 transition-colors"
             title={sortBy === 'updatedAt' ? 'Ordenado por fecha de edición' : 'Ordenado por fecha de creación'}
           >
-            <ArrowDownUp className="h-3 w-3" />
-            <span className="text-gray-300">Ordenar por:</span>
-            {sortBy === 'updatedAt' ? 'Fecha de edición' : 'Fecha de creación'}
+            <ArrowDownUp className="h-3.5 w-3.5" />
+            <span className="text-gray-500">Ordenar por:</span>
+            <span className="font-medium">{sortBy === 'updatedAt' ? 'Fecha de edición' : 'Fecha de creación'}</span>
           </button>
         </div>
         <button
           onClick={() => onCreateForDay(day.key)}
-          className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 transition-colors"
+          className="inline-flex items-center gap-1 rounded-xl bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 transition-colors"
           title={`Crear hoja para ${day.label}`}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -269,7 +269,7 @@ export function SpreadsheetList() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
@@ -301,7 +301,7 @@ export function SpreadsheetList() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:divide-x lg:divide-gray-200">
             {DAY_COLUMNS.map((day) => (
               <DayColumn
                 key={day.key}
