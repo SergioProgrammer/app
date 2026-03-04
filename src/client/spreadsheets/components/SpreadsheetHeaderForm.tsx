@@ -64,7 +64,7 @@ export function SpreadsheetHeaderForm({ data, onChange }: SpreadsheetHeaderFormP
         <div className="border-t border-gray-100 px-4 pb-4 pt-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {HEADER_FIELDS.map((field) => {
-              const isEmpty = !data[field.key].trim()
+              const isEmpty = !(data[field.key] ?? '').trim()
               return (
                 <div
                   key={field.key}

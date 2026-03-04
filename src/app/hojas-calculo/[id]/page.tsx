@@ -81,7 +81,7 @@ export default function EditarHojaPage() {
     try {
       // Validar cabecera
       const missingHeaders = (Object.keys(headerData) as (keyof typeof headerData)[])
-        .filter((k) => !headerData[k].trim())
+        .filter((k) => !(headerData[k] ?? '').trim())
       if (missingHeaders.length > 0) {
         setGenerateState('error')
         setToast({ type: 'error', title: 'Error de validación', message: 'Rellena todos los datos de cabecera antes de generar la factura.' })
