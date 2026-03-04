@@ -49,9 +49,16 @@ export function TrashBin() {
         >
           <div>
             <p className="text-sm font-medium text-gray-900">{s.name}</p>
-            <p className="text-xs text-gray-500">
-              {s.rowCount} {s.rowCount === 1 ? 'fila' : 'filas'}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-gray-500">
+                {s.rowCount} {s.rowCount === 1 ? 'fila' : 'filas'}
+              </p>
+              {s.dayOfWeek && (
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                  {s.dayOfWeek === 'lunes' ? 'Lun' : s.dayOfWeek === 'martes' ? 'Mar' : 'Sáb'}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
