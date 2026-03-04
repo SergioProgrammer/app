@@ -181,10 +181,10 @@ function DayColumn({ day, spreadsheets, sortBy, onToggleSort, onClickCard, onArc
       </div>
       <button
         onClick={onToggleSort}
-        className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+        className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
       >
-        <ArrowDownUp className="h-3 w-3" />
-        {sortBy === 'updatedAt' ? 'Editado recientemente' : 'Creado recientemente'}
+        <ArrowDownUp className="h-3.5 w-3.5" />
+        {sortBy === 'updatedAt' ? 'Fecha de edición' : 'Fecha de creación'}
       </button>
       {!collapsed && (
         <div className="flex flex-col gap-2">
