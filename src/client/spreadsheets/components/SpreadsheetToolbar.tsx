@@ -3,6 +3,7 @@
 import {
   ArrowDown,
   ArrowUp,
+  Camera,
   Check,
   Copy,
   HelpCircle,
@@ -24,6 +25,7 @@ interface SpreadsheetToolbarProps {
   onDuplicate: () => void
   onMoveUp: () => void
   onMoveDown: () => void
+  onCapture: () => void
 }
 
 export function SpreadsheetToolbar({
@@ -35,6 +37,7 @@ export function SpreadsheetToolbar({
   onDuplicate,
   onMoveUp,
   onMoveDown,
+  onCapture,
 }: SpreadsheetToolbarProps) {
   const [helpOpen, setHelpOpen] = useState(false)
   const helpRef = useRef<HTMLDivElement>(null)
@@ -119,6 +122,16 @@ export function SpreadsheetToolbar({
         className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <ArrowDown className="h-3.5 w-3.5" />
+      </button>
+
+      <div className="h-4 w-px bg-gray-200" />
+
+      <button
+        onClick={onCapture}
+        className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+      >
+        <Camera className="h-3.5 w-3.5" />
+        Realizar captura
       </button>
 
       <div className="h-4 w-px bg-gray-200" />

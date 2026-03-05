@@ -168,6 +168,7 @@ export default function NuevaHojaPage() {
         onDuplicate={() => duplicateRows(selectedRows)}
         onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
         onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
+        onCapture={() => {}}
       />
 
       <SpreadsheetTable

@@ -11,9 +11,10 @@ import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/Spreadsh
 import { SpreadsheetHeaderFields } from '@/client/spreadsheets/components/SpreadsheetHeaderFields'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
 import { Toast } from '@/client/spreadsheets/components/Toast'
+import { CaptureModal } from '@/client/spreadsheets/components/CaptureModal'
 import * as api from '@/client/spreadsheets/services/spreadsheetApi'
 import type { SpreadsheetRowClient } from '@/client/spreadsheets/types'
-import { REQUIRED_ROW_FIELDS } from '@/client/spreadsheets/types'
+import { REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '@/client/spreadsheets/types'
 
 type GenerateState = 'idle' | 'generating' | 'success' | 'error'
 
@@ -60,6 +61,7 @@ export default function EditarHojaPage() {
 
   const [generateState, setGenerateState] = useState<GenerateState>('idle')
   const [headerReviewed, setHeaderReviewed] = useState(false)
+  const [captureModalOpen, setCaptureModalOpen] = useState(false)
   const [toast, setToast] = useState<{
     type: 'success' | 'error'
     title: string
@@ -147,6 +149,58 @@ export default function EditarHojaPage() {
       resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
     }
   }, [id, save, headerData, rows])
+
+  const handleCapture = useCallback(async (selectedColumns: string[]) => {
+    setCaptureModalOpen(false)
+    const captureRows = selectedRows.size > 0
+      ? rows.filter((_, i) => selectedRows.has(i))
+      : rows
+
+    const colDefs = SPREADSHEET_COLUMNS.filter((c) => selectedColumns.includes(c.key))
+
+    const container = document.createElement('div')
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;background:#ffffff;padding:12px;font-family:Arial,sans-serif;font-size:13px;color:#111827'
+
+    const table = document.createElement('table')
+    table.style.cssText = 'border-collapse:collapse;color:#111827'
+
+    const thead = document.createElement('thead')
+    const headerRow = document.createElement('tr')
+    colDefs.forEach((col) => {
+      const th = document.createElement('th')
+      th.textContent = col.label
+      th.style.cssText = 'border:1px solid #d1d5db;padding:6px 10px;background:#f3f4f6;color:#111827;font-weight:700;white-space:nowrap;text-align:left'
+      headerRow.appendChild(th)
+    })
+    thead.appendChild(headerRow)
+    table.appendChild(thead)
+
+    const tbody = document.createElement('tbody')
+    captureRows.forEach((row) => {
+      const tr = document.createElement('tr')
+      colDefs.forEach((col) => {
+        const td = document.createElement('td')
+        td.textContent = String(row[col.key as keyof SpreadsheetRowClient] ?? '')
+        td.style.cssText = 'border:1px solid #e5e7eb;padding:5px 10px;white-space:nowrap;color:#111827'
+        tr.appendChild(td)
+      })
+      tbody.appendChild(tr)
+    })
+    table.appendChild(tbody)
+    container.appendChild(table)
+    document.body.appendChild(container)
+
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const canvas = await html2canvas(container, { scale: 2, backgroundColor: '#ffffff' })
+      const link = document.createElement('a')
+      link.download = `${name || 'captura'}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    } finally {
+      document.body.removeChild(container)
+    }
+  }, [rows, selectedRows, name])
 
   const selectedIndex = selectedRows.size === 1 ? [...selectedRows][0] : -1
 
@@ -238,6 +292,7 @@ export default function EditarHojaPage() {
         onDuplicate={() => duplicateRows(selectedRows)}
         onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
         onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
+        onCapture={() => setCaptureModalOpen(true)}
       />
 
       <SpreadsheetTable
@@ -251,6 +306,12 @@ export default function EditarHojaPage() {
       />
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
+
+      <CaptureModal
+        open={captureModalOpen}
+        onClose={() => setCaptureModalOpen(false)}
+        onConfirm={handleCapture}
+      />
 
       <div className="flex flex-col items-end gap-3">
         <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
