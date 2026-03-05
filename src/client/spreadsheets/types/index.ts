@@ -132,6 +132,13 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
   search: '',
 }
 
+export const HIGHLIGHT_STYLES = {
+  match: { bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  autoCalc: { bg: 'bg-blue-50/40', text: 'text-gray-700' },
+} as const
+
+export const IATA_FLIGHT_REGEX = /^[A-Z0-9]{2}\d{1,4}$/i
+
 export function getWeekString(dateStr?: string): string {
   const date = dateStr ? new Date(dateStr) : new Date()
   if (isNaN(date.getTime())) return ''

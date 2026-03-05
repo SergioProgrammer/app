@@ -1,7 +1,8 @@
 'use client'
 
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, AlertTriangle } from 'lucide-react'
 import type { HeaderDataClient } from '../types'
+import { IATA_FLIGHT_REGEX } from '../types'
 
 interface SpreadsheetHeaderFieldsProps {
   data: HeaderDataClient
@@ -52,6 +53,12 @@ export function SpreadsheetHeaderFields({ data, onChange }: SpreadsheetHeaderFie
                 <span className="mt-1 flex items-center gap-1 text-xs text-red-700 font-medium">
                   <AlertCircle className="h-3 w-3" />
                   Campo requerido
+                </span>
+              )}
+              {!isEmpty && field.key === 'flightNumber' && !IATA_FLIGHT_REGEX.test(value) && (
+                <span className="mt-1 flex items-center gap-1 text-xs text-amber-700 font-medium">
+                  <AlertTriangle className="h-3 w-3" />
+                  Formato IATA no reconocido (ej. UX9117)
                 </span>
               )}
             </div>

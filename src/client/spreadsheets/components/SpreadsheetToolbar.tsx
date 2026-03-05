@@ -26,6 +26,7 @@ interface SpreadsheetToolbarProps {
   onMoveUp: () => void
   onMoveDown: () => void
   onCapture: () => void
+  isCapturing?: boolean
 }
 
 export function SpreadsheetToolbar({
@@ -38,6 +39,7 @@ export function SpreadsheetToolbar({
   onMoveUp,
   onMoveDown,
   onCapture,
+  isCapturing = false,
 }: SpreadsheetToolbarProps) {
   const [helpOpen, setHelpOpen] = useState(false)
   const helpRef = useRef<HTMLDivElement>(null)
@@ -128,10 +130,16 @@ export function SpreadsheetToolbar({
 
       <button
         onClick={onCapture}
-        className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+        disabled={selectedCount === 0 || isCapturing}
+        title={selectedCount === 0 ? 'Selecciona al menos una fila para capturar' : undefined}
+        className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <Camera className="h-3.5 w-3.5" />
-        Realizar captura
+        {isCapturing ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Camera className="h-3.5 w-3.5" />
+        )}
+        {isCapturing ? 'Capturando...' : 'Realizar captura'}
       </button>
 
       <div className="h-4 w-px bg-gray-200" />

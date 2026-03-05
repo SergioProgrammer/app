@@ -8,9 +8,10 @@ interface CaptureModalProps {
   open: boolean
   onClose: () => void
   onConfirm: (selectedColumns: string[]) => void
+  selectedRowCount: number
 }
 
-export function CaptureModal({ open, onClose, onConfirm }: CaptureModalProps) {
+export function CaptureModal({ open, onClose, onConfirm, selectedRowCount }: CaptureModalProps) {
   const allKeys = SPREADSHEET_COLUMNS.map((c) => c.key)
   const [selected, setSelected] = useState<Set<string>>(new Set(allKeys))
 
@@ -40,7 +41,13 @@ export function CaptureModal({ open, onClose, onConfirm }: CaptureModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-80 rounded-2xl border border-gray-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-          <h2 className="text-sm font-semibold text-gray-900">Seleccionar columnas para la captura</h2>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Seleccionar columnas para la captura</h2>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Se capturarán <span className="font-medium text-gray-700">{selectedRowCount}</span> filas seleccionadas
+              · <span className="font-medium text-gray-700">{selected.size}</span> columnas seleccionadas
+            </p>
+          </div>
           <button onClick={onClose} className="cursor-pointer text-gray-400 hover:text-gray-600">
             <X className="h-4 w-4" />
           </button>

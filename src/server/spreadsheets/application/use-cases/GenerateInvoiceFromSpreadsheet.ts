@@ -20,7 +20,10 @@ interface GenerateInvoiceResult {
   invoices: GenerateInvoiceGroupResult[]
 }
 
+const MAX_INVOICE_GROUPS = 10
+
 function incrementInvoiceNumber(base: string, index: number): string {
+  if (!base.trim()) return ''
   if (index === 0) return base
   const match = base.match(/^(.*?)(\d+)$/)
   if (!match) return `${base}-${index + 1}`
@@ -64,6 +67,12 @@ export class GenerateInvoiceFromSpreadsheet {
     if (groupMap.has(headerAwb)) orderedAwbs.push(headerAwb)
     for (const awb of groupMap.keys()) {
       if (awb !== headerAwb) orderedAwbs.push(awb)
+    }
+
+    if (orderedAwbs.length > MAX_INVOICE_GROUPS) {
+      throw new Error(
+        `Demasiados AWBs distintos (${orderedAwbs.length}). El máximo permitido es ${MAX_INVOICE_GROUPS} facturas por hoja.`,
+      )
     }
 
     const results: GenerateInvoiceGroupResult[] = []

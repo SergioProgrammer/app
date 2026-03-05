@@ -62,6 +62,7 @@ export default function EditarHojaPage() {
   const [generateState, setGenerateState] = useState<GenerateState>('idle')
   const [headerReviewed, setHeaderReviewed] = useState(false)
   const [captureModalOpen, setCaptureModalOpen] = useState(false)
+  const [isCapturing, setIsCapturing] = useState(false)
   const [toast, setToast] = useState<{
     type: 'success' | 'error'
     title: string
@@ -152,9 +153,8 @@ export default function EditarHojaPage() {
 
   const handleCapture = useCallback(async (selectedColumns: string[]) => {
     setCaptureModalOpen(false)
-    const captureRows = selectedRows.size > 0
-      ? rows.filter((_, i) => selectedRows.has(i))
-      : rows
+    const captureRows = rows.filter((_, i) => selectedRows.has(i))
+    if (captureRows.length === 0) return
 
     const colDefs = SPREADSHEET_COLUMNS.filter((c) => selectedColumns.includes(c.key))
 
@@ -190,6 +190,7 @@ export default function EditarHojaPage() {
     container.appendChild(table)
     document.body.appendChild(container)
 
+    setIsCapturing(true)
     try {
       const html2canvas = (await import('html2canvas')).default
       const canvas = await html2canvas(container, { scale: 2, backgroundColor: '#ffffff' })
@@ -197,8 +198,15 @@ export default function EditarHojaPage() {
       link.download = `${name || 'captura'}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
+    } catch (err) {
+      setToast({
+        type: 'error',
+        title: 'Error al capturar',
+        message: err instanceof Error ? err.message : 'No se pudo generar la imagen',
+      })
     } finally {
       document.body.removeChild(container)
+      setIsCapturing(false)
     }
   }, [rows, selectedRows, name])
 
@@ -292,7 +300,8 @@ export default function EditarHojaPage() {
         onDuplicate={() => duplicateRows(selectedRows)}
         onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
         onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
-        onCapture={() => setCaptureModalOpen(true)}
+        onCapture={() => !isCapturing && setCaptureModalOpen(true)}
+        isCapturing={isCapturing}
       />
 
       <SpreadsheetTable
@@ -311,6 +320,7 @@ export default function EditarHojaPage() {
         open={captureModalOpen}
         onClose={() => setCaptureModalOpen(false)}
         onConfirm={handleCapture}
+        selectedRowCount={selectedRows.size}
       />
 
       <div className="flex flex-col items-end gap-3">

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SpreadsheetColumnKey, SpreadsheetRowClient } from '../types'
-import { EXAMPLE_ROW, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
+import { EXAMPLE_ROW, HIGHLIGHT_STYLES, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
 
 const STORAGE_KEY = 'spreadsheet-column-widths'
 const MIN_COL_WIDTH = 70
@@ -50,35 +50,44 @@ export function SpreadsheetTable({
   const [isDragging, setIsDragging] = useState(false)
   const dragStartRef = useRef<number | null>(null)
   const dragModeRef = useRef<'select' | 'deselect'>('select')
+  const lastClickedRowRef = useRef<number | null>(null)
 
   // Persist widths to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(columnWidths))
   }, [columnWidths])
+    useCallback(
+        (index: number) => {
+            const next = new Set(selectedRows)
+            if (next.has(index)) {
+                next.delete(index)
+            } else {
+                next.add(index)
+            }
+            onSelectRows(next)
+        },
+        [selectedRows, onSelectRows],
+    );
 
-  const toggleRow = useCallback(
-    (index: number) => {
-      const next = new Set(selectedRows)
-      if (next.has(index)) {
-        next.delete(index)
-      } else {
-        next.add(index)
+    const toggleAll = useCallback(() => {
+        if (selectedRows.size === rows.length) {
+            onSelectRows(new Set())
+        } else {
+            onSelectRows(new Set(rows.map((_, i) => i)))
+        }
+    }, [selectedRows, rows, onSelectRows])
+    const handleRowMouseDown = useCallback(
+    (rowIdx: number, e: React.MouseEvent) => {
+      if (e.shiftKey && lastClickedRowRef.current !== null) {
+        // Shift+Click: select range from lastClickedRow to rowIdx
+        const from = Math.min(lastClickedRowRef.current, rowIdx)
+        const to = Math.max(lastClickedRowRef.current, rowIdx)
+        const next = new Set(selectedRows)
+        for (let i = from; i <= to; i++) next.add(i)
+        onSelectRows(next)
+        return
       }
-      onSelectRows(next)
-    },
-    [selectedRows, onSelectRows],
-  )
-
-  const toggleAll = useCallback(() => {
-    if (selectedRows.size === rows.length) {
-      onSelectRows(new Set())
-    } else {
-      onSelectRows(new Set(rows.map((_, i) => i)))
-    }
-  }, [selectedRows, rows, onSelectRows])
-
-  const handleRowMouseDown = useCallback(
-    (rowIdx: number) => {
+      lastClickedRowRef.current = rowIdx
       const mode = selectedRows.has(rowIdx) ? 'deselect' : 'select'
       dragModeRef.current = mode
       dragStartRef.current = rowIdx
@@ -238,7 +247,7 @@ export function SpreadsheetTable({
             })}
           </tr>
         </thead>
-        <tbody>
+        <tbody className={isDragging ? 'cursor-grabbing' : ''}>
           {/* Fila de ejemplo no editable */}
           <tr key="example-row" className="border-b border-gray-200 border-l-4 border-l-amber-400 bg-amber-100/60">
             <td className="px-2 py-1.5 text-center">
@@ -264,7 +273,7 @@ export function SpreadsheetTable({
             >
               <td
                 className="px-2 py-1 text-center cursor-pointer"
-                onMouseDown={() => handleRowMouseDown(rowIdx)}
+                onMouseDown={(e) => handleRowMouseDown(rowIdx, e)}
               >
                 <input
                   type="checkbox"
@@ -302,19 +311,23 @@ export function SpreadsheetTable({
                       onFocus={() => onActiveRowChange?.(rowIdx)}
                       onBlur={() => onActiveRowChange?.(null)}
                       title={
-                        col.key === 'bundles'
-                          ? 'Auto-calculado: Kg / Abono. Editable.'
-                          : col.key === 'week'
-                            ? 'Auto-calculado desde fecha factura. Editable.'
-                            : col.key === 'date'
-                              ? 'Auto-calculado: fecha factura - 1 día. Editable.'
-                              : undefined
+                        isAwbDiff
+                          ? 'AWB diferente al de cabecera'
+                          : isFlightDiff
+                            ? 'Nº vuelo diferente al de cabecera'
+                            : col.key === 'bundles'
+                              ? 'Auto-calculado: Kg / Abono. Editable.'
+                              : col.key === 'week'
+                                ? 'Auto-calculado desde fecha factura. Editable.'
+                                : col.key === 'date'
+                                  ? 'Auto-calculado: fecha factura - 1 día. Editable.'
+                                  : undefined
                       }
                       className={`w-full truncate rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
                         isAwbDiff || isFlightDiff
-                          ? 'bg-emerald-50 text-gray-900'
+                          ? `${HIGHLIGHT_STYLES.match.bg} text-gray-900`
                           : ['bundles', 'week', 'date'].includes(col.key)
-                            ? 'bg-blue-50/40 text-gray-700'
+                            ? `${HIGHLIGHT_STYLES.autoCalc.bg} ${HIGHLIGHT_STYLES.autoCalc.text}`
                             : 'bg-transparent text-gray-900'
                       }`}
                     />

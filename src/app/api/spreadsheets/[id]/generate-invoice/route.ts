@@ -32,6 +32,6 @@ export async function POST(_request: Request, { params }: RouteParams) {
     if (message === 'Spreadsheet has no rows') {
       return NextResponse.json({ error: message }, { status: 400 })
     }
-    throw error
+    return NextResponse.json({ error: message }, { status: 400 })
   }
 }
