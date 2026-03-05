@@ -75,6 +75,7 @@ export class GenerateInvoiceFromSpreadsheet {
         totalKg: totals.totalNetKg,
         totalBundles: totals.totalBundles,
       },
+      grossWeight: totals.totalGrossKg,
       awb: header.awb,
       flightNumber: header.flightNumber,
     }
@@ -105,6 +106,7 @@ export class GenerateInvoiceFromSpreadsheet {
         signerRole: 'Exportador',
         productName: invoiceItems[0]?.product ?? '',
         netWeightKg: totals.totalNetKg,
+        grossWeightKg: totals.totalGrossKg,
         form: header.productForm ?? '',
         botanicalName: header.botanicalName ?? '',
         packageType: 'CAJAS BOX',
