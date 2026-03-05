@@ -66,8 +66,15 @@ export function deleteSpreadsheet(id: string): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(`${BASE}/${id}`, { method: 'DELETE' })
 }
 
+export interface GenerateInvoiceGroupResult {
+  awb: string
+  invoiceNumber: string
+  invoiceUrl: string | null
+  anexoUrl: string | null
+}
+
 export function generateInvoice(
   id: string,
-): Promise<{ invoiceUrl: string | null; anexoUrl: string | null }> {
+): Promise<{ invoices: GenerateInvoiceGroupResult[] }> {
   return request(`${BASE}/${id}/generate-invoice`, { method: 'POST' })
 }

@@ -129,10 +129,13 @@ export default function EditarHojaPage() {
 
       setGenerateState('success')
       const links: { label: string; href: string }[] = []
-      if (result.invoiceUrl) links.push({ label: 'Ver factura', href: result.invoiceUrl })
-      if (result.anexoUrl) links.push({ label: 'Ver anexo IV', href: result.anexoUrl })
+      for (const inv of result.invoices) {
+        if (inv.invoiceUrl) links.push({ label: `Factura ${inv.invoiceNumber}`, href: inv.invoiceUrl })
+        if (inv.anexoUrl) links.push({ label: `Anexo IV (${inv.invoiceNumber})`, href: inv.anexoUrl })
+      }
       links.push({ label: 'Ver en historial de facturas', href: '/facturas/historial' })
-      setToast({ type: 'success', title: 'Factura generada', links })
+      const count = result.invoices.length
+      setToast({ type: 'success', title: `${count} factura${count !== 1 ? 's' : ''} generada${count !== 1 ? 's' : ''}`, links })
       resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
     } catch (err) {
       setGenerateState('error')
@@ -162,6 +165,10 @@ export default function EditarHojaPage() {
       </div>
     )
   }
+
+  const uniqueAwbCount = new Set(
+    rows.map((r) => r.awb?.trim() || headerData.awb?.trim() || '').filter(Boolean)
+  ).size
 
   const generateButtonClass =
     generateState === 'success'
@@ -275,7 +282,9 @@ export default function EditarHojaPage() {
               ? 'Generado'
               : generateState === 'error'
                 ? 'Fallo al generar'
-                : 'Generar factura'}
+                : uniqueAwbCount > 1
+                  ? `Generar ${uniqueAwbCount} facturas`
+                  : 'Generar factura'}
         </button>
       </div>
     </div>
