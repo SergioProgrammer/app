@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SpreadsheetColumnKey, SpreadsheetRowClient } from '../types'
 import { EXAMPLE_ROW, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
 
@@ -47,6 +47,10 @@ export function SpreadsheetTable({
   const [columnWidths, setColumnWidths] = useState<number[]>(getInitialWidths)
   const resizingRef = useRef<{ colIdx: number; startX: number; startWidth: number } | null>(null)
 
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartRef = useRef<number | null>(null)
+  const dragModeRef = useRef<'select' | 'deselect'>('select')
+
   // Persist widths to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(columnWidths))
@@ -72,6 +76,42 @@ export function SpreadsheetTable({
       onSelectRows(new Set(rows.map((_, i) => i)))
     }
   }, [selectedRows, rows, onSelectRows])
+
+  const handleRowMouseDown = useCallback(
+    (rowIdx: number) => {
+      const mode = selectedRows.has(rowIdx) ? 'deselect' : 'select'
+      dragModeRef.current = mode
+      dragStartRef.current = rowIdx
+      setIsDragging(true)
+      const next = new Set(selectedRows)
+      if (mode === 'select') next.add(rowIdx)
+      else next.delete(rowIdx)
+      onSelectRows(next)
+    },
+    [selectedRows, onSelectRows],
+  )
+
+  const handleRowMouseEnter = useCallback(
+    (rowIdx: number) => {
+      if (!isDragging) return
+      const next = new Set(selectedRows)
+      if (dragModeRef.current === 'select') next.add(rowIdx)
+      else next.delete(rowIdx)
+      onSelectRows(next)
+    },
+    [isDragging, selectedRows, onSelectRows],
+  )
+
+  useEffect(() => {
+    const handleMouseUp = () => setIsDragging(false)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => document.removeEventListener('mouseup', handleMouseUp)
+  }, [])
+
+  const tableClassName = useMemo(
+    () => `min-w-full border-collapse text-sm${isDragging ? ' select-none' : ''}`,
+    [isDragging],
+  )
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>, rowIdx: number, colIdx: number) => {
@@ -158,7 +198,7 @@ export function SpreadsheetTable({
 
   return (
     <div ref={tableRef} className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-      <table className="min-w-full border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
+      <table className={tableClassName} style={{ tableLayout: 'fixed' }}>
         <colgroup>
           <col style={{ width: 40 }} />
           <col style={{ width: 40 }} />
@@ -220,13 +260,17 @@ export function SpreadsheetTable({
             <tr
               key={row.id}
               className={`border-b border-gray-100 ${selectedRows.has(rowIdx) ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+              onMouseEnter={() => handleRowMouseEnter(rowIdx)}
             >
-              <td className="px-2 py-1 text-center">
+              <td
+                className="px-2 py-1 text-center cursor-pointer"
+                onMouseDown={() => handleRowMouseDown(rowIdx)}
+              >
                 <input
                   type="checkbox"
+                  readOnly
                   checked={selectedRows.has(rowIdx)}
-                  onChange={() => toggleRow(rowIdx)}
-                  className="rounded border-gray-300"
+                  className="rounded border-gray-300 pointer-events-none"
                 />
               </td>
               <td className="px-2 py-1 text-center text-xs text-gray-400">{rowIdx + 1}</td>
