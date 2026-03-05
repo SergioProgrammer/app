@@ -30,6 +30,7 @@ interface SpreadsheetRowDbRow {
   price: number | null
   order_number: string | null
   awb: string | null
+  flight_number: string | null
   delivery_note: string | null
   invoice_number: string | null
   line: string | null
@@ -50,6 +51,7 @@ function dbRowToData(row: SpreadsheetRowDbRow): SpreadsheetRowData {
     price: row.price,
     orderNumber: row.order_number,
     awb: row.awb,
+    flightNumber: row.flight_number,
     deliveryNote: row.delivery_note,
     invoiceNumber: row.invoice_number,
     line: row.line,
@@ -76,6 +78,7 @@ function dataToDbRow(
     price: row.data.price,
     order_number: row.data.orderNumber,
     awb: row.data.awb,
+    flight_number: row.data.flightNumber,
     delivery_note: row.data.deliveryNote,
     invoice_number: row.data.invoiceNumber,
     line: row.data.line,
@@ -119,6 +122,7 @@ function buildFakeRows(count: number, spreadsheetId: string): SpreadsheetRowDbRo
     price: null,
     order_number: null,
     awb: null,
+    flight_number: null,
     delivery_note: null,
     invoice_number: null,
     line: null,

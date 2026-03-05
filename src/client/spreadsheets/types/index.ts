@@ -15,6 +15,7 @@ export interface SpreadsheetRowClient {
   price: string
   orderNumber: string
   awb: string
+  flightNumber: string
   deliveryNote: string
   invoiceNumber: string
   line: string
@@ -77,6 +78,7 @@ export const SPREADSHEET_COLUMNS = [
   { key: 'price', label: 'Precio', width: 90, inputType: 'number' as ColumnInputType },
   { key: 'orderNumber', label: 'Nº pedido', width: 100, inputType: 'text' as ColumnInputType },
   { key: 'awb', label: 'AWB', width: 120, inputType: 'text' as ColumnInputType },
+  { key: 'flightNumber', label: 'Nº vuelo', width: 110, inputType: 'text' as ColumnInputType },
   { key: 'deliveryNote', label: 'Albarán', width: 100, inputType: 'text' as ColumnInputType },
   { key: 'invoiceNumber', label: 'Nº factura', width: 110, inputType: 'text' as ColumnInputType },
   { key: 'line', label: 'Línea', width: 80, inputType: 'text' as ColumnInputType },
@@ -123,6 +125,7 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
   price: '7.5',
   orderNumber: '20261',
   awb: '996-13826540',
+  flightNumber: 'UX9117',
   deliveryNote: 'ALB-001',
   invoiceNumber: 'FAC-01012026',
   line: '1',
@@ -163,6 +166,7 @@ export function emptyRow(position: number, awb?: string): SpreadsheetRowClient {
     price: '',
     orderNumber: '',
     awb: awb ?? '',
+    flightNumber: '',
     deliveryNote: '',
     invoiceNumber: '',
     line: '',

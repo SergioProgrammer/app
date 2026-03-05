@@ -23,6 +23,7 @@ const RowSchema = z.object({
   price: z.number().nullable().default(null),
   orderNumber: z.string().nullable().default(null),
   awb: z.string().nullable().default(null),
+  flightNumber: z.string().nullable().default(null),
   deliveryNote: z.string().nullable().default(null),
   invoiceNumber: z.string().nullable().default(null),
   line: z.string().nullable().default(null),

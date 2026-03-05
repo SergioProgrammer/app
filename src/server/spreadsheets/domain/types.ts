@@ -11,6 +11,7 @@ export interface SpreadsheetRowData {
   price: number | null
   orderNumber: string | null
   awb: string | null
+  flightNumber: string | null
   deliveryNote: string | null
   invoiceNumber: string | null
   line: string | null
