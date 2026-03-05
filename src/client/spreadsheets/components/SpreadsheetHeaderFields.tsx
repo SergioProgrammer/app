@@ -42,7 +42,9 @@ export function SpreadsheetHeaderFields({ data, onChange }: SpreadsheetHeaderFie
                   className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm ${
                     isEmpty
                       ? 'border-red-400 outline outline-2 outline-red-400 bg-red-50'
-                      : 'border-gray-200 bg-white'
+                      : (field.key === 'awb' || field.key === 'flightNumber')
+                        ? 'border-emerald-200 bg-emerald-50'
+                        : 'border-gray-200 bg-white'
                   }`}
                 />
               </label>

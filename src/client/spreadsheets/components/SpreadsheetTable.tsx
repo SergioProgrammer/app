@@ -29,6 +29,8 @@ interface SpreadsheetTableProps {
   onUpdateRow: (index: number, field: keyof SpreadsheetRowClient, value: string) => void
   onAddRow: () => void
   onActiveRowChange?: (index: number | null) => void
+  headerAwb?: string
+  headerFlightNumber?: string
 }
 
 export function SpreadsheetTable({
@@ -38,6 +40,8 @@ export function SpreadsheetTable({
   onUpdateRow,
   onAddRow,
   onActiveRowChange,
+  headerAwb,
+  headerFlightNumber,
 }: SpreadsheetTableProps) {
   const tableRef = useRef<HTMLDivElement>(null)
   const [columnWidths, setColumnWidths] = useState<number[]>(getInitialWidths)
@@ -226,38 +230,53 @@ export function SpreadsheetTable({
                 />
               </td>
               <td className="px-2 py-1 text-center text-xs text-gray-400">{rowIdx + 1}</td>
-              {SPREADSHEET_COLUMNS.map((col, colIdx) => (
-                <td key={col.key} className="px-1 py-0.5">
-                  <input
-                    data-row={rowIdx}
-                    data-col={colIdx}
-                    type={col.inputType === 'number' ? 'number' : col.inputType === 'date' ? 'date' : 'text'}
-                    step={col.inputType === 'number' ? 'any' : undefined}
-                    min={col.inputType === 'number' ? '0' : undefined}
-                    value={row[col.key as SpreadsheetColumnKey]}
-                    onChange={(e) =>
-                      onUpdateRow(rowIdx, col.key as keyof SpreadsheetRowClient, e.target.value)
-                    }
-                    onKeyDown={(e) => handleKeyDown(e, rowIdx, colIdx)}
-                    onFocus={() => onActiveRowChange?.(rowIdx)}
-                    onBlur={() => onActiveRowChange?.(null)}
-                    title={
-                      col.key === 'bundles'
-                        ? 'Auto-calculado: Kg / Abono. Editable.'
-                        : col.key === 'week'
-                          ? 'Auto-calculado desde fecha factura. Editable.'
-                          : col.key === 'date'
-                            ? 'Auto-calculado: fecha factura - 1 día. Editable.'
-                            : undefined
-                    }
-                    className={`w-full truncate rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
-                      ['bundles', 'week', 'date'].includes(col.key)
-                        ? 'bg-blue-50/40 text-gray-700'
-                        : 'bg-transparent text-gray-900'
-                    }`}
-                  />
-                </td>
-              ))}
+              {SPREADSHEET_COLUMNS.map((col, colIdx) => {
+                const cellValue = row[col.key as SpreadsheetColumnKey]
+                const isAwbDiff =
+                  col.key === 'awb' &&
+                  headerAwb &&
+                  cellValue &&
+                  cellValue.trim() !== headerAwb.trim()
+                const isFlightDiff =
+                  col.key === 'flightNumber' &&
+                  headerFlightNumber &&
+                  cellValue &&
+                  cellValue.trim() !== headerFlightNumber.trim()
+                return (
+                  <td key={col.key} className="px-1 py-0.5">
+                    <input
+                      data-row={rowIdx}
+                      data-col={colIdx}
+                      type={col.inputType === 'number' ? 'number' : col.inputType === 'date' ? 'date' : 'text'}
+                      step={col.inputType === 'number' ? 'any' : undefined}
+                      min={col.inputType === 'number' ? '0' : undefined}
+                      value={cellValue}
+                      onChange={(e) =>
+                        onUpdateRow(rowIdx, col.key as keyof SpreadsheetRowClient, e.target.value)
+                      }
+                      onKeyDown={(e) => handleKeyDown(e, rowIdx, colIdx)}
+                      onFocus={() => onActiveRowChange?.(rowIdx)}
+                      onBlur={() => onActiveRowChange?.(null)}
+                      title={
+                        col.key === 'bundles'
+                          ? 'Auto-calculado: Kg / Abono. Editable.'
+                          : col.key === 'week'
+                            ? 'Auto-calculado desde fecha factura. Editable.'
+                            : col.key === 'date'
+                              ? 'Auto-calculado: fecha factura - 1 día. Editable.'
+                              : undefined
+                      }
+                      className={`w-full truncate rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
+                        isAwbDiff || isFlightDiff
+                          ? 'bg-emerald-50 text-gray-900'
+                          : ['bundles', 'week', 'date'].includes(col.key)
+                            ? 'bg-blue-50/40 text-gray-700'
+                            : 'bg-transparent text-gray-900'
+                      }`}
+                    />
+                  </td>
+                )
+              })}
             </tr>
           ))}
           {/* Fila vacía para añadir datos */}

@@ -239,6 +239,8 @@ export default function EditarHojaPage() {
         onSelectRows={setSelectedRows}
         onUpdateRow={updateRow}
         onAddRow={addRow}
+        headerAwb={headerData.awb}
+        headerFlightNumber={headerData.flightNumber}
       />
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
