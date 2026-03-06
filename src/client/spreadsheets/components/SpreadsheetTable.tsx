@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SpreadsheetColumnKey, SpreadsheetRowClient } from '../types'
-import { EXAMPLE_ROW, HIGHLIGHT_STYLES, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
+import { HIGHLIGHT_STYLES, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
 
 const STORAGE_KEY = 'spreadsheet-column-widths'
 const MIN_COL_WIDTH = 70
@@ -246,22 +246,6 @@ export function SpreadsheetTable({
           </tr>
         </thead>
         <tbody className={isDragging ? 'cursor-grabbing' : ''}>
-          <tr key="example-row" className="border-b border-gray-200 border-l-4 border-l-amber-400 bg-amber-100/60">
-            <td className="px-2 py-1.5 text-center">
-              <span className="rounded bg-amber-200 px-1 py-0.5 text-[10px] font-bold uppercase text-amber-700">Ej.</span>
-            </td>
-            <td className="px-2 py-1.5 text-center text-xs font-medium text-amber-500">—</td>
-            {SPREADSHEET_COLUMNS.map((col) => (
-              <td key={col.key} className="px-1 py-0.5">
-                <span className="block truncate px-1.5 py-1 text-sm font-medium text-amber-700">
-                  {col.inputType === 'number'
-                    ? Number(EXAMPLE_ROW[col.key as SpreadsheetColumnKey]).toLocaleString('es-ES')
-                    : EXAMPLE_ROW[col.key as SpreadsheetColumnKey]}
-                </span>
-              </td>
-            ))}
-          </tr>
-
           {rows.map((row, rowIdx) => (
             <tr
               key={row.id}
