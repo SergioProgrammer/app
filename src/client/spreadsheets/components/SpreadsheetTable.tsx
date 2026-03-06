@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SpreadsheetColumnKey, SpreadsheetRowClient } from '../types'
 import { HIGHLIGHT_STYLES, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
 
-const STORAGE_KEY = 'spreadsheet-column-widths'
+const STORAGE_KEY = 'spreadsheet-column-widths-v2'
 const MIN_COL_WIDTH = 70
-const MAX_AUTO_FIT_WIDTH = 400
+const MAX_AUTO_FIT_WIDTH = 800
 
 function getInitialWidths(): number[] {
   if (typeof window === 'undefined') return SPREADSHEET_COLUMNS.map((c) => c.width)
@@ -231,7 +231,7 @@ export function SpreadsheetTable({
                   key={col.key}
                   className={`relative select-none px-3 py-2 text-left text-sm font-semibold ${isRequired ? 'text-gray-700' : 'text-gray-500'} ${colIdx < SPREADSHEET_COLUMNS.length - 1 ? 'border-r border-gray-300' : ''}`}
                 >
-                  <span data-header-col={colIdx} className="truncate">
+                  <span data-header-col={colIdx}>
                     {col.label}
                     {isRequired && <span className="ml-0.5 text-red-400">*</span>}
                   </span>
@@ -285,7 +285,7 @@ export function SpreadsheetTable({
                               ? 'Auto-calculado: fecha factura - 1 día. Editable.'
                               : undefined
                       }
-                      className={`w-full truncate rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
+                      className={`w-full rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
                         ['bundles', 'week', 'date'].includes(col.key)
                           ? `${HIGHLIGHT_STYLES.autoCalc.bg} ${HIGHLIGHT_STYLES.autoCalc.text}`
                           : 'bg-transparent text-gray-900'
