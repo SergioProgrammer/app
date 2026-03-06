@@ -174,12 +174,14 @@ export function SpreadsheetTable({
       document.body.style.userSelect = 'none'
 
       const handlePointerMove = (ev: PointerEvent) => {
-        if (!resizingRef.current || resizingRef.current.pointerId !== ev.pointerId) return
-        const delta = ev.clientX - resizingRef.current.startX
-        const newWidth = Math.max(MIN_COL_WIDTH, resizingRef.current.startWidth + delta)
+        const activeResize = resizingRef.current
+        if (!activeResize || activeResize.pointerId !== ev.pointerId) return
+        const delta = ev.clientX - activeResize.startX
+        const newWidth = Math.max(MIN_COL_WIDTH, activeResize.startWidth + delta)
+        const targetColIdx = activeResize.colIdx
         setColumnWidths((prev) => {
           const next = [...prev]
-          next[resizingRef.current!.colIdx] = newWidth
+          next[targetColIdx] = newWidth
           return next
         })
       }
