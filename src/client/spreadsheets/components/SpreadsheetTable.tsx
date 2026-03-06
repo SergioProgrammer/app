@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SpreadsheetColumnKey, SpreadsheetRowClient } from '../types'
-import { EXAMPLE_ROW, HIGHLIGHT_STYLES, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
+import { HIGHLIGHT_STYLES, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../types'
 
-const STORAGE_KEY = 'spreadsheet-column-widths'
+const STORAGE_KEY = 'spreadsheet-column-widths-v2'
 const MIN_COL_WIDTH = 70
-const MAX_AUTO_FIT_WIDTH = 400
+const MAX_AUTO_FIT_WIDTH = 1200
 
 function getInitialWidths(): number[] {
   if (typeof window === 'undefined') return SPREADSHEET_COLUMNS.map((c) => c.width)
@@ -29,8 +29,6 @@ interface SpreadsheetTableProps {
   onUpdateRow: (index: number, field: keyof SpreadsheetRowClient, value: string) => void
   onAddRow: () => void
   onActiveRowChange?: (index: number | null) => void
-  headerAwb?: string
-  headerFlightNumber?: string
 }
 
 export function SpreadsheetTable({
@@ -40,24 +38,20 @@ export function SpreadsheetTable({
   onUpdateRow,
   onAddRow,
   onActiveRowChange,
-  headerAwb,
-  headerFlightNumber,
 }: SpreadsheetTableProps) {
   const tableRef = useRef<HTMLDivElement>(null)
   const [columnWidths, setColumnWidths] = useState<number[]>(getInitialWidths)
-  const resizingRef = useRef<{ colIdx: number; startX: number; startWidth: number } | null>(null)
+  const resizingRef = useRef<{ colIdx: number; startX: number; startWidth: number; pointerId: number } | null>(null)
+  const lastTapRef = useRef<{ colIdx: number; time: number } | null>(null)
 
   const [isDragging, setIsDragging] = useState(false)
-  const dragStartRef = useRef<number | null>(null)
   const dragModeRef = useRef<'select' | 'deselect'>('select')
   const lastClickedRowRef = useRef<number | null>(null)
 
-  // Persist widths to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(columnWidths))
   }, [columnWidths])
 
-  // Prevent page scroll during drag selection
   useEffect(() => {
     if (!isDragging) return
     document.body.style.overflow = 'hidden'
@@ -65,30 +59,18 @@ export function SpreadsheetTable({
       document.body.style.overflow = ''
     }
   }, [isDragging])
-    useCallback(
-        (index: number) => {
-            const next = new Set(selectedRows)
-            if (next.has(index)) {
-                next.delete(index)
-            } else {
-                next.add(index)
-            }
-            onSelectRows(next)
-        },
-        [selectedRows, onSelectRows],
-    );
 
-    const toggleAll = useCallback(() => {
-        if (selectedRows.size === rows.length) {
-            onSelectRows(new Set())
-        } else {
-            onSelectRows(new Set(rows.map((_, i) => i)))
-        }
-    }, [selectedRows, rows, onSelectRows])
-    const handleRowMouseDown = useCallback(
+  const toggleAll = useCallback(() => {
+    if (selectedRows.size === rows.length) {
+      onSelectRows(new Set())
+    } else {
+      onSelectRows(new Set(rows.map((_, i) => i)))
+    }
+  }, [selectedRows, rows, onSelectRows])
+
+  const handleRowMouseDown = useCallback(
     (rowIdx: number, e: React.MouseEvent) => {
       if (e.shiftKey && lastClickedRowRef.current !== null) {
-        // Shift+Click: select range from lastClickedRow to rowIdx
         const from = Math.min(lastClickedRowRef.current, rowIdx)
         const to = Math.max(lastClickedRowRef.current, rowIdx)
         const next = new Set(selectedRows)
@@ -99,7 +81,6 @@ export function SpreadsheetTable({
       lastClickedRowRef.current = rowIdx
       const mode = selectedRows.has(rowIdx) ? 'deselect' : 'select'
       dragModeRef.current = mode
-      dragStartRef.current = rowIdx
       setIsDragging(true)
       const next = new Set(selectedRows)
       if (mode === 'select') next.add(rowIdx)
@@ -131,6 +112,13 @@ export function SpreadsheetTable({
     [isDragging],
   )
 
+  const focusCell = (row: number, col: number) => {
+    requestAnimationFrame(() => {
+      const input = tableRef.current?.querySelector<HTMLInputElement>(`[data-row="${row}"][data-col="${col}"]`)
+      input?.focus()
+    })
+  }
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>, rowIdx: number, colIdx: number) => {
       if (e.key === 'Tab' || e.key === 'Enter') {
@@ -148,70 +136,71 @@ export function SpreadsheetTable({
     [rows.length, onAddRow],
   )
 
-  const focusCell = (row: number, col: number) => {
-    requestAnimationFrame(() => {
-      const input = tableRef.current?.querySelector<HTMLInputElement>(
-        `[data-row="${row}"][data-col="${col}"]`,
-      )
-      input?.focus()
+  const handleAutoFit = useCallback((colIdx: number) => {
+    if (!tableRef.current) return
+    const cells = tableRef.current.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`)
+    const headerEl = tableRef.current.querySelector<HTMLElement>(`[data-header-col="${colIdx}"]`)
+    let maxWidth = MIN_COL_WIDTH
+    cells.forEach((cell) => {
+      maxWidth = Math.max(maxWidth, cell.scrollWidth + 16)
     })
-  }
+    if (headerEl) {
+      maxWidth = Math.max(maxWidth, headerEl.scrollWidth + 24)
+    }
+    maxWidth = Math.min(maxWidth, MAX_AUTO_FIT_WIDTH)
+    setColumnWidths((prev) => {
+      const next = [...prev]
+      next[colIdx] = maxWidth
+      return next
+    })
+  }, [])
 
-  // Column resize via drag
   const handleResizeStart = useCallback(
-    (e: React.MouseEvent, colIdx: number) => {
+    (e: React.PointerEvent<HTMLDivElement>, colIdx: number) => {
       e.preventDefault()
       e.stopPropagation()
-      resizingRef.current = { colIdx, startX: e.clientX, startWidth: columnWidths[colIdx] }
+
+      const now = Date.now()
+      const lastTap = lastTapRef.current
+      if (e.pointerType === 'touch' && lastTap && lastTap.colIdx === colIdx && now - lastTap.time < 320) {
+        handleAutoFit(colIdx)
+        lastTapRef.current = null
+        return
+      }
+
+      lastTapRef.current = e.pointerType === 'touch' ? { colIdx, time: now } : null
+      resizingRef.current = { colIdx, startX: e.clientX, startWidth: columnWidths[colIdx], pointerId: e.pointerId }
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
 
-      const handleMouseMove = (ev: MouseEvent) => {
-        if (!resizingRef.current) return
-        const delta = ev.clientX - resizingRef.current.startX
-        const newWidth = Math.max(MIN_COL_WIDTH, resizingRef.current.startWidth + delta)
+      const handlePointerMove = (ev: PointerEvent) => {
+        const activeResize = resizingRef.current
+        if (!activeResize || activeResize.pointerId !== ev.pointerId) return
+        const delta = ev.clientX - activeResize.startX
+        const newWidth = Math.max(MIN_COL_WIDTH, activeResize.startWidth + delta)
+        const targetColIdx = activeResize.colIdx
         setColumnWidths((prev) => {
           const next = [...prev]
-          next[resizingRef.current!.colIdx] = newWidth
+          next[targetColIdx] = newWidth
           return next
         })
       }
 
-      const handleMouseUp = () => {
+      const handlePointerEnd = (ev: PointerEvent) => {
+        if (resizingRef.current && resizingRef.current.pointerId !== ev.pointerId) return
         resizingRef.current = null
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
+        document.removeEventListener('pointermove', handlePointerMove)
+        document.removeEventListener('pointerup', handlePointerEnd)
+        document.removeEventListener('pointercancel', handlePointerEnd)
       }
 
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
+      document.addEventListener('pointermove', handlePointerMove)
+      document.addEventListener('pointerup', handlePointerEnd)
+      document.addEventListener('pointercancel', handlePointerEnd)
     },
-    [columnWidths],
-  )
-
-  // Auto-fit column on double-click
-  const handleAutoFit = useCallback(
-    (colIdx: number) => {
-      if (!tableRef.current) return
-      const cells = tableRef.current.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`)
-      const headerEl = tableRef.current.querySelector<HTMLElement>(`[data-header-col="${colIdx}"]`)
-      let maxWidth = MIN_COL_WIDTH
-      cells.forEach((cell) => {
-        maxWidth = Math.max(maxWidth, cell.scrollWidth + 16)
-      })
-      if (headerEl) {
-        maxWidth = Math.max(maxWidth, headerEl.scrollWidth + 24)
-      }
-      maxWidth = Math.min(maxWidth, MAX_AUTO_FIT_WIDTH)
-      setColumnWidths((prev) => {
-        const next = [...prev]
-        next[colIdx] = maxWidth
-        return next
-      })
-    },
-    [],
+    [columnWidths, handleAutoFit],
   )
 
   return (
@@ -242,13 +231,13 @@ export function SpreadsheetTable({
                   key={col.key}
                   className={`relative select-none px-3 py-2 text-left text-sm font-semibold ${isRequired ? 'text-gray-700' : 'text-gray-500'} ${colIdx < SPREADSHEET_COLUMNS.length - 1 ? 'border-r border-gray-300' : ''}`}
                 >
-                  <span data-header-col={colIdx} className="truncate">
+                  <span data-header-col={colIdx}>
                     {col.label}
                     {isRequired && <span className="ml-0.5 text-red-400">*</span>}
                   </span>
                   <div
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-300/50"
-                    onMouseDown={(e) => handleResizeStart(e, colIdx)}
+                    className="absolute right-0 top-0 h-full w-3 cursor-col-resize hover:bg-blue-300/50 sm:w-1.5"
+                    onPointerDown={(e) => handleResizeStart(e, colIdx)}
                     onDoubleClick={() => handleAutoFit(colIdx)}
                   />
                 </th>
@@ -257,33 +246,13 @@ export function SpreadsheetTable({
           </tr>
         </thead>
         <tbody className={isDragging ? 'cursor-grabbing' : ''}>
-          {/* Fila de ejemplo no editable */}
-          <tr key="example-row" className="border-b border-gray-200 border-l-4 border-l-amber-400 bg-amber-100/60">
-            <td className="px-2 py-1.5 text-center">
-              <span className="rounded bg-amber-200 px-1 py-0.5 text-[10px] font-bold uppercase text-amber-700">Ej.</span>
-            </td>
-            <td className="px-2 py-1.5 text-center text-xs font-medium text-amber-500">—</td>
-            {SPREADSHEET_COLUMNS.map((col) => (
-              <td key={col.key} className="px-1 py-0.5">
-                <span className="block truncate px-1.5 py-1 text-sm font-medium text-amber-700">
-                  {col.inputType === 'number'
-                    ? Number(EXAMPLE_ROW[col.key as SpreadsheetColumnKey]).toLocaleString('es-ES')
-                    : EXAMPLE_ROW[col.key as SpreadsheetColumnKey]}
-                </span>
-              </td>
-            ))}
-          </tr>
-
           {rows.map((row, rowIdx) => (
             <tr
               key={row.id}
               className={`border-b border-gray-100 ${selectedRows.has(rowIdx) ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
               onMouseEnter={() => handleRowMouseEnter(rowIdx)}
             >
-              <td
-                className="px-2 py-1 text-center cursor-pointer"
-                onMouseDown={(e) => handleRowMouseDown(rowIdx, e)}
-              >
+              <td className="px-2 py-1 text-center cursor-pointer" onMouseDown={(e) => handleRowMouseDown(rowIdx, e)}>
                 <input
                   type="checkbox"
                   readOnly
@@ -294,16 +263,6 @@ export function SpreadsheetTable({
               <td className="px-2 py-1 text-center text-xs text-gray-400">{rowIdx + 1}</td>
               {SPREADSHEET_COLUMNS.map((col, colIdx) => {
                 const cellValue = row[col.key as SpreadsheetColumnKey]
-                const isAwbDiff =
-                  col.key === 'awb' &&
-                  headerAwb &&
-                  cellValue &&
-                  cellValue.trim() !== headerAwb.trim()
-                const isFlightDiff =
-                  col.key === 'flightNumber' &&
-                  headerFlightNumber &&
-                  cellValue &&
-                  cellValue.trim() !== headerFlightNumber.trim()
                 return (
                   <td key={col.key} className="px-1 py-0.5">
                     <input
@@ -313,31 +272,23 @@ export function SpreadsheetTable({
                       step={col.inputType === 'number' ? 'any' : undefined}
                       min={col.inputType === 'number' ? '0' : undefined}
                       value={cellValue}
-                      onChange={(e) =>
-                        onUpdateRow(rowIdx, col.key as keyof SpreadsheetRowClient, e.target.value)
-                      }
+                      onChange={(e) => onUpdateRow(rowIdx, col.key as keyof SpreadsheetRowClient, e.target.value)}
                       onKeyDown={(e) => handleKeyDown(e, rowIdx, colIdx)}
                       onFocus={() => onActiveRowChange?.(rowIdx)}
                       onBlur={() => onActiveRowChange?.(null)}
                       title={
-                        isAwbDiff
-                          ? 'AWB diferente al de cabecera'
-                          : isFlightDiff
-                            ? 'Nº vuelo diferente al de cabecera'
-                            : col.key === 'bundles'
-                              ? 'Auto-calculado: Kg / Abono. Editable.'
-                              : col.key === 'week'
-                                ? 'Auto-calculado desde fecha factura. Editable.'
-                                : col.key === 'date'
-                                  ? 'Auto-calculado: fecha factura - 1 día. Editable.'
-                                  : undefined
+                        col.key === 'bundles'
+                          ? 'Auto-calculado: Kg / Abono. Editable.'
+                          : col.key === 'week'
+                            ? 'Auto-calculado desde fecha factura. Editable.'
+                            : col.key === 'date'
+                              ? 'Auto-calculado: fecha factura - 1 día. Editable.'
+                              : undefined
                       }
-                      className={`w-full truncate rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
-                        isAwbDiff || isFlightDiff
-                          ? `${HIGHLIGHT_STYLES.match.bg} text-gray-900`
-                          : ['bundles', 'week', 'date'].includes(col.key)
-                            ? `${HIGHLIGHT_STYLES.autoCalc.bg} ${HIGHLIGHT_STYLES.autoCalc.text}`
-                            : 'bg-transparent text-gray-900'
+                      className={`w-full rounded border-0 px-1.5 py-1 text-sm outline-none focus:ring-1 focus:ring-blue-400 ${
+                        ['bundles', 'week', 'date'].includes(col.key)
+                          ? `${HIGHLIGHT_STYLES.autoCalc.bg} ${HIGHLIGHT_STYLES.autoCalc.text}`
+                          : 'bg-transparent text-gray-900'
                       }`}
                     />
                   </td>
@@ -345,12 +296,8 @@ export function SpreadsheetTable({
               })}
             </tr>
           ))}
-          {/* Fila vacía para añadir datos */}
-          <tr
-            key="add-row"
-            className="cursor-pointer border-b border-gray-100 text-gray-400 hover:bg-gray-50"
-            onClick={onAddRow}
-          >
+
+          <tr key="add-row" className="cursor-pointer border-b border-gray-100 text-gray-400 hover:bg-gray-50" onClick={onAddRow}>
             <td className="px-2 py-2" />
             <td className="px-2 py-2 text-center text-xs">{rows.length + 1}</td>
             <td colSpan={SPREADSHEET_COLUMNS.length} className="px-2 py-2 text-xs italic">

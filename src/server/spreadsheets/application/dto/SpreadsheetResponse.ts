@@ -22,11 +22,12 @@ export interface SpreadsheetRowResponse {
   boxType: string | null
   bundles: number | null
   price: number | null
-  orderNumber: string | null
   awb: string | null
+  flightNumber: string | null
+  destination: string | null
+  incoterm: string | null
   deliveryNote: string | null
   invoiceNumber: string | null
-  line: string | null
   search: string | null
 }
 

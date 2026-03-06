@@ -13,28 +13,22 @@ export interface SpreadsheetRowClient {
   abono: string
   bundles: string
   price: string
-  orderNumber: string
   awb: string
   flightNumber: string
+  destination: string
+  incoterm: string
   deliveryNote: string
   invoiceNumber: string
-  line: string
   search: string
 }
 
 export interface HeaderDataClient {
-  invoiceNumber: string
-  invoiceDate: string
   clientName: string
   clientTaxId: string
   clientAddress: string
   emitterName: string
   emitterTaxId: string
   emitterAddress: string
-  destination: string
-  incoterm: string
-  awb: string
-  flightNumber: string
   paymentTerms: string
   bankName: string
   bankIban: string
@@ -66,23 +60,23 @@ export interface SpreadsheetDetail {
 export type ColumnInputType = 'text' | 'number' | 'date'
 
 export const SPREADSHEET_COLUMNS = [
-  { key: 'week', label: 'Semana', width: 80, inputType: 'text' as ColumnInputType },
-  { key: 'invoiceDate', label: 'Fecha factura', width: 140, inputType: 'date' as ColumnInputType },
-  { key: 'date', label: 'Fecha corte', width: 140, inputType: 'date' as ColumnInputType },
-  { key: 'finalClient', label: 'Cliente final', width: 140, inputType: 'text' as ColumnInputType },
-  { key: 'kg', label: 'Kg por bulto', width: 110, inputType: 'number' as ColumnInputType },
-  { key: 'product', label: 'Producto', width: 140, inputType: 'text' as ColumnInputType },
-  { key: 'boxType', label: 'Tipo caja', width: 100, inputType: 'text' as ColumnInputType },
-  { key: 'bundles', label: 'Bultos', width: 70, inputType: 'number' as ColumnInputType },
-  { key: 'abono', label: 'Abono', width: 80, inputType: 'number' as ColumnInputType },
-  { key: 'price', label: 'Precio', width: 90, inputType: 'number' as ColumnInputType },
-  { key: 'orderNumber', label: 'Nº pedido', width: 100, inputType: 'text' as ColumnInputType },
-  { key: 'awb', label: 'AWB', width: 120, inputType: 'text' as ColumnInputType },
-  { key: 'flightNumber', label: 'Nº vuelo', width: 110, inputType: 'text' as ColumnInputType },
-  { key: 'deliveryNote', label: 'Albarán', width: 100, inputType: 'text' as ColumnInputType },
-  { key: 'invoiceNumber', label: 'Nº factura', width: 110, inputType: 'text' as ColumnInputType },
-  { key: 'line', label: 'Línea', width: 80, inputType: 'text' as ColumnInputType },
-  { key: 'search', label: 'Búsqueda', width: 100, inputType: 'text' as ColumnInputType },
+  { key: 'week', label: 'Semana', width: 100, inputType: 'text' as ColumnInputType },
+  { key: 'invoiceDate', label: 'Fecha factura', width: 170, inputType: 'date' as ColumnInputType },
+  { key: 'date', label: 'Fecha corte', width: 170, inputType: 'date' as ColumnInputType },
+  { key: 'finalClient', label: 'Cliente final', width: 480, inputType: 'text' as ColumnInputType },
+  { key: 'kg', label: 'Kg por bulto', width: 140, inputType: 'number' as ColumnInputType },
+  { key: 'product', label: 'Producto', width: 630, inputType: 'text' as ColumnInputType },
+  { key: 'boxType', label: 'Tipo caja', width: 160, inputType: 'text' as ColumnInputType },
+  { key: 'bundles', label: 'Bultos', width: 100, inputType: 'number' as ColumnInputType },
+  { key: 'abono', label: 'Abono', width: 60, inputType: 'number' as ColumnInputType },
+  { key: 'price', label: 'Precio', width: 60, inputType: 'number' as ColumnInputType },
+  { key: 'awb', label: 'AWB', width: 390, inputType: 'text' as ColumnInputType },
+  { key: 'flightNumber', label: 'Nº vuelo', width: 160, inputType: 'text' as ColumnInputType },
+  { key: 'destination', label: 'Destino', width: 220, inputType: 'text' as ColumnInputType },
+  { key: 'incoterm', label: 'Incoterm', width: 70, inputType: 'text' as ColumnInputType },
+  { key: 'deliveryNote', label: 'Albarán', width: 85, inputType: 'text' as ColumnInputType },
+  { key: 'invoiceNumber', label: 'Nº factura', width: 180, inputType: 'text' as ColumnInputType },
+  { key: 'search', label: 'Búsqueda', width: 180, inputType: 'text' as ColumnInputType },
 ] as const
 
 export type SpreadsheetColumnKey = (typeof SPREADSHEET_COLUMNS)[number]['key']
@@ -90,18 +84,12 @@ export type SpreadsheetColumnKey = (typeof SPREADSHEET_COLUMNS)[number]['key']
 export const REQUIRED_ROW_FIELDS: SpreadsheetColumnKey[] = ['product', 'kg', 'price', 'abono']
 
 export const DEFAULT_HEADER: HeaderDataClient = {
-  invoiceNumber: '',
-  invoiceDate: '',
   clientName: 'ARICO FRUITS SL',
   clientTaxId: 'B24895971',
   clientAddress: 'MERCAMADRID NAVE POLIVALENCIA 21/23 · 28053 · MADRID',
   emitterName: 'YEOWARD DEL CAMPO SDAD COOP LTDA DE VECINDARIO LAS PALMAS',
   emitterTaxId: 'F35077700',
   emitterAddress: 'AVDA CANARIAS NUM 249 · 35110 SANTA LUCIA DE TIRAJANA · LAS PALMAS DE GRAN CANARIA',
-  destination: 'MAD AIRPORT',
-  incoterm: 'CPT',
-  awb: '996-13826540',
-  flightNumber: 'UX9117',
   paymentTerms: '30 days',
   bankName: 'CAJAMAR CAJA RURAL, SOCIEDAD COOPERATIVA DE CRÉDITO.',
   bankIban: 'ES59 3058 6105 1828 1001 2174',
@@ -123,12 +111,12 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
   abono: '5',
   bundles: '170',
   price: '7.5',
-  orderNumber: '20261',
   awb: '996-13826540',
   flightNumber: 'UX9117',
+  destination: 'MAD AIRPORT',
+  incoterm: 'CPT',
   deliveryNote: 'ALB-001',
   invoiceNumber: 'FAC-01012026',
-  line: '1',
   search: '',
 }
 
@@ -152,7 +140,7 @@ export function getWeekString(dateStr?: string): string {
   return `${target.getUTCFullYear()}${weekNum}`
 }
 
-export function emptyRow(position: number, awb?: string): SpreadsheetRowClient {
+export function emptyRow(position: number): SpreadsheetRowClient {
   const now = new Date()
   const today = now.toISOString().slice(0, 10)
   const yesterday = new Date(now)
@@ -171,12 +159,12 @@ export function emptyRow(position: number, awb?: string): SpreadsheetRowClient {
     abono: '',
     bundles: '',
     price: '',
-    orderNumber: '',
-    awb: awb ?? '',
+    awb: '',
     flightNumber: '',
+    destination: '',
+    incoterm: '',
     deliveryNote: '',
     invoiceNumber: '',
-    line: '',
     search: '',
   }
 }

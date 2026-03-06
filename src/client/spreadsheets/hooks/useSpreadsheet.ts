@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { HeaderDataClient, SpreadsheetRowClient } from '../types'
 import { DEFAULT_HEADER, emptyRow, getWeekString } from '../types'
 import * as api from '../services/spreadsheetApi'
@@ -6,6 +6,27 @@ import { useAutoSave } from './useAutoSave'
 
 interface UseSpreadsheetOptions {
   id?: string
+}
+
+interface SpreadsheetSnapshot {
+  name: string
+  headerData: HeaderDataClient
+  rows: SpreadsheetRowClient[]
+  manuallyEdited: Map<string, Set<string>>
+}
+
+const MAX_HISTORY_LENGTH = 100
+
+function cloneRows(rows: SpreadsheetRowClient[]): SpreadsheetRowClient[] {
+  return rows.map((row) => ({ ...row }))
+}
+
+function cloneManuallyEdited(source: Map<string, Set<string>>): Map<string, Set<string>> {
+  const cloned = new Map<string, Set<string>>()
+  for (const [key, value] of source.entries()) {
+    cloned.set(key, new Set(value))
+  }
+  return cloned
 }
 
 export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
@@ -16,6 +37,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   const [loading, setLoading] = useState(!!id)
   const [error, setError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+  const [history, setHistory] = useState<SpreadsheetSnapshot[]>([])
 
   // Track manually edited auto-generated fields (keyed by row UUID)
   const [manuallyEdited, setManuallyEdited] = useState<Map<string, Set<string>>>(new Map())
@@ -36,6 +58,22 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     },
     [manuallyEdited],
   )
+
+  const recordSnapshot = useCallback(() => {
+    const snapshot: SpreadsheetSnapshot = {
+      name,
+      headerData: { ...headerData },
+      rows: cloneRows(rows),
+      manuallyEdited: cloneManuallyEdited(manuallyEdited),
+    }
+    setHistory((prev) => {
+      const next = [...prev, snapshot]
+      if (next.length > MAX_HISTORY_LENGTH) {
+        return next.slice(next.length - MAX_HISTORY_LENGTH)
+      }
+      return next
+    })
+  }, [name, headerData, rows, manuallyEdited])
 
   // Cargar hoja existente
   useEffect(() => {
@@ -62,12 +100,12 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
           abono: String(r.abono ?? ''),
           bundles: String(r.bundles ?? ''),
           price: String(r.price ?? ''),
-          orderNumber: String(r.orderNumber ?? ''),
           awb: String(r.awb ?? ''),
           flightNumber: String(r.flightNumber ?? ''),
+          destination: String(r.destination ?? ''),
+          incoterm: String(r.incoterm ?? ''),
           deliveryNote: String(r.deliveryNote ?? ''),
           invoiceNumber: String(r.invoiceNumber ?? ''),
-          line: String(r.line ?? ''),
           search: String(r.search ?? ''),
         }))
         setRows(loadedRows.length > 0 ? loadedRows : [emptyRow(0)])
@@ -105,12 +143,12 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
           abono: r.abono ? Number(r.abono) : null,
           bundles: r.bundles ? Number(r.bundles) : null,
           price: r.price ? Number(r.price) : null,
-          orderNumber: r.orderNumber || null,
           awb: r.awb || null,
           flightNumber: r.flightNumber || null,
+          destination: r.destination || null,
+          incoterm: r.incoterm || null,
           deliveryNote: r.deliveryNote || null,
           invoiceNumber: r.invoiceNumber || null,
-          line: r.line || null,
           search: r.search || null,
         })),
     [],
@@ -143,6 +181,20 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     enabled: !!spreadsheetId,
   })
 
+  const undo = useCallback(() => {
+    setHistory((prev) => {
+      if (prev.length === 0) return prev
+      const snapshot = prev[prev.length - 1]
+      setName(snapshot.name)
+      setHeaderData({ ...snapshot.headerData })
+      setRows(cloneRows(snapshot.rows))
+      setManuallyEdited(cloneManuallyEdited(snapshot.manuallyEdited))
+      setSelectedRows(new Set())
+      markUnsaved()
+      return prev.slice(0, -1)
+    })
+  }, [markUnsaved])
+
   // Modificaciones de filas
   const calculateBundles = useCallback((kg: string, abono: string): string => {
     const kgNum = parseFloat(kg)
@@ -153,13 +205,14 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
 
   const updateRow = useCallback(
     (index: number, field: keyof SpreadsheetRowClient, value: string) => {
+      recordSnapshot()
       setRows((prev) => {
         const updated = [...prev]
         const row = { ...updated[index], [field]: value }
         const rowId = row.id
 
         // If user edits an auto-generated field directly, mark it as manually edited
-        if (['week', 'date', 'bundles', 'awb', 'flightNumber'].includes(field)) {
+        if (['week', 'date', 'bundles'].includes(field)) {
           markFieldEdited(rowId, field)
         }
 
@@ -187,16 +240,18 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       })
       markUnsaved()
     },
-    [markUnsaved, calculateBundles, markFieldEdited, isFieldManuallyEdited],
+    [markUnsaved, calculateBundles, markFieldEdited, isFieldManuallyEdited, recordSnapshot],
   )
 
   const addRow = useCallback(() => {
-    setRows((prev) => [...prev, emptyRow(prev.length, headerData.awb)])
+    recordSnapshot()
+    setRows((prev) => [...prev, emptyRow(prev.length)])
     markUnsaved()
-  }, [markUnsaved, headerData.awb])
+  }, [markUnsaved, recordSnapshot])
 
   const deleteRows = useCallback(
     (indices: Set<number>) => {
+      recordSnapshot()
       setRows((prev) => {
         const deletedIds = prev.filter((_, i) => indices.has(i)).map((r) => r.id)
         // Clean up manual edit tracking for deleted rows
@@ -212,13 +267,14 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       setSelectedRows(new Set())
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
 
   const moveRow = useCallback(
     (from: number, direction: 'up' | 'down') => {
       const to = direction === 'up' ? from - 1 : from + 1
       if (to < 0 || to >= rows.length) return
+      recordSnapshot()
       setRows((prev) => {
         const updated = [...prev]
         const temp = updated[from]
@@ -235,12 +291,13 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       })
       markUnsaved()
     },
-    [rows.length, markUnsaved],
+    [rows.length, markUnsaved, recordSnapshot],
   )
 
   const duplicateRows = useCallback(
     (indices: Set<number>) => {
       if (indices.size === 0) return
+      recordSnapshot()
       setRows((prev) => {
         const toDuplicate = prev.filter((_, i) => indices.has(i))
         const newRows = toDuplicate.map((r, i) => ({
@@ -253,11 +310,12 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       setSelectedRows(new Set())
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
 
   const addPastedRows = useCallback(
     (newRows: Omit<SpreadsheetRowClient, 'id' | 'position'>[]) => {
+      recordSnapshot()
       setRows((prev) => {
         const mapped = newRows.map((r, i) => ({
           ...r,
@@ -268,89 +326,26 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       })
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
 
   const updateHeaderData = useCallback(
     (data: Partial<HeaderDataClient>) => {
+      recordSnapshot()
       setHeaderData((prev) => ({ ...prev, ...data }))
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
 
   const updateName = useCallback(
     (newName: string) => {
+      recordSnapshot()
       setName(newName)
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
-
-  // Backfill empty AWB fields when header AWB changes
-  useEffect(() => {
-    const awb = headerData.awb
-    if (!awb) return
-    setRows((prev) => {
-      let changed = false
-      const updated = prev.map((row) => {
-        if (row.awb === '' && !isFieldManuallyEdited(row.id, 'awb')) {
-          changed = true
-          return { ...row, awb }
-        }
-        return row
-      })
-      return changed ? updated : prev
-    })
-  }, [headerData.awb, isFieldManuallyEdited])
-
-  // Backfill empty flightNumber fields when header flightNumber changes
-  useEffect(() => {
-    const flightNumber = headerData.flightNumber
-    if (!flightNumber) return
-    setRows((prev) => {
-      let changed = false
-      const updated = prev.map((row) => {
-        const rowAwbMatchesHeader = !row.awb || row.awb.trim() === headerData.awb?.trim()
-        if (row.flightNumber === '' && rowAwbMatchesHeader && !isFieldManuallyEdited(row.id, 'flightNumber')) {
-          changed = true
-          return { ...row, flightNumber }
-        }
-        return row
-      })
-      return changed ? updated : prev
-    })
-  }, [headerData.flightNumber, isFieldManuallyEdited])
-
-  // Warn if rows have different flightNumber than header
-  // Only applies to rows in the same AWB group as the header (awb empty or matching)
-  const multipleFlightWarning = useMemo(() => {
-    const headerFlight = headerData.flightNumber?.trim()
-    const headerAwb = headerData.awb?.trim()
-    if (!headerFlight) return null
-    const differentFlights = rows.filter((r) => {
-      const rowAwbMatchesHeader = !r.awb?.trim() || r.awb.trim() === headerAwb
-      if (!rowAwbMatchesHeader) return false
-      const rowFlight = r.flightNumber?.trim()
-      return rowFlight && rowFlight !== headerFlight
-    })
-    if (differentFlights.length === 0) return null
-    const uniqueFlights = [...new Set(differentFlights.map((r) => r.flightNumber.trim()))]
-    return `${differentFlights.length} fila(s) tienen un Nº vuelo diferente al de cabecera (${uniqueFlights.join(', ')}). Verifica que sea correcto.`
-  }, [headerData.flightNumber, rows])
-
-  // Warn if rows have different AWB than header
-  const multipleAwbWarning = useMemo(() => {
-    const headerAwb = headerData.awb?.trim()
-    if (!headerAwb) return null
-    const differentAwbs = rows.filter((r) => {
-      const rowAwb = r.awb?.trim()
-      return rowAwb && rowAwb !== headerAwb
-    })
-    if (differentAwbs.length === 0) return null
-    const uniqueAwbs = [...new Set(differentAwbs.map((r) => r.awb.trim()))]
-    return `${differentAwbs.length} fila(s) tienen un AWB diferente al de cabecera (${uniqueAwbs.join(', ')}). Verifica que sea correcto.`
-  }, [headerData.awb, rows])
 
   return {
     spreadsheetId,
@@ -370,8 +365,8 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     addPastedRows,
     updateHeaderData,
     updateName,
-    multipleFlightWarning,
-    multipleAwbWarning,
+    undo,
+    canUndo: history.length > 0,
     save: forceSave,
   }
 }

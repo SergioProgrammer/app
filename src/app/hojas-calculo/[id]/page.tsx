@@ -8,7 +8,6 @@ import { useSpreadsheet } from '@/client/spreadsheets/hooks/useSpreadsheet'
 import { SpreadsheetToolbar } from '@/client/spreadsheets/components/SpreadsheetToolbar'
 import { SpreadsheetTable } from '@/client/spreadsheets/components/SpreadsheetTable'
 import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/SpreadsheetHeaderForm'
-import { SpreadsheetHeaderFields } from '@/client/spreadsheets/components/SpreadsheetHeaderFields'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
 import { Toast } from '@/client/spreadsheets/components/Toast'
 import { CaptureModal } from '@/client/spreadsheets/components/CaptureModal'
@@ -54,8 +53,8 @@ export default function EditarHojaPage() {
     addPastedRows,
     updateHeaderData,
     updateName,
-    multipleFlightWarning,
-    multipleAwbWarning,
+    undo,
+    canUndo,
     save,
   } = useSpreadsheet({ id })
 
@@ -267,7 +266,7 @@ export default function EditarHojaPage() {
   }
 
   const uniqueAwbCount = new Set(
-    rows.map((r) => r.awb?.trim() || headerData.awb?.trim() || '').filter(Boolean)
+    rows.map((r) => r.awb?.trim() || '').filter(Boolean)
   ).size
 
   const generateButtonClass =
@@ -313,26 +312,14 @@ export default function EditarHojaPage() {
         </div>
       </div>
 
-      <SpreadsheetHeaderFields data={headerData} onChange={updateHeaderData} />
-
-      {multipleAwbWarning && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {multipleAwbWarning}
-        </div>
-      )}
-
-      {multipleFlightWarning && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {multipleFlightWarning}
-        </div>
-      )}
-
       <PasteFromExcel onPaste={addPastedRows} />
 
       <SpreadsheetToolbar
         saveStatus={saveStatus}
         selectedCount={selectedRows.size}
         onSave={save}
+        onUndo={undo}
+        canUndo={canUndo}
         onAddRow={addRow}
         onDeleteRows={() => deleteRows(selectedRows)}
         onDuplicate={() => duplicateRows(selectedRows)}
@@ -348,8 +335,6 @@ export default function EditarHojaPage() {
         onSelectRows={setSelectedRows}
         onUpdateRow={updateRow}
         onAddRow={addRow}
-        headerAwb={headerData.awb}
-        headerFlightNumber={headerData.flightNumber}
       />
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
@@ -369,7 +354,7 @@ export default function EditarHojaPage() {
             onChange={(e) => setHeaderReviewed(e.target.checked)}
             className="cursor-pointer rounded border-gray-300"
           />
-          He revisado los datos de cabecera y especificaciones
+          He revisado las especificaciones y los datos por fila
         </label>
         <button
           onClick={handleGenerate}
