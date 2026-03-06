@@ -6,7 +6,7 @@ import { HIGHLIGHT_STYLES, REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '../t
 
 const STORAGE_KEY = 'spreadsheet-column-widths-v2'
 const MIN_COL_WIDTH = 70
-const MAX_AUTO_FIT_WIDTH = 800
+const MAX_AUTO_FIT_WIDTH = 1200
 
 function getInitialWidths(): number[] {
   if (typeof window === 'undefined') return SPREADSHEET_COLUMNS.map((c) => c.width)
