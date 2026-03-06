@@ -25,14 +25,69 @@ interface GenerateInvoiceResult {
 
 const MAX_INVOICE_GROUPS = 10
 
-function incrementInvoiceNumber(base: string, index: number): string {
-  if (!base.trim()) return ''
-  if (index === 0) return base
-  const match = base.match(/^(.*?)(\d+)$/)
-  if (!match) return `${base}-${index + 1}`
-  const [, prefix, numStr] = match
-  const newNum = parseInt(numStr, 10) + index
-  return `${prefix}${String(newNum).padStart(numStr.length, '0')}`
+type GroupFieldKey = 'invoiceNumber' | 'invoiceDate' | 'destination' | 'incoterm' | 'flightNumber'
+
+const GROUP_FIELD_LABELS: Record<GroupFieldKey, string> = {
+  invoiceNumber: 'Nº factura',
+  invoiceDate: 'Fecha factura',
+  destination: 'Destino',
+  incoterm: 'Incoterm',
+  flightNumber: 'Nº vuelo',
+}
+
+function getFieldValue(row: SpreadsheetRowProps, key: GroupFieldKey): string {
+  return (row.data[key] ?? '').trim()
+}
+
+function rowNumber(row: SpreadsheetRowProps): number {
+  return row.position + 1
+}
+
+function formatRows(rows: number[]): string {
+  return rows.map((n) => `${n}`).join(', ')
+}
+
+function validateRequiredAwb(rows: SpreadsheetRowProps[]): void {
+  const missingRows = rows.filter((row) => !row.data.awb?.trim()).map(rowNumber)
+  if (missingRows.length > 0) {
+    throw new Error(`Falta AWB en las filas: ${formatRows(missingRows)}.`)
+  }
+}
+
+function validateGroupConsistency(awb: string, rows: SpreadsheetRowProps[]): Record<GroupFieldKey, string> {
+  const resolved = {} as Record<GroupFieldKey, string>
+  const keys: GroupFieldKey[] = ['invoiceNumber', 'invoiceDate', 'destination', 'incoterm', 'flightNumber']
+
+  for (const key of keys) {
+    const missingRows: number[] = []
+    const values = new Map<string, number[]>()
+
+    for (const row of rows) {
+      const value = getFieldValue(row, key)
+      if (!value) {
+        missingRows.push(rowNumber(row))
+        continue
+      }
+      const bucket = values.get(value) ?? []
+      bucket.push(rowNumber(row))
+      values.set(value, bucket)
+    }
+
+    if (missingRows.length > 0) {
+      throw new Error(`AWB ${awb}: el campo "${GROUP_FIELD_LABELS[key]}" es obligatorio en filas ${formatRows(missingRows)}.`)
+    }
+
+    if (values.size > 1) {
+      const detail = [...values.entries()]
+        .map(([value, positions]) => `"${value}" (filas ${formatRows(positions)})`)
+        .join('; ')
+      throw new Error(`AWB ${awb}: el campo "${GROUP_FIELD_LABELS[key]}" debe ser único por grupo. Valores detectados: ${detail}.`)
+    }
+
+    resolved[key] = [...values.keys()][0]
+  }
+
+  return resolved
 }
 
 export class GenerateInvoiceFromSpreadsheet {
@@ -54,26 +109,20 @@ export class GenerateInvoiceFromSpreadsheet {
     }
 
     const header = spreadsheet.headerData
-    const headerAwb = header.awb ?? ''
-    const invoiceDate = header.invoiceDate ?? new Date().toISOString().slice(0, 10)
+    validateRequiredAwb(spreadsheet.rows)
 
-    // Group rows by AWB; rows without AWB go to the header AWB group
+    // Group rows strictly by row AWB.
     const groupMap = new Map<string, SpreadsheetRowProps[]>()
     for (const rowProps of spreadsheet.rows) {
-      const awb = rowProps.data.awb?.trim() || headerAwb
+      const awb = rowProps.data.awb?.trim() ?? ''
       if (!groupMap.has(awb)) groupMap.set(awb, [])
       groupMap.get(awb)!.push(rowProps)
     }
 
-    // Order: header AWB first, then the rest
-    const orderedAwbs: string[] = []
-    if (groupMap.has(headerAwb)) orderedAwbs.push(headerAwb)
-    for (const awb of groupMap.keys()) {
-      if (awb !== headerAwb) orderedAwbs.push(awb)
-    }
+    const orderedAwbs = [...groupMap.keys()]
 
     if (orderedAwbs.some((awb) => !awb.trim())) {
-      throw new Error('Todas las filas deben tener un AWB asignado (o un AWB en cabecera como fallback).')
+      throw new Error('Todas las filas deben tener un AWB asignado.')
     }
 
     if (orderedAwbs.length > MAX_INVOICE_GROUPS) {
@@ -87,8 +136,9 @@ export class GenerateInvoiceFromSpreadsheet {
 
     for (let groupIndex = 0; groupIndex < orderedAwbs.length; groupIndex++) {
       const groupAwb = orderedAwbs[groupIndex]
-      const groupRows = groupMap.get(groupAwb)!
-      const invoiceNumber = incrementInvoiceNumber(header.invoiceNumber ?? '', groupIndex)
+      const groupRows = groupMap.get(groupAwb) ?? []
+      const groupData = validateGroupConsistency(groupAwb, groupRows)
+      const invoiceNumber = groupData.invoiceNumber
 
       try {
       const invoiceItems = groupRows.map((rowProps) => {
@@ -106,26 +156,9 @@ export class GenerateInvoiceFromSpreadsheet {
 
       const totals = calculateTotals(pasteRows)
 
-      // flightNumber: first non-empty value in group rows, fallback to header
-      const groupFlightNumber =
-        groupRows.find((r) => r.data.flightNumber?.trim())?.data.flightNumber?.trim() ??
-        header.flightNumber ??
-        ''
-
-      // Detect conflicting flight numbers within this group
-      const groupWarnings: string[] = []
-      const distinctFlights = [
-        ...new Set(groupRows.map((r) => r.data.flightNumber?.trim()).filter(Boolean)),
-      ] as string[]
-      if (distinctFlights.length > 1) {
-        const warning = `AWB ${groupAwb}: múltiples nº vuelo (${distinctFlights.join(', ')}), se usó ${groupFlightNumber}`
-        groupWarnings.push(warning)
-        globalWarnings.push(warning)
-      }
-
       const payload: InvoicePayload = {
         invoiceNumber,
-        invoiceDate,
+        invoiceDate: groupData.invoiceDate,
         emitter: {
           name: header.emitterName ?? '',
           taxId: header.emitterTaxId ?? '',
@@ -136,8 +169,8 @@ export class GenerateInvoiceFromSpreadsheet {
           taxId: header.clientTaxId ?? '',
           address: header.clientAddress ?? '',
         },
-        incoterm: header.incoterm,
-        destination: header.destination,
+        incoterm: groupData.incoterm,
+        destination: groupData.destination,
         paymentTerms: header.paymentTerms,
         bankInfo: header.bankName
           ? {
@@ -153,7 +186,7 @@ export class GenerateInvoiceFromSpreadsheet {
         },
         grossWeight: totals.totalGrossKg,
         awb: groupAwb || undefined,
-        flightNumber: groupFlightNumber || undefined,
+        flightNumber: groupData.flightNumber || undefined,
       }
 
       const { pdfBytes: invoiceBytes, fileName: invoiceFileName } =
@@ -188,11 +221,11 @@ export class GenerateInvoiceFromSpreadsheet {
           packageType: 'CAJAS BOX',
           packageMark: 'RTDOS',
           bundles: totals.totalBundles,
-          transportId: groupFlightNumber && groupAwb
-            ? `${groupFlightNumber} / AWB ${groupAwb}`
-            : groupAwb || groupFlightNumber || '',
+          transportId: groupData.flightNumber && groupAwb
+            ? `${groupData.flightNumber} / AWB ${groupAwb}`
+            : groupAwb || groupData.flightNumber || '',
           location: 'S/C de TFE',
-          dateText: invoiceDate,
+          dateText: groupData.invoiceDate,
           invoiceNumber,
           items: invoiceItems.map((item) => ({
             productName: item.product,
@@ -229,7 +262,7 @@ export class GenerateInvoiceFromSpreadsheet {
         invoiceNumber,
         invoiceUrl: invoiceResult.publicUrl ?? invoiceResult.signedUrl ?? null,
         anexoUrl,
-        warnings: groupWarnings,
+        warnings: [],
       })
       } catch (err) {
         results.push({

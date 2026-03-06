@@ -28,12 +28,12 @@ interface SpreadsheetRowDbRow {
   abono: number | null
   bundles: number | null
   price: number | null
-  order_number: string | null
   awb: string | null
   flight_number: string | null
+  destination: string | null
+  incoterm: string | null
   delivery_note: string | null
   invoice_number: string | null
-  line: string | null
   search: string | null
 }
 
@@ -49,12 +49,12 @@ function dbRowToData(row: SpreadsheetRowDbRow): SpreadsheetRowData {
     abono: row.abono,
     bundles: row.bundles,
     price: row.price,
-    orderNumber: row.order_number,
     awb: row.awb,
     flightNumber: row.flight_number,
+    destination: row.destination,
+    incoterm: row.incoterm,
     deliveryNote: row.delivery_note,
     invoiceNumber: row.invoice_number,
-    line: row.line,
     search: row.search,
   }
 }
@@ -76,12 +76,12 @@ function dataToDbRow(
     abono: row.data.abono,
     bundles: row.data.bundles,
     price: row.data.price,
-    order_number: row.data.orderNumber,
     awb: row.data.awb,
     flight_number: row.data.flightNumber,
+    destination: row.data.destination,
+    incoterm: row.data.incoterm,
     delivery_note: row.data.deliveryNote,
     invoice_number: row.data.invoiceNumber,
-    line: row.data.line,
     search: row.data.search,
   }
 }
@@ -120,12 +120,12 @@ function buildFakeRows(count: number, spreadsheetId: string): SpreadsheetRowDbRo
     abono: null,
     bundles: null,
     price: null,
-    order_number: null,
     awb: null,
     flight_number: null,
+    destination: null,
+    incoterm: null,
     delivery_note: null,
     invoice_number: null,
-    line: null,
     search: null,
   }))
 }
