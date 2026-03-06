@@ -126,6 +126,7 @@ function emptyRowData(): Omit<SpreadsheetRowClient, 'id' | 'position'> {
     price: '',
     orderNumber: '',
     awb: '',
+    flightNumber: '',
     deliveryNote: '',
     invoiceNumber: '',
     line: '',
@@ -219,6 +220,7 @@ function mapParsedRow(
     price: parsed.price != null ? String(parsed.price) : '',
     orderNumber: '',
     awb: (parsed.awb as string) ?? '',
+    flightNumber: '',
     deliveryNote: '',
     invoiceNumber: (parsed.invoiceNumber as string) ?? '',
     line: '',
@@ -271,14 +273,14 @@ export function PasteFromExcel({ onPaste }: PasteFromExcelProps) {
   }, [rawText, onPaste])
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white">
+    <div className="rounded-2xl border border-gray-200 bg-white transition-all duration-200 hover:border-emerald-300">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 rounded-2xl"
+        className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-emerald-50 rounded-2xl"
       >
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-900">Pegar desde Excel</h2>
+          <h2 className="text-base font-semibold text-gray-900">Pegar desde Excel</h2>
           <span className="text-xs text-gray-400">
             {open ? '(Click para plegar)' : '(Click para desplegar)'}
           </span>

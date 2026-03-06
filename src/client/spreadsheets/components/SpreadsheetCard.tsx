@@ -53,9 +53,16 @@ export function SpreadsheetCard({ spreadsheet, onClick, onArchive }: Spreadsheet
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold text-gray-900">{spreadsheet.name}</h3>
-          <p className="mt-1 text-xs text-gray-500">
-            {spreadsheet.rowCount} {spreadsheet.rowCount === 1 ? 'fila' : 'filas'}
-          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <p className="text-xs text-gray-500">
+              {spreadsheet.rowCount} {spreadsheet.rowCount === 1 ? 'fila' : 'filas'}
+            </p>
+            {spreadsheet.dayOfWeek && (
+              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                {spreadsheet.dayOfWeek === 'lunes' ? 'Lun' : spreadsheet.dayOfWeek === 'martes' ? 'Mar' : 'Sáb'}
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 text-xs text-gray-400">{timeAgo(spreadsheet.updatedAt)}</p>
         </div>
         <div ref={menuRef}>

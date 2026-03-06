@@ -8,11 +8,13 @@ import { useSpreadsheet } from '@/client/spreadsheets/hooks/useSpreadsheet'
 import { SpreadsheetToolbar } from '@/client/spreadsheets/components/SpreadsheetToolbar'
 import { SpreadsheetTable } from '@/client/spreadsheets/components/SpreadsheetTable'
 import { SpreadsheetHeaderForm } from '@/client/spreadsheets/components/SpreadsheetHeaderForm'
+import { SpreadsheetHeaderFields } from '@/client/spreadsheets/components/SpreadsheetHeaderFields'
 import { PasteFromExcel } from '@/client/spreadsheets/components/PasteFromExcel'
 import { Toast } from '@/client/spreadsheets/components/Toast'
+import { CaptureModal } from '@/client/spreadsheets/components/CaptureModal'
 import * as api from '@/client/spreadsheets/services/spreadsheetApi'
 import type { SpreadsheetRowClient } from '@/client/spreadsheets/types'
-import { REQUIRED_ROW_FIELDS } from '@/client/spreadsheets/types'
+import { REQUIRED_ROW_FIELDS, SPREADSHEET_COLUMNS } from '@/client/spreadsheets/types'
 
 type GenerateState = 'idle' | 'generating' | 'success' | 'error'
 
@@ -52,11 +54,15 @@ export default function EditarHojaPage() {
     addPastedRows,
     updateHeaderData,
     updateName,
+    multipleFlightWarning,
+    multipleAwbWarning,
     save,
   } = useSpreadsheet({ id })
 
   const [generateState, setGenerateState] = useState<GenerateState>('idle')
   const [headerReviewed, setHeaderReviewed] = useState(false)
+  const [captureModalOpen, setCaptureModalOpen] = useState(false)
+  const [isCapturing, setIsCapturing] = useState(false)
   const [toast, setToast] = useState<{
     type: 'success' | 'error'
     title: string
@@ -81,7 +87,7 @@ export default function EditarHojaPage() {
     try {
       // Validar cabecera
       const missingHeaders = (Object.keys(headerData) as (keyof typeof headerData)[])
-        .filter((k) => !headerData[k].trim())
+        .filter((k) => !(headerData[k] ?? '').trim())
       if (missingHeaders.length > 0) {
         setGenerateState('error')
         setToast({ type: 'error', title: 'Error de validación', message: 'Rellena todos los datos de cabecera antes de generar la factura.' })
@@ -124,12 +130,46 @@ export default function EditarHojaPage() {
       await save()
       const result = await api.generateInvoice(id)
 
+      const failedInvoices = result.invoices.filter((inv) => inv.error)
+      const successInvoices = result.invoices.filter((inv) => !inv.error)
+
+      if (failedInvoices.length > 0 && successInvoices.length === 0) {
+        // All failed
+        setGenerateState('error')
+        const failedAwbs = failedInvoices.map((inv) => inv.awb || inv.invoiceNumber).join(', ')
+        setToast({ type: 'error', title: 'Error al generar facturas', message: `Errores en AWB: ${failedAwbs}` })
+        resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
+        return
+      }
+
       setGenerateState('success')
       const links: { label: string; href: string }[] = []
-      if (result.invoiceUrl) links.push({ label: 'Ver factura', href: result.invoiceUrl })
-      if (result.anexoUrl) links.push({ label: 'Ver anexo IV', href: result.anexoUrl })
+      for (const inv of successInvoices) {
+        if (inv.invoiceUrl) links.push({ label: `Factura ${inv.invoiceNumber}`, href: inv.invoiceUrl })
+        if (inv.anexoUrl) links.push({ label: `Anexo IV (${inv.invoiceNumber})`, href: inv.anexoUrl })
+      }
       links.push({ label: 'Ver en historial de facturas', href: '/facturas/historial' })
-      setToast({ type: 'success', title: 'Factura generada', links })
+      const count = successInvoices.length
+      const total = result.invoices.length
+
+      if (failedInvoices.length > 0) {
+        const failedAwbs = failedInvoices.map((inv) => inv.awb || inv.invoiceNumber).join(', ')
+        setToast({
+          type: 'error',
+          title: `${count} de ${total} facturas generadas`,
+          message: `Errores en AWB: ${failedAwbs}`,
+          links,
+        })
+      } else if (result.warnings?.length > 0) {
+        setToast({
+          type: 'error',
+          title: `${count} factura${count !== 1 ? 's' : ''} generada${count !== 1 ? 's' : ''} con advertencias`,
+          message: result.warnings.join('\n'),
+          links,
+        })
+      } else {
+        setToast({ type: 'success', title: `${count} factura${count !== 1 ? 's' : ''} generada${count !== 1 ? 's' : ''}`, links })
+      }
       resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
     } catch (err) {
       setGenerateState('error')
@@ -141,6 +181,72 @@ export default function EditarHojaPage() {
       resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
     }
   }, [id, save, headerData, rows])
+
+  const handleCapture = useCallback(async (selectedColumns: string[]) => {
+    setCaptureModalOpen(false)
+    const captureRows = rows.filter((_, i) => selectedRows.has(i))
+    if (captureRows.length === 0) return
+
+    if (captureRows.length > 200) {
+      const ok = window.confirm(
+        `Se van a capturar ${captureRows.length} filas. Esto puede tardar unos segundos. ¿Continuar?`
+      )
+      if (!ok) return
+    }
+
+    const colDefs = SPREADSHEET_COLUMNS.filter((c) => selectedColumns.includes(c.key))
+
+    const container = document.createElement('div')
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;background:#ffffff;padding:12px;font-family:Arial,sans-serif;font-size:13px;color:#111827'
+
+    const table = document.createElement('table')
+    table.style.cssText = 'border-collapse:collapse;color:#111827'
+
+    const thead = document.createElement('thead')
+    const headerRow = document.createElement('tr')
+    colDefs.forEach((col) => {
+      const th = document.createElement('th')
+      th.textContent = col.label
+      th.style.cssText = 'border:1px solid #d1d5db;padding:6px 10px;background:#f3f4f6;color:#111827;font-weight:700;white-space:nowrap;text-align:left'
+      headerRow.appendChild(th)
+    })
+    thead.appendChild(headerRow)
+    table.appendChild(thead)
+
+    const tbody = document.createElement('tbody')
+    captureRows.forEach((row) => {
+      const tr = document.createElement('tr')
+      colDefs.forEach((col) => {
+        const td = document.createElement('td')
+        td.textContent = String(row[col.key as keyof SpreadsheetRowClient] ?? '')
+        td.style.cssText = 'border:1px solid #e5e7eb;padding:5px 10px;white-space:nowrap;color:#111827'
+        tr.appendChild(td)
+      })
+      tbody.appendChild(tr)
+    })
+    table.appendChild(tbody)
+    container.appendChild(table)
+    document.body.appendChild(container)
+
+    setIsCapturing(true)
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const canvas = await html2canvas(container, { scale: 2, backgroundColor: '#ffffff' })
+      const link = document.createElement('a')
+      link.download = `${name || 'captura'}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    } catch (err) {
+      setToast({
+        type: 'error',
+        title: 'Error al capturar',
+        message: err instanceof Error ? err.message : 'No se pudo generar la imagen',
+      })
+    } finally {
+      document.body.removeChild(container)
+      setIsCapturing(false)
+    }
+  }, [rows, selectedRows, name])
 
   const selectedIndex = selectedRows.size === 1 ? [...selectedRows][0] : -1
 
@@ -159,6 +265,10 @@ export default function EditarHojaPage() {
       </div>
     )
   }
+
+  const uniqueAwbCount = new Set(
+    rows.map((r) => r.awb?.trim() || headerData.awb?.trim() || '').filter(Boolean)
+  ).size
 
   const generateButtonClass =
     generateState === 'success'
@@ -203,6 +313,22 @@ export default function EditarHojaPage() {
         </div>
       </div>
 
+      <SpreadsheetHeaderFields data={headerData} onChange={updateHeaderData} />
+
+      {multipleAwbWarning && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {multipleAwbWarning}
+        </div>
+      )}
+
+      {multipleFlightWarning && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {multipleFlightWarning}
+        </div>
+      )}
+
+      <PasteFromExcel onPaste={addPastedRows} />
+
       <SpreadsheetToolbar
         saveStatus={saveStatus}
         selectedCount={selectedRows.size}
@@ -212,9 +338,9 @@ export default function EditarHojaPage() {
         onDuplicate={() => duplicateRows(selectedRows)}
         onMoveUp={() => selectedIndex >= 0 && moveRow(selectedIndex, 'up')}
         onMoveDown={() => selectedIndex >= 0 && moveRow(selectedIndex, 'down')}
+        onCapture={() => !isCapturing && setCaptureModalOpen(true)}
+        isCapturing={isCapturing}
       />
-
-      <PasteFromExcel onPaste={addPastedRows} />
 
       <SpreadsheetTable
         rows={rows}
@@ -222,9 +348,18 @@ export default function EditarHojaPage() {
         onSelectRows={setSelectedRows}
         onUpdateRow={updateRow}
         onAddRow={addRow}
+        headerAwb={headerData.awb}
+        headerFlightNumber={headerData.flightNumber}
       />
 
       <SpreadsheetHeaderForm data={headerData} onChange={updateHeaderData} />
+
+      <CaptureModal
+        open={captureModalOpen}
+        onClose={() => setCaptureModalOpen(false)}
+        onConfirm={handleCapture}
+        selectedRowCount={selectedRows.size}
+      />
 
       <div className="flex flex-col items-end gap-3">
         <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
@@ -234,7 +369,7 @@ export default function EditarHojaPage() {
             onChange={(e) => setHeaderReviewed(e.target.checked)}
             className="cursor-pointer rounded border-gray-300"
           />
-          He revisado la sección Datos de cabecera
+          He revisado los datos de cabecera y especificaciones
         </label>
         <button
           onClick={handleGenerate}
@@ -256,7 +391,9 @@ export default function EditarHojaPage() {
               ? 'Generado'
               : generateState === 'error'
                 ? 'Fallo al generar'
-                : 'Generar factura'}
+                : uniqueAwbCount > 1
+                  ? `Generar ${uniqueAwbCount} facturas`
+                  : 'Generar factura'}
         </button>
       </div>
     </div>

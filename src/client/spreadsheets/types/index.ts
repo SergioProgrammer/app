@@ -15,6 +15,7 @@ export interface SpreadsheetRowClient {
   price: string
   orderNumber: string
   awb: string
+  flightNumber: string
   deliveryNote: string
   invoiceNumber: string
   line: string
@@ -42,10 +43,14 @@ export interface HeaderDataClient {
   botanicalName: string
 }
 
+export type DayOfWeek = 'lunes' | 'martes' | 'sabado'
+
 export interface SpreadsheetListItem {
   id: string
   name: string
   rowCount: number
+  dayOfWeek: DayOfWeek | null
+  createdAt: string
   updatedAt: string
 }
 
@@ -65,14 +70,15 @@ export const SPREADSHEET_COLUMNS = [
   { key: 'invoiceDate', label: 'Fecha factura', width: 140, inputType: 'date' as ColumnInputType },
   { key: 'date', label: 'Fecha corte', width: 140, inputType: 'date' as ColumnInputType },
   { key: 'finalClient', label: 'Cliente final', width: 140, inputType: 'text' as ColumnInputType },
-  { key: 'kg', label: 'Kg', width: 80, inputType: 'number' as ColumnInputType },
+  { key: 'kg', label: 'Kg por bulto', width: 110, inputType: 'number' as ColumnInputType },
   { key: 'product', label: 'Producto', width: 140, inputType: 'text' as ColumnInputType },
   { key: 'boxType', label: 'Tipo caja', width: 100, inputType: 'text' as ColumnInputType },
-  { key: 'abono', label: 'Abono', width: 80, inputType: 'number' as ColumnInputType },
   { key: 'bundles', label: 'Bultos', width: 70, inputType: 'number' as ColumnInputType },
+  { key: 'abono', label: 'Abono', width: 80, inputType: 'number' as ColumnInputType },
   { key: 'price', label: 'Precio', width: 90, inputType: 'number' as ColumnInputType },
   { key: 'orderNumber', label: 'Nº pedido', width: 100, inputType: 'text' as ColumnInputType },
   { key: 'awb', label: 'AWB', width: 120, inputType: 'text' as ColumnInputType },
+  { key: 'flightNumber', label: 'Nº vuelo', width: 110, inputType: 'text' as ColumnInputType },
   { key: 'deliveryNote', label: 'Albarán', width: 100, inputType: 'text' as ColumnInputType },
   { key: 'invoiceNumber', label: 'Nº factura', width: 110, inputType: 'text' as ColumnInputType },
   { key: 'line', label: 'Línea', width: 80, inputType: 'text' as ColumnInputType },
@@ -109,7 +115,7 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
   position: -1,
   week: '20265',  // YYYYW format (2026, week 5)
   invoiceDate: '01/01/2026',
-  date: '01/01/2026',
+  date: '31/12/2025',
   finalClient: 'Arico Fruits S.L',
   kg: '850',
   product: 'BASIL/ALBAHACA 1 KG',
@@ -119,11 +125,19 @@ export const EXAMPLE_ROW: SpreadsheetRowClient = {
   price: '7.5',
   orderNumber: '20261',
   awb: '996-13826540',
+  flightNumber: 'UX9117',
   deliveryNote: 'ALB-001',
   invoiceNumber: 'FAC-01012026',
   line: '1',
   search: '',
 }
+
+export const HIGHLIGHT_STYLES = {
+  match: { bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  autoCalc: { bg: 'bg-blue-50/40', text: 'text-gray-700' },
+} as const
+
+export const IATA_FLIGHT_REGEX = /^[A-Z0-9]{2}\d{1,4}$/i
 
 export function getWeekString(dateStr?: string): string {
   const date = dateStr ? new Date(dateStr) : new Date()
@@ -138,14 +152,18 @@ export function getWeekString(dateStr?: string): string {
   return `${target.getUTCFullYear()}${weekNum}`
 }
 
-export function emptyRow(position: number): SpreadsheetRowClient {
-  const today = new Date().toISOString().slice(0, 10)
+export function emptyRow(position: number, awb?: string): SpreadsheetRowClient {
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().slice(0, 10)
   return {
     id: crypto.randomUUID(),
     position,
     week: getWeekString(today),
     invoiceDate: today,
-    date: today,
+    date: yesterdayStr,
     finalClient: '',
     kg: '',
     product: '',
@@ -154,7 +172,8 @@ export function emptyRow(position: number): SpreadsheetRowClient {
     bundles: '',
     price: '',
     orderNumber: '',
-    awb: '',
+    awb: awb ?? '',
+    flightNumber: '',
     deliveryNote: '',
     invoiceNumber: '',
     line: '',

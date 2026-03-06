@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { HeaderDataClient, SpreadsheetRowClient } from '../types'
 import { DEFAULT_HEADER, emptyRow, getWeekString } from '../types'
 import * as api from '../services/spreadsheetApi'
@@ -16,6 +16,26 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   const [loading, setLoading] = useState(!!id)
   const [error, setError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+
+  // Track manually edited auto-generated fields (keyed by row UUID)
+  const [manuallyEdited, setManuallyEdited] = useState<Map<string, Set<string>>>(new Map())
+
+  const markFieldEdited = useCallback((rowId: string, field: string) => {
+    setManuallyEdited((prev) => {
+      const next = new Map(prev)
+      const fields = new Set(next.get(rowId) ?? [])
+      fields.add(field)
+      next.set(rowId, fields)
+      return next
+    })
+  }, [])
+
+  const isFieldManuallyEdited = useCallback(
+    (rowId: string, field: string): boolean => {
+      return manuallyEdited.get(rowId)?.has(field) ?? false
+    },
+    [manuallyEdited],
+  )
 
   // Cargar hoja existente
   useEffect(() => {
@@ -44,6 +64,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
           price: String(r.price ?? ''),
           orderNumber: String(r.orderNumber ?? ''),
           awb: String(r.awb ?? ''),
+          flightNumber: String(r.flightNumber ?? ''),
           deliveryNote: String(r.deliveryNote ?? ''),
           invoiceNumber: String(r.invoiceNumber ?? ''),
           line: String(r.line ?? ''),
@@ -86,6 +107,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
           price: r.price ? Number(r.price) : null,
           orderNumber: r.orderNumber || null,
           awb: r.awb || null,
+          flightNumber: r.flightNumber || null,
           deliveryNote: r.deliveryNote || null,
           invoiceNumber: r.invoiceNumber || null,
           line: r.line || null,
@@ -133,33 +155,60 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     (index: number, field: keyof SpreadsheetRowClient, value: string) => {
       setRows((prev) => {
         const updated = [...prev]
-        updated[index] = { ...updated[index], [field]: value }
-        // Auto-calcular semana cuando se actualiza invoiceDate
+        const row = { ...updated[index], [field]: value }
+        const rowId = row.id
+
+        // If user edits an auto-generated field directly, mark it as manually edited
+        if (['week', 'date', 'bundles', 'awb', 'flightNumber'].includes(field)) {
+          markFieldEdited(rowId, field)
+        }
+
+        // Auto-calculate week and date when invoiceDate changes
         if (field === 'invoiceDate') {
-          updated[index].week = getWeekString(value)
+          if (!isFieldManuallyEdited(rowId, 'week')) {
+            row.week = getWeekString(value)
+          }
+          if (!isFieldManuallyEdited(rowId, 'date')) {
+            const d = new Date(value)
+            if (!isNaN(d.getTime())) {
+              d.setDate(d.getDate() - 1)
+              row.date = d.toISOString().slice(0, 10)
+            }
+          }
         }
-        // Auto-calcular bundles cuando se actualiza kg o abono
-        if (field === 'kg' || field === 'abono') {
-          updated[index].bundles = calculateBundles(
-            updated[index].kg,
-            updated[index].abono
-          )
+
+        // Auto-calculate bundles when kg or abono changes
+        if ((field === 'kg' || field === 'abono') && !isFieldManuallyEdited(rowId, 'bundles')) {
+          row.bundles = calculateBundles(row.kg, row.abono)
         }
+
+        updated[index] = row
         return updated
       })
       markUnsaved()
     },
-    [markUnsaved, calculateBundles],
+    [markUnsaved, calculateBundles, markFieldEdited, isFieldManuallyEdited],
   )
 
   const addRow = useCallback(() => {
-    setRows((prev) => [...prev, emptyRow(prev.length)])
+    setRows((prev) => [...prev, emptyRow(prev.length, headerData.awb)])
     markUnsaved()
-  }, [markUnsaved])
+  }, [markUnsaved, headerData.awb])
 
   const deleteRows = useCallback(
     (indices: Set<number>) => {
-      setRows((prev) => prev.filter((_, i) => !indices.has(i)).map((r, i) => ({ ...r, position: i })))
+      setRows((prev) => {
+        const deletedIds = prev.filter((_, i) => indices.has(i)).map((r) => r.id)
+        // Clean up manual edit tracking for deleted rows
+        if (deletedIds.length > 0) {
+          setManuallyEdited((me) => {
+            const next = new Map(me)
+            deletedIds.forEach((id) => next.delete(id))
+            return next
+          })
+        }
+        return prev.filter((_, i) => !indices.has(i)).map((r, i) => ({ ...r, position: i }))
+      })
       setSelectedRows(new Set())
       markUnsaved()
     },
@@ -238,6 +287,71 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     [markUnsaved],
   )
 
+  // Backfill empty AWB fields when header AWB changes
+  useEffect(() => {
+    const awb = headerData.awb
+    if (!awb) return
+    setRows((prev) => {
+      let changed = false
+      const updated = prev.map((row) => {
+        if (row.awb === '' && !isFieldManuallyEdited(row.id, 'awb')) {
+          changed = true
+          return { ...row, awb }
+        }
+        return row
+      })
+      return changed ? updated : prev
+    })
+  }, [headerData.awb, isFieldManuallyEdited])
+
+  // Backfill empty flightNumber fields when header flightNumber changes
+  useEffect(() => {
+    const flightNumber = headerData.flightNumber
+    if (!flightNumber) return
+    setRows((prev) => {
+      let changed = false
+      const updated = prev.map((row) => {
+        const rowAwbMatchesHeader = !row.awb || row.awb.trim() === headerData.awb?.trim()
+        if (row.flightNumber === '' && rowAwbMatchesHeader && !isFieldManuallyEdited(row.id, 'flightNumber')) {
+          changed = true
+          return { ...row, flightNumber }
+        }
+        return row
+      })
+      return changed ? updated : prev
+    })
+  }, [headerData.flightNumber, isFieldManuallyEdited])
+
+  // Warn if rows have different flightNumber than header
+  // Only applies to rows in the same AWB group as the header (awb empty or matching)
+  const multipleFlightWarning = useMemo(() => {
+    const headerFlight = headerData.flightNumber?.trim()
+    const headerAwb = headerData.awb?.trim()
+    if (!headerFlight) return null
+    const differentFlights = rows.filter((r) => {
+      const rowAwbMatchesHeader = !r.awb?.trim() || r.awb.trim() === headerAwb
+      if (!rowAwbMatchesHeader) return false
+      const rowFlight = r.flightNumber?.trim()
+      return rowFlight && rowFlight !== headerFlight
+    })
+    if (differentFlights.length === 0) return null
+    const uniqueFlights = [...new Set(differentFlights.map((r) => r.flightNumber.trim()))]
+    return `${differentFlights.length} fila(s) tienen un Nº vuelo diferente al de cabecera (${uniqueFlights.join(', ')}). Verifica que sea correcto.`
+  }, [headerData.flightNumber, rows])
+
+  // Warn if rows have different AWB than header
+  const multipleAwbWarning = useMemo(() => {
+    const headerAwb = headerData.awb?.trim()
+    if (!headerAwb) return null
+    const differentAwbs = rows.filter((r) => {
+      const rowAwb = r.awb?.trim()
+      return rowAwb && rowAwb !== headerAwb
+    })
+    if (differentAwbs.length === 0) return null
+    const uniqueAwbs = [...new Set(differentAwbs.map((r) => r.awb.trim()))]
+    return `${differentAwbs.length} fila(s) tienen un AWB diferente al de cabecera (${uniqueAwbs.join(', ')}). Verifica que sea correcto.`
+  }, [headerData.awb, rows])
+
   return {
     spreadsheetId,
     name,
@@ -256,6 +370,8 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     addPastedRows,
     updateHeaderData,
     updateName,
+    multipleFlightWarning,
+    multipleAwbWarning,
     save: forceSave,
   }
 }

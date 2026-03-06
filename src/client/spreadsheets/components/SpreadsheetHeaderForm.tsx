@@ -17,18 +17,12 @@ interface FieldDef {
 }
 
 const HEADER_FIELDS: FieldDef[] = [
-  { key: 'invoiceNumber', label: 'Número de factura' },
-  { key: 'invoiceDate', label: 'Fecha', type: 'date' },
   { key: 'clientName', label: 'Cliente (nombre)', colSpan: 2 },
   { key: 'clientTaxId', label: 'Cliente CIF/NIF' },
   { key: 'clientAddress', label: 'Cliente dirección', colSpan: 2 },
   { key: 'emitterName', label: 'Emisor (nombre)', colSpan: 2 },
   { key: 'emitterTaxId', label: 'Emisor CIF/NIF' },
   { key: 'emitterAddress', label: 'Emisor dirección', colSpan: 2 },
-  { key: 'destination', label: 'Destino' },
-  { key: 'awb', label: 'AWB' },
-  { key: 'flightNumber', label: 'Nº de vuelo' },
-  { key: 'incoterm', label: 'Incoterm' },
   { key: 'paymentTerms', label: 'Payment due', colSpan: 2 },
   { key: 'productForm', label: 'Forma' },
   { key: 'botanicalName', label: 'Nombre botánico' },
@@ -41,14 +35,14 @@ export function SpreadsheetHeaderForm({ data, onChange }: SpreadsheetHeaderFormP
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white">
+    <div className="rounded-2xl border border-gray-200 bg-white transition-all duration-200 hover:border-emerald-300">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 rounded-2xl"
+        className="flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left transition-colors hover:bg-emerald-50 rounded-2xl"
       >
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-900">Datos de cabecera</h2>
+          <h2 className="text-base font-semibold text-gray-900">Especificaciones</h2>
           <span className="text-xs text-gray-400">
             {open ? '(Click para plegar)' : '(Click para desplegar)'}
           </span>
@@ -64,7 +58,7 @@ export function SpreadsheetHeaderForm({ data, onChange }: SpreadsheetHeaderFormP
         <div className="border-t border-gray-100 px-4 pb-4 pt-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {HEADER_FIELDS.map((field) => {
-              const isEmpty = !data[field.key].trim()
+              const isEmpty = !(data[field.key] ?? '').trim()
               return (
                 <div
                   key={field.key}

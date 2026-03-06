@@ -11,6 +11,7 @@ export interface SpreadsheetRowData {
   price: number | null
   orderNumber: string | null
   awb: string | null
+  flightNumber: string | null
   deliveryNote: string | null
   invoiceNumber: string | null
   line: string | null
@@ -45,12 +46,15 @@ export interface HeaderData {
   botanicalName?: string
 }
 
+export type DayOfWeek = 'lunes' | 'martes' | 'sabado'
+
 export interface SpreadsheetProps {
   id: string
   name: string
   userId: string
   headerData: HeaderData
   rows: SpreadsheetRowProps[]
+  dayOfWeek: DayOfWeek | null
   createdAt: Date
   updatedAt: Date
   archivedAt: Date | null

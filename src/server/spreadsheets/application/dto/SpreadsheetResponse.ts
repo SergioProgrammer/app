@@ -1,10 +1,12 @@
 import type { Spreadsheet } from '../../domain/entities/Spreadsheet'
-import type { HeaderData } from '../../domain/types'
+import type { DayOfWeek, HeaderData } from '../../domain/types'
 
 export interface SpreadsheetListItemResponse {
   id: string
   name: string
   rowCount: number
+  dayOfWeek: DayOfWeek | null
+  createdAt: string
   updatedAt: string
 }
 
@@ -57,6 +59,8 @@ export function toSpreadsheetListItem(entity: Spreadsheet): SpreadsheetListItemR
     id: entity.id,
     name: entity.name,
     rowCount: entity.rows.length,
+    dayOfWeek: entity.dayOfWeek,
+    createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
   }
 }

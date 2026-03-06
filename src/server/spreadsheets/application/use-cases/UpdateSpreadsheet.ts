@@ -43,6 +43,7 @@ export class UpdateSpreadsheet {
             price: row.price ?? null,
             orderNumber: row.orderNumber ?? null,
             awb: row.awb ?? null,
+            flightNumber: row.flightNumber ?? null,
             deliveryNote: row.deliveryNote ?? null,
             invoiceNumber: row.invoiceNumber ?? null,
             line: row.line ?? null,

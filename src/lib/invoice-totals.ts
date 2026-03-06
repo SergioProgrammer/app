@@ -7,6 +7,9 @@ export type InvoiceTotals = {
   totalAmount: number
 }
 
+/** Tare weight per bundle in kg (box weight) */
+const BUNDLE_TARE_KG = 0.8
+
 function normalizeNumber(value: number | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
@@ -21,6 +24,8 @@ export function calculateTotals(items: InvoicePasteRow[]): InvoiceTotals {
     },
     { totalBundles: 0, totalNetKg: 0, totalAmount: 0 },
   )
-  const totalGrossKg = Number((totals.totalBundles * 0.4 * 2 + totals.totalNetKg).toFixed(2))
+  let totalGrossKg = Number((totals.totalBundles * BUNDLE_TARE_KG + totals.totalNetKg).toFixed(2))
+  // Sanity check: gross weight can never be less than net weight
+  if (totalGrossKg < totals.totalNetKg) totalGrossKg = totals.totalNetKg
   return { ...totals, totalGrossKg }
 }

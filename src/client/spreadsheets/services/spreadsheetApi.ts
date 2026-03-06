@@ -1,4 +1,4 @@
-import type { SpreadsheetDetail, SpreadsheetListItem } from '../types'
+import type { DayOfWeek, SpreadsheetDetail, SpreadsheetListItem } from '../types'
 
 const BASE = '/api/spreadsheets'
 
@@ -26,10 +26,13 @@ export function getSpreadsheet(id: string): Promise<SpreadsheetDetail> {
   return request<SpreadsheetDetail>(`${BASE}/${id}`)
 }
 
-export function createSpreadsheet(name: string): Promise<SpreadsheetDetail> {
+export function createSpreadsheet(
+  name: string,
+  options?: { dayOfWeek?: DayOfWeek; copyFromPrevious?: boolean },
+): Promise<SpreadsheetDetail> {
   return request<SpreadsheetDetail>(BASE, {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, ...options }),
   })
 }
 
@@ -63,8 +66,17 @@ export function deleteSpreadsheet(id: string): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(`${BASE}/${id}`, { method: 'DELETE' })
 }
 
+export interface GenerateInvoiceGroupResult {
+  awb: string
+  invoiceNumber: string
+  invoiceUrl: string | null
+  anexoUrl: string | null
+  warnings: string[]
+  error?: string
+}
+
 export function generateInvoice(
   id: string,
-): Promise<{ invoiceUrl: string | null; anexoUrl: string | null }> {
+): Promise<{ invoices: GenerateInvoiceGroupResult[]; warnings: string[] }> {
   return request(`${BASE}/${id}/generate-invoice`, { method: 'POST' })
 }
