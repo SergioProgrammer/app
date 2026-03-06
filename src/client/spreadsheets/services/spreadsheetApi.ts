@@ -71,10 +71,12 @@ export interface GenerateInvoiceGroupResult {
   invoiceNumber: string
   invoiceUrl: string | null
   anexoUrl: string | null
+  warnings: string[]
+  error?: string
 }
 
 export function generateInvoice(
   id: string,
-): Promise<{ invoices: GenerateInvoiceGroupResult[] }> {
+): Promise<{ invoices: GenerateInvoiceGroupResult[]; warnings: string[] }> {
   return request(`${BASE}/${id}/generate-invoice`, { method: 'POST' })
 }

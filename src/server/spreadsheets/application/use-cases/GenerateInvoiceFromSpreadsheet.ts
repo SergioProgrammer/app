@@ -14,10 +14,13 @@ interface GenerateInvoiceGroupResult {
   invoiceNumber: string
   invoiceUrl: string | null
   anexoUrl: string | null
+  warnings: string[]
+  error?: string
 }
 
 interface GenerateInvoiceResult {
   invoices: GenerateInvoiceGroupResult[]
+  warnings: string[]
 }
 
 const MAX_INVOICE_GROUPS = 10
@@ -69,6 +72,10 @@ export class GenerateInvoiceFromSpreadsheet {
       if (awb !== headerAwb) orderedAwbs.push(awb)
     }
 
+    if (orderedAwbs.some((awb) => !awb.trim())) {
+      throw new Error('Todas las filas deben tener un AWB asignado (o un AWB en cabecera como fallback).')
+    }
+
     if (orderedAwbs.length > MAX_INVOICE_GROUPS) {
       throw new Error(
         `Demasiados AWBs distintos (${orderedAwbs.length}). El máximo permitido es ${MAX_INVOICE_GROUPS} facturas por hoja.`,
@@ -76,12 +83,14 @@ export class GenerateInvoiceFromSpreadsheet {
     }
 
     const results: GenerateInvoiceGroupResult[] = []
+    const globalWarnings: string[] = []
 
     for (let groupIndex = 0; groupIndex < orderedAwbs.length; groupIndex++) {
       const groupAwb = orderedAwbs[groupIndex]
       const groupRows = groupMap.get(groupAwb)!
       const invoiceNumber = incrementInvoiceNumber(header.invoiceNumber ?? '', groupIndex)
 
+      try {
       const invoiceItems = groupRows.map((rowProps) => {
         const row = new SpreadsheetRow(rowProps)
         return row.toInvoiceItem()
@@ -102,6 +111,17 @@ export class GenerateInvoiceFromSpreadsheet {
         groupRows.find((r) => r.data.flightNumber?.trim())?.data.flightNumber?.trim() ??
         header.flightNumber ??
         ''
+
+      // Detect conflicting flight numbers within this group
+      const groupWarnings: string[] = []
+      const distinctFlights = [
+        ...new Set(groupRows.map((r) => r.data.flightNumber?.trim()).filter(Boolean)),
+      ] as string[]
+      if (distinctFlights.length > 1) {
+        const warning = `AWB ${groupAwb}: múltiples nº vuelo (${distinctFlights.join(', ')}), se usó ${groupFlightNumber}`
+        groupWarnings.push(warning)
+        globalWarnings.push(warning)
+      }
 
       const payload: InvoicePayload = {
         invoiceNumber,
@@ -209,9 +229,20 @@ export class GenerateInvoiceFromSpreadsheet {
         invoiceNumber,
         invoiceUrl: invoiceResult.publicUrl ?? invoiceResult.signedUrl ?? null,
         anexoUrl,
+        warnings: groupWarnings,
       })
+      } catch (err) {
+        results.push({
+          awb: groupAwb,
+          invoiceNumber,
+          invoiceUrl: null,
+          anexoUrl: null,
+          warnings: [],
+          error: err instanceof Error ? err.message : 'Error desconocido',
+        })
+      }
     }
 
-    return { invoices: results }
+    return { invoices: results, warnings: globalWarnings }
   }
 }

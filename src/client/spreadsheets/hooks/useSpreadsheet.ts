@@ -311,7 +311,8 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     setRows((prev) => {
       let changed = false
       const updated = prev.map((row) => {
-        if (row.flightNumber === '' && !isFieldManuallyEdited(row.id, 'flightNumber')) {
+        const rowAwbMatchesHeader = !row.awb || row.awb.trim() === headerData.awb?.trim()
+        if (row.flightNumber === '' && rowAwbMatchesHeader && !isFieldManuallyEdited(row.id, 'flightNumber')) {
           changed = true
           return { ...row, flightNumber }
         }
@@ -322,10 +323,14 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   }, [headerData.flightNumber, isFieldManuallyEdited])
 
   // Warn if rows have different flightNumber than header
+  // Only applies to rows in the same AWB group as the header (awb empty or matching)
   const multipleFlightWarning = useMemo(() => {
     const headerFlight = headerData.flightNumber?.trim()
+    const headerAwb = headerData.awb?.trim()
     if (!headerFlight) return null
     const differentFlights = rows.filter((r) => {
+      const rowAwbMatchesHeader = !r.awb?.trim() || r.awb.trim() === headerAwb
+      if (!rowAwbMatchesHeader) return false
       const rowFlight = r.flightNumber?.trim()
       return rowFlight && rowFlight !== headerFlight
     })

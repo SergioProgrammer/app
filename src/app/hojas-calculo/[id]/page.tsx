@@ -130,15 +130,46 @@ export default function EditarHojaPage() {
       await save()
       const result = await api.generateInvoice(id)
 
+      const failedInvoices = result.invoices.filter((inv) => inv.error)
+      const successInvoices = result.invoices.filter((inv) => !inv.error)
+
+      if (failedInvoices.length > 0 && successInvoices.length === 0) {
+        // All failed
+        setGenerateState('error')
+        const failedAwbs = failedInvoices.map((inv) => inv.awb || inv.invoiceNumber).join(', ')
+        setToast({ type: 'error', title: 'Error al generar facturas', message: `Errores en AWB: ${failedAwbs}` })
+        resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
+        return
+      }
+
       setGenerateState('success')
       const links: { label: string; href: string }[] = []
-      for (const inv of result.invoices) {
+      for (const inv of successInvoices) {
         if (inv.invoiceUrl) links.push({ label: `Factura ${inv.invoiceNumber}`, href: inv.invoiceUrl })
         if (inv.anexoUrl) links.push({ label: `Anexo IV (${inv.invoiceNumber})`, href: inv.anexoUrl })
       }
       links.push({ label: 'Ver en historial de facturas', href: '/facturas/historial' })
-      const count = result.invoices.length
-      setToast({ type: 'success', title: `${count} factura${count !== 1 ? 's' : ''} generada${count !== 1 ? 's' : ''}`, links })
+      const count = successInvoices.length
+      const total = result.invoices.length
+
+      if (failedInvoices.length > 0) {
+        const failedAwbs = failedInvoices.map((inv) => inv.awb || inv.invoiceNumber).join(', ')
+        setToast({
+          type: 'error',
+          title: `${count} de ${total} facturas generadas`,
+          message: `Errores en AWB: ${failedAwbs}`,
+          links,
+        })
+      } else if (result.warnings?.length > 0) {
+        setToast({
+          type: 'error',
+          title: `${count} factura${count !== 1 ? 's' : ''} generada${count !== 1 ? 's' : ''} con advertencias`,
+          message: result.warnings.join('\n'),
+          links,
+        })
+      } else {
+        setToast({ type: 'success', title: `${count} factura${count !== 1 ? 's' : ''} generada${count !== 1 ? 's' : ''}`, links })
+      }
       resetTimerRef.current = setTimeout(() => setGenerateState('idle'), 4000)
     } catch (err) {
       setGenerateState('error')
@@ -155,6 +186,13 @@ export default function EditarHojaPage() {
     setCaptureModalOpen(false)
     const captureRows = rows.filter((_, i) => selectedRows.has(i))
     if (captureRows.length === 0) return
+
+    if (captureRows.length > 200) {
+      const ok = window.confirm(
+        `Se van a capturar ${captureRows.length} filas. Esto puede tardar unos segundos. ¿Continuar?`
+      )
+      if (!ok) return
+    }
 
     const colDefs = SPREADSHEET_COLUMNS.filter((c) => selectedColumns.includes(c.key))
 

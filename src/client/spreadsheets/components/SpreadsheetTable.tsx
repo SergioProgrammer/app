@@ -56,6 +56,15 @@ export function SpreadsheetTable({
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(columnWidths))
   }, [columnWidths])
+
+  // Prevent page scroll during drag selection
+  useEffect(() => {
+    if (!isDragging) return
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isDragging])
     useCallback(
         (index: number) => {
             const next = new Set(selectedRows)
