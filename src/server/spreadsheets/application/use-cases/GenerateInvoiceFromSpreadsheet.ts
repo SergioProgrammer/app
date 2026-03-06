@@ -238,7 +238,7 @@ export class GenerateInvoiceFromSpreadsheet {
         const anexoResult = await uploadSupplementPdf(
           anexoBytes,
           anexoFileName,
-          invoiceDate,
+          groupData.invoiceDate,
           this.supabaseClient,
         )
         anexoUrl = anexoResult.publicUrl ?? anexoResult.signedUrl ?? null
@@ -253,8 +253,9 @@ export class GenerateInvoiceFromSpreadsheet {
             // No bloquear si falla la actualización del anexo_path
           }
         }
-      } catch {
-        // Anexo generation is optional, don't fail the whole operation
+      } catch (anexoError) {
+        const warning = `AWB ${groupAwb}: no se pudo generar/subir el anexo (${anexoError instanceof Error ? anexoError.message : 'error desconocido'}).`
+        globalWarnings.push(warning)
       }
 
       results.push({
