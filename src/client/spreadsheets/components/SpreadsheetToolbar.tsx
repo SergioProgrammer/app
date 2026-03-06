@@ -3,6 +3,7 @@
 import {
   ArrowDown,
   ArrowUp,
+  RotateCcw,
   Camera,
   Check,
   Copy,
@@ -20,6 +21,8 @@ interface SpreadsheetToolbarProps {
   saveStatus: SaveStatus
   selectedCount: number
   onSave: () => void
+  onUndo: () => void
+  canUndo: boolean
   onAddRow: () => void
   onDeleteRows: () => void
   onDuplicate: () => void
@@ -33,6 +36,8 @@ export function SpreadsheetToolbar({
   saveStatus,
   selectedCount,
   onSave,
+  onUndo,
+  canUndo,
   onAddRow,
   onDeleteRows,
   onDuplicate,
@@ -81,6 +86,15 @@ export function SpreadsheetToolbar({
       </button>
 
       <div className="h-4 w-px bg-gray-200" />
+
+      <button
+        onClick={onUndo}
+        disabled={!canUndo}
+        className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <RotateCcw className="h-3.5 w-3.5" />
+        Deshacer
+      </button>
 
       <button
         onClick={onAddRow}
@@ -168,6 +182,7 @@ export function SpreadsheetToolbar({
           </div>
           <ul className="space-y-1.5 text-xs text-gray-600">
             <li><strong>Guardar:</strong> Guarda todos los cambios de la hoja.</li>
+            <li><strong>Deshacer:</strong> Revierte el último cambio realizado en la hoja.</li>
             <li><strong>Fila:</strong> Añade una nueva fila vacía al final con la fecha de hoy.</li>
             <li><strong>Eliminar:</strong> Elimina las filas seleccionadas (checkbox).</li>
             <li><strong>Duplicar línea:</strong> Duplica las filas seleccionadas (checkbox) al final de la tabla.</li>

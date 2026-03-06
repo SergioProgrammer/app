@@ -8,6 +8,27 @@ interface UseSpreadsheetOptions {
   id?: string
 }
 
+interface SpreadsheetSnapshot {
+  name: string
+  headerData: HeaderDataClient
+  rows: SpreadsheetRowClient[]
+  manuallyEdited: Map<string, Set<string>>
+}
+
+const MAX_HISTORY_LENGTH = 100
+
+function cloneRows(rows: SpreadsheetRowClient[]): SpreadsheetRowClient[] {
+  return rows.map((row) => ({ ...row }))
+}
+
+function cloneManuallyEdited(source: Map<string, Set<string>>): Map<string, Set<string>> {
+  const cloned = new Map<string, Set<string>>()
+  for (const [key, value] of source.entries()) {
+    cloned.set(key, new Set(value))
+  }
+  return cloned
+}
+
 export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(id ?? null)
   const [name, setName] = useState('Sin nombre')
@@ -16,6 +37,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
   const [loading, setLoading] = useState(!!id)
   const [error, setError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+  const [history, setHistory] = useState<SpreadsheetSnapshot[]>([])
 
   // Track manually edited auto-generated fields (keyed by row UUID)
   const [manuallyEdited, setManuallyEdited] = useState<Map<string, Set<string>>>(new Map())
@@ -36,6 +58,22 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     },
     [manuallyEdited],
   )
+
+  const recordSnapshot = useCallback(() => {
+    const snapshot: SpreadsheetSnapshot = {
+      name,
+      headerData: { ...headerData },
+      rows: cloneRows(rows),
+      manuallyEdited: cloneManuallyEdited(manuallyEdited),
+    }
+    setHistory((prev) => {
+      const next = [...prev, snapshot]
+      if (next.length > MAX_HISTORY_LENGTH) {
+        return next.slice(next.length - MAX_HISTORY_LENGTH)
+      }
+      return next
+    })
+  }, [name, headerData, rows, manuallyEdited])
 
   // Cargar hoja existente
   useEffect(() => {
@@ -143,6 +181,20 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     enabled: !!spreadsheetId,
   })
 
+  const undo = useCallback(() => {
+    setHistory((prev) => {
+      if (prev.length === 0) return prev
+      const snapshot = prev[prev.length - 1]
+      setName(snapshot.name)
+      setHeaderData({ ...snapshot.headerData })
+      setRows(cloneRows(snapshot.rows))
+      setManuallyEdited(cloneManuallyEdited(snapshot.manuallyEdited))
+      setSelectedRows(new Set())
+      markUnsaved()
+      return prev.slice(0, -1)
+    })
+  }, [markUnsaved])
+
   // Modificaciones de filas
   const calculateBundles = useCallback((kg: string, abono: string): string => {
     const kgNum = parseFloat(kg)
@@ -153,6 +205,7 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
 
   const updateRow = useCallback(
     (index: number, field: keyof SpreadsheetRowClient, value: string) => {
+      recordSnapshot()
       setRows((prev) => {
         const updated = [...prev]
         const row = { ...updated[index], [field]: value }
@@ -187,16 +240,18 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       })
       markUnsaved()
     },
-    [markUnsaved, calculateBundles, markFieldEdited, isFieldManuallyEdited],
+    [markUnsaved, calculateBundles, markFieldEdited, isFieldManuallyEdited, recordSnapshot],
   )
 
   const addRow = useCallback(() => {
+    recordSnapshot()
     setRows((prev) => [...prev, emptyRow(prev.length)])
     markUnsaved()
-  }, [markUnsaved])
+  }, [markUnsaved, recordSnapshot])
 
   const deleteRows = useCallback(
     (indices: Set<number>) => {
+      recordSnapshot()
       setRows((prev) => {
         const deletedIds = prev.filter((_, i) => indices.has(i)).map((r) => r.id)
         // Clean up manual edit tracking for deleted rows
@@ -212,13 +267,14 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       setSelectedRows(new Set())
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
 
   const moveRow = useCallback(
     (from: number, direction: 'up' | 'down') => {
       const to = direction === 'up' ? from - 1 : from + 1
       if (to < 0 || to >= rows.length) return
+      recordSnapshot()
       setRows((prev) => {
         const updated = [...prev]
         const temp = updated[from]
@@ -235,12 +291,13 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       })
       markUnsaved()
     },
-    [rows.length, markUnsaved],
+    [rows.length, markUnsaved, recordSnapshot],
   )
 
   const duplicateRows = useCallback(
     (indices: Set<number>) => {
       if (indices.size === 0) return
+      recordSnapshot()
       setRows((prev) => {
         const toDuplicate = prev.filter((_, i) => indices.has(i))
         const newRows = toDuplicate.map((r, i) => ({
@@ -253,11 +310,12 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       setSelectedRows(new Set())
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
 
   const addPastedRows = useCallback(
     (newRows: Omit<SpreadsheetRowClient, 'id' | 'position'>[]) => {
+      recordSnapshot()
       setRows((prev) => {
         const mapped = newRows.map((r, i) => ({
           ...r,
@@ -268,23 +326,25 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
       })
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
 
   const updateHeaderData = useCallback(
     (data: Partial<HeaderDataClient>) => {
+      recordSnapshot()
       setHeaderData((prev) => ({ ...prev, ...data }))
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
 
   const updateName = useCallback(
     (newName: string) => {
+      recordSnapshot()
       setName(newName)
       markUnsaved()
     },
-    [markUnsaved],
+    [markUnsaved, recordSnapshot],
   )
 
   return {
@@ -305,6 +365,8 @@ export function useSpreadsheet({ id }: UseSpreadsheetOptions) {
     addPastedRows,
     updateHeaderData,
     updateName,
+    undo,
+    canUndo: history.length > 0,
     save: forceSave,
   }
 }

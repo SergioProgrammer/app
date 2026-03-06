@@ -53,6 +53,8 @@ export default function EditarHojaPage() {
     addPastedRows,
     updateHeaderData,
     updateName,
+    undo,
+    canUndo,
     save,
   } = useSpreadsheet({ id })
 
@@ -316,6 +318,8 @@ export default function EditarHojaPage() {
         saveStatus={saveStatus}
         selectedCount={selectedRows.size}
         onSave={save}
+        onUndo={undo}
+        canUndo={canUndo}
         onAddRow={addRow}
         onDeleteRows={() => deleteRows(selectedRows)}
         onDuplicate={() => duplicateRows(selectedRows)}

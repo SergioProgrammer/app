@@ -47,6 +47,8 @@ export default function NuevaHojaPage() {
     addPastedRows,
     updateHeaderData,
     updateName,
+    undo,
+    canUndo,
     save,
   } = useSpreadsheet({})
 
@@ -153,6 +155,8 @@ export default function NuevaHojaPage() {
         saveStatus={saveStatus}
         selectedCount={selectedRows.size}
         onSave={handleSave}
+        onUndo={undo}
+        canUndo={canUndo}
         onAddRow={addRow}
         onDeleteRows={() => deleteRows(selectedRows)}
         onDuplicate={() => duplicateRows(selectedRows)}
